@@ -34,12 +34,18 @@ jobs:
           solana-cli-version: '3.1.14'
           node-version: '25.8.1'
 
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Anchor build
         run: anchor build --ignore-keys
 
       - name: Install dependencies
         working-directory: app
-        run: bun install
+        run: npm i
 
       - name: Build
         working-directory: app
