@@ -43,6 +43,9 @@ jobs:
       - name: Anchor build
         run: anchor build --ignore-keys
 
+      - name: Build wasm package
+        run: npm run wasm
+
       - name: Install dependencies
         working-directory: app
         run: npm i
