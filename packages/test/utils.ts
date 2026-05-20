@@ -6,7 +6,7 @@ import {
   createAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
-import { Jbl } from "../target/types/jbl";
+import { Jbl } from "../../target/types/jbl";
 
 /** Size of the Pool account on-chain: 8-byte discriminant + Pool struct (41 184 bytes). */
 export const POOL_SPACE = 8 + 41184;

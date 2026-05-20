@@ -3,6 +3,7 @@ import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
+import { sharesToAmount } from "@/lib/jblMath";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
@@ -254,8 +255,11 @@ export function PoolPositionPanel({
     if (!userPosition || !poolData || lendDecimals == null) return null;
     if (poolData.totalDebtShares === 0n) return 0;
     const rawDebt =
-      (userPosition.debtShares * poolData.totalBorrowed) /
-      poolData.totalDebtShares;
+      sharesToAmount(
+        userPosition.debtShares,
+        poolData.totalBorrowed,
+        poolData.totalDebtShares,
+      ) ?? 0n;
     return Number(rawDebt) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
@@ -265,27 +269,27 @@ export function PoolPositionPanel({
 
   const lendPos: WithdrawPosition | null = hasLp
     ? {
-        asset: pool.lendSymbol,
-        icon: pool.lendIcon,
-        supplied: lpWalletBalance?.uiAmount ?? 0,
-        apy: pool.supplyAPY,
-        collateralEnabled: true,
-      }
+      asset: pool.lendSymbol,
+      icon: pool.lendIcon,
+      supplied: lpWalletBalance?.uiAmount ?? 0,
+      apy: pool.supplyAPY,
+      collateralEnabled: true,
+    }
     : null;
 
   const borrowPos: RepayPosition | null = hasDebt
     ? {
-        collateralAsset: pool.collateralSymbol,
-        collateralIcon: pool.collateralIcon,
-        borrowedAsset: pool.lendSymbol,
-        borrowedIcon: pool.lendIcon,
-        debtAmount: debtUiAmount ?? 0,
-        rawDebtAmount: userPosition && poolData && lendDecimals != null && poolData.totalDebtShares > 0n
-          ? ((userPosition.debtShares * poolData.totalBorrowed) / poolData.totalDebtShares).toString()
-          : undefined,
-        borrowAPY: pool.borrowAPY,
-        walletBalance: lendWalletBalance?.uiAmount ?? undefined,
-      }
+      collateralAsset: pool.collateralSymbol,
+      collateralIcon: pool.collateralIcon,
+      borrowedAsset: pool.lendSymbol,
+      borrowedIcon: pool.lendIcon,
+      debtAmount: debtUiAmount ?? 0,
+      rawDebtAmount: userPosition && poolData && lendDecimals != null && poolData.totalDebtShares > 0n
+        ? (sharesToAmount(userPosition.debtShares, poolData.totalBorrowed, poolData.totalDebtShares) ?? 0n).toString()
+        : undefined,
+      borrowAPY: pool.borrowAPY,
+      walletBalance: lendWalletBalance?.uiAmount ?? undefined,
+    }
     : null;
 
   async function handleRepay(amount: number, rawAmountStr?: string) {

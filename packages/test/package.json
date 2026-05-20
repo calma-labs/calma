@@ -1,0 +1,24 @@
+{
+  "name": "@jbl/test",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "cd ../.. && npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 './packages/test/*.ts'"
+  },
+  "dependencies": {
+    "@jbl/wasm-lib": "*",
+    "@anchor-lang/core": "1.0.2",
+    "@solana/spl-token": "^0.4.12",
+    "@solana/web3.js": "^1.98.0"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.1.0",
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "chai": "^6.2.2",
+    "mocha": "^11.7.5",
+    "ts-mocha": "^11.1.0",
+    "typescript": "^6.0.3"
+  }
+}

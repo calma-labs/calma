@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "@jbl/app",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@jbl/wasm-lib": "*",
     "@anchor-lang/core": "1.0.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
@@ -46,6 +47,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^8.0.10",
-    "vite-plugin-node-polyfills": "^0.26.0"
+    "vite-plugin-node-polyfills": "^0.26.0",
+    "vite-plugin-wasm": "^3.4.1"
   }
 }

@@ -1,6 +1,7 @@
 import { useBorrow } from "@/hooks/program/useBorrow";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
+import { sharesToAmount } from "@/lib/jblMath";
 import { computeFeeBps } from "@/lib/poolDisplay";
 import { cn } from "@/lib/utils";
 import type { PoolData } from "@/types/lending";
@@ -52,8 +53,11 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     if (!userPosition || !poolData || lendDecimals == null) return 0;
     if (poolData.totalDebtShares === 0n) return 0;
     const rawDebt =
-      (userPosition.debtShares * poolData.totalBorrowed) /
-      poolData.totalDebtShares;
+      sharesToAmount(
+        userPosition.debtShares,
+        poolData.totalBorrowed,
+        poolData.totalDebtShares,
+      ) ?? 0n;
     return Number(rawDebt) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 

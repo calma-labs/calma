@@ -21,6 +21,7 @@ custom-panic = []
 
 
 [dependencies]
+jbl-math = { path = "../../crates/jbl-math" }
 anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
 anchor-spl = "1.0.2"
 bytemuck = "1"

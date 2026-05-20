@@ -3,7 +3,7 @@ import { Program, AnchorProvider } from "@anchor-lang/core";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { Jbl } from "../target/types/jbl";
+import { Jbl } from "../../target/types/jbl";
 import { POOL_SPACE, DEFAULT_FEE_CURVE } from "./utils";
 
 describe("pool creation (create)", () => {
