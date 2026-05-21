@@ -50,24 +50,24 @@ pub struct BorrowWithHedge<'info> {
     #[account(
         mut,
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
-        bump = user_position.bump,
-        has_one = authority @ ErrorCode::Unauthorized,
-        constraint = user_position.pool == pool.key() @ ErrorCode::InvalidAmount,
-        constraint = user_position.collateral_deposited > 0 @ ErrorCode::InsufficientFunds,
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.authority == authority.key() @ ErrorCode::Unauthorized,
+        constraint = user_position.load()?.pool == pool.key() @ ErrorCode::InvalidAmount,
+        constraint = user_position.load()?.collateral_deposited > 0 @ ErrorCode::InsufficientFunds,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     /// The rate-hedge offer being matched.
     ///
     /// Must belong to the same pool and have enough remaining capacity.
     #[account(
         mut,
-        constraint = rate_hedge_offer.pool == pool.key() @ ErrorCode::InvalidAmount,
-        constraint = rate_hedge_offer.amount >= amount @ ErrorCode::InsufficientFunds,
-        constraint = duration >= rate_hedge_offer.min_duration @ ErrorCode::InvalidDurationRange,
-        constraint = duration <= rate_hedge_offer.max_duration @ ErrorCode::InvalidDurationRange,
+        constraint = rate_hedge_offer.load()?.pool == pool.key() @ ErrorCode::InvalidAmount,
+        constraint = rate_hedge_offer.load()?.amount >= amount @ ErrorCode::InsufficientFunds,
+        constraint = duration >= rate_hedge_offer.load()?.min_duration @ ErrorCode::InvalidDurationRange,
+        constraint = duration <= rate_hedge_offer.load()?.max_duration @ ErrorCode::InvalidDurationRange,
     )]
-    pub rate_hedge_offer: Account<'info, RateHedgeOffer>,
+    pub rate_hedge_offer: AccountLoader<'info, RateHedgeOffer>,
 
     /// The match account created for this hedged borrow.
     ///
@@ -75,11 +75,11 @@ pub struct BorrowWithHedge<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + RateHedgeMatch::INIT_SPACE,
+        space = 8 + 112, // RateHedgeMatch: 32+32+8+8+8+8+8+1+7 = 112
         seeds = [b"rate_hedge_match", user_position.key().as_ref()],
         bump,
     )]
-    pub rate_hedge_match: Account<'info, RateHedgeMatch>,
+    pub rate_hedge_match: AccountLoader<'info, RateHedgeMatch>,
 
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -108,7 +108,7 @@ pub fn borrow_with_hedge_handler(
     );
 
     // ── 1. Compute upfront fixed fee ──────────────────────────────────────────
-    let fixed_rate_bps = ctx.accounts.rate_hedge_offer.fixed_rate_bps;
+    let fixed_rate_bps = ctx.accounts.rate_hedge_offer.load()?.fixed_rate_bps;
     let upfront_fee: u64 = (amount as u128)
         .checked_mul(fixed_rate_bps as u128)
         .ok_or(ErrorCode::MathOverflow)?
@@ -134,7 +134,7 @@ pub fn borrow_with_hedge_handler(
             ErrorCode::InvalidMint
         );
 
-        let collateral = ctx.accounts.user_position.collateral_deposited;
+        let collateral = ctx.accounts.user_position.load()?.collateral_deposited;
         let max_borrowable = collateral
             .checked_mul(pool.ltv_percent as u64)
             .ok_or(ErrorCode::MathOverflow)?
@@ -143,7 +143,7 @@ pub fn borrow_with_hedge_handler(
 
         let current_debt = if pool.total_debt_shares > 0 {
             shares_to_amount(
-                ctx.accounts.user_position.debt_shares,
+                ctx.accounts.user_position.load()?.debt_shares,
                 pool.total_borrowed,
                 pool.total_debt_shares,
             )
@@ -165,12 +165,13 @@ pub fn borrow_with_hedge_handler(
     };
 
     // ── 4. Update user position ───────────────────────────────────────────────
-    ctx.accounts.user_position.debt_shares = ctx
-        .accounts
-        .user_position
-        .debt_shares
-        .checked_add(new_shares)
-        .ok_or(ErrorCode::MathOverflow)?;
+    {
+        let mut position = ctx.accounts.user_position.load_mut()?;
+        position.debt_shares = position
+            .debt_shares
+            .checked_add(new_shares)
+            .ok_or(ErrorCode::MathOverflow)?;
+    }
 
     // ── 5. Transfer `amount` lend tokens to the borrower (fee stays in pool) ──
     let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
@@ -203,26 +204,30 @@ pub fn borrow_with_hedge_handler(
     }
 
     // ── 7. Update offer: reduce available capacity, credit locked tokens ──────
-    let offer = &mut ctx.accounts.rate_hedge_offer;
-    offer.amount = offer
-        .amount
-        .checked_sub(amount)
-        .ok_or(ErrorCode::MathOverflow)?;
-    offer.locked_tokens = offer
-        .locked_tokens
-        .checked_add(upfront_fee)
-        .ok_or(ErrorCode::MathOverflow)?;
+    {
+        let mut offer = ctx.accounts.rate_hedge_offer.load_mut()?;
+        offer.amount = offer
+            .amount
+            .checked_sub(amount)
+            .ok_or(ErrorCode::MathOverflow)?;
+        offer.locked_tokens = offer
+            .locked_tokens
+            .checked_add(upfront_fee)
+            .ok_or(ErrorCode::MathOverflow)?;
+    }
 
     // ── 8. Initialise match account ───────────────────────────────────────────
-    let m = &mut ctx.accounts.rate_hedge_match;
-    m.offer = ctx.accounts.rate_hedge_offer.key();
-    m.user_position = ctx.accounts.user_position.key();
-    m.amount = amount;
-    m.upfront_fee = upfront_fee;
-    m.initial_debt_shares = new_shares;
-    m.start_ts = current_ts;
-    m.duration = duration;
-    m.bump = ctx.bumps.rate_hedge_match;
+    {
+        let mut m = ctx.accounts.rate_hedge_match.load_init()?;
+        m.offer = ctx.accounts.rate_hedge_offer.key();
+        m.user_position = ctx.accounts.user_position.key();
+        m.amount = amount;
+        m.upfront_fee = upfront_fee;
+        m.initial_debt_shares = new_shares;
+        m.start_ts = current_ts;
+        m.duration = duration;
+        m.bump = ctx.bumps.rate_hedge_match;
+    }
 
     msg!(
         "BorrowWithHedge: amount={} upfront_fee={} shares={} offer={} duration={}s",

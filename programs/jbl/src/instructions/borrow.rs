@@ -45,14 +45,14 @@ pub struct Borrow<'info> {
     #[account(
         mut,
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
-        bump = user_position.bump,
-        has_one = authority,
-        constraint = user_position.pool == pool.key()
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.authority == authority.key(),
+        constraint = user_position.load()?.pool == pool.key()
             @ crate::error::ErrorCode::InvalidAmount,
-        constraint = user_position.collateral_deposited > 0
+        constraint = user_position.load()?.collateral_deposited > 0
             @ crate::error::ErrorCode::InsufficientFunds,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -73,7 +73,8 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
     // ── 2. LTV check and share calculation ───────────────────────────────────
     let new_shares = {
         let pool = ctx.accounts.pool.load()?;
-        let collateral = ctx.accounts.user_position.collateral_deposited;
+        let position = ctx.accounts.user_position.load()?;
+        let collateral = position.collateral_deposited;
         let max_borrowable = collateral
             .checked_mul(pool.ltv_percent as u64)
             .ok_or(crate::error::ErrorCode::MathOverflow)?
@@ -82,7 +83,7 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
 
         let current_debt = if pool.total_debt_shares > 0 {
             shares_to_amount(
-                ctx.accounts.user_position.debt_shares,
+                position.debt_shares,
                 pool.total_borrowed,
                 pool.total_debt_shares,
             )
@@ -104,12 +105,13 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
     };
 
     // ── 3. Update user position ───────────────────────────────────────────────
-    ctx.accounts.user_position.debt_shares = ctx
-        .accounts
-        .user_position
-        .debt_shares
-        .checked_add(new_shares)
-        .ok_or(crate::error::ErrorCode::MathOverflow)?;
+    {
+        let mut position = ctx.accounts.user_position.load_mut()?;
+        position.debt_shares = position
+            .debt_shares
+            .checked_add(new_shares)
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+    }
 
     // ── 4. Transfer lend tokens to the borrower ───────────────────────────────
     let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];

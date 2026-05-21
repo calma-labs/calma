@@ -83,8 +83,19 @@ impl Pool {
 /// different rates or durations cannot alias each other.
 ///
 /// Seeds: `["rate_hedge_offer", pool, authority, fixed_rate_le, min_duration_le, max_duration_le]`
-#[account]
-#[derive(InitSpace)]
+///
+/// Memory layout (repr C, no implicit padding):
+///   offsets 0-31  : pool        (32 bytes)
+///   offsets 32-63 : authority   (32 bytes)
+///   offsets 64-71 : amount      (8)
+///   offsets 72-79 : fixed_rate_bps (8)
+///   offsets 80-87 : min_duration (8)
+///   offsets 88-95 : max_duration (8)
+///   offsets 96-103: collateral_deposited (8)
+///   offsets 104-111: locked_tokens (8)
+///   offset 112    : bump        (1)
+///   offsets 113-119: _pad       (7)
+#[account(zero_copy)]
 pub struct RateHedgeOffer {
     /// The pool this offer is associated with.
     pub pool: Pubkey,
@@ -104,6 +115,7 @@ pub struct RateHedgeOffer {
     /// At match settlement these tokens are transferred from the lend vault to the creator.
     pub locked_tokens: u64,
     pub bump: u8,
+    _pad: [u8; 7],
 }
 
 /// Records an active rate-hedge match between a borrower and an offer creator.
@@ -113,8 +125,18 @@ pub struct RateHedgeOffer {
 ///
 /// Seeds: `["rate_hedge_match", user_position]`
 /// (one active match per user position at a time)
-#[account]
-#[derive(InitSpace)]
+///
+/// Memory layout (repr C, no implicit padding):
+///   offsets 0-31  : offer       (32 bytes)
+///   offsets 32-63 : user_position (32 bytes)
+///   offsets 64-71 : amount      (8)
+///   offsets 72-79 : upfront_fee (8)
+///   offsets 80-87 : initial_debt_shares (8)
+///   offsets 88-95 : start_ts    (8)
+///   offsets 96-103: duration    (8)
+///   offset 104    : bump        (1)
+///   offsets 105-111: _pad       (7)
+#[account(zero_copy)]
 pub struct RateHedgeMatch {
     /// The offer backing this match.
     pub offer: Pubkey,
@@ -135,12 +157,20 @@ pub struct RateHedgeMatch {
     /// Agreed hedge duration in seconds.
     pub duration: u64,
     pub bump: u8,
+    _pad: [u8; 7],
 }
 
 /// Tracks a user's collateral deposit and any open borrow position.
 /// Created on first collateral deposit; borrow fields populated when the user borrows.
-#[account]
-#[derive(InitSpace)]
+///
+/// Memory layout (repr C, no implicit padding):
+///   offsets 0-31  : authority   (32 bytes)
+///   offsets 32-63 : pool        (32 bytes)
+///   offsets 64-71 : collateral_deposited (8)
+///   offsets 72-79 : debt_shares (8)
+///   offset 80     : bump        (1)
+///   offsets 81-87 : _pad        (7)
+#[account(zero_copy)]
 pub struct UserPosition {
     /// The user who owns this position
     pub authority: Pubkey,
@@ -152,4 +182,42 @@ pub struct UserPosition {
     /// Current debt = debt_shares * pool.total_borrowed / pool.total_debt_shares
     pub debt_shares: u64,
     pub bump: u8,
+    _pad: [u8; 7],
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+    use std::mem::size_of;
+
+    /// Space values hardcoded in instruction `init` constraints must match the
+    /// actual struct size (discriminator excluded — Anchor adds 8 bytes on top).
+    #[test]
+    fn pool_size() {
+        // 4 Pubkeys (128) + 6 u64/i64 (48) + UtilizationFeeConfig (32) +
+        // ltv_percent + lp_mint_bump (2) + _pad (6) + WithdrawalQueue
+        // Full value checked against POOL_SPACE constant in test utils (41 184).
+        assert_eq!(size_of::<Pool>(), 41_184);
+    }
+
+    #[test]
+    fn user_position_size() {
+        // authority(32) + pool(32) + collateral_deposited(8) + debt_shares(8) + bump(1) + _pad(7) = 88
+        assert_eq!(size_of::<UserPosition>(), 88);
+    }
+
+    #[test]
+    fn rate_hedge_offer_size() {
+        // pool(32) + authority(32) + amount(8) + fixed_rate_bps(8) +
+        // min_duration(8) + max_duration(8) + collateral_deposited(8) +
+        // locked_tokens(8) + bump(1) + _pad(7) = 120
+        assert_eq!(size_of::<RateHedgeOffer>(), 120);
+    }
+
+    #[test]
+    fn rate_hedge_match_size() {
+        // offer(32) + user_position(32) + amount(8) + upfront_fee(8) +
+        // initial_debt_shares(8) + start_ts(8) + duration(8) + bump(1) + _pad(7) = 112
+        assert_eq!(size_of::<RateHedgeMatch>(), 112);
+    }
 }
