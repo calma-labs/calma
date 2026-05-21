@@ -37,7 +37,20 @@ jobs:
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+
+      - name: Cache wasm-pack binary
+        id: cache-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: wasm-pack-${{ runner.os }}
+
       - name: Install wasm-pack
+        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Anchor build
@@ -45,6 +58,12 @@ jobs:
 
       - name: Build wasm package
         run: npm run wasm
+
+      - name: Cache app node_modules
+        uses: actions/cache@v4
+        with:
+          path: app/node_modules
+          key: npm-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
 
       - name: Install dependencies
         working-directory: app
@@ -64,6 +83,7 @@ jobs:
         with:
           name: app-dist
           path: app/dist
+          include-hidden-files: true
 
   deploy-pages:
     needs: build
@@ -79,13 +99,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Download dist artifact
         uses: actions/download-artifact@v4
         with:
           name: app-dist
-          path: app/dist
+          path: dist
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
