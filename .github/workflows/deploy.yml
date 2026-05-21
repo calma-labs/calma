@@ -69,16 +69,20 @@ jobs:
         working-directory: app
         run: npm i
 
-      - name: Build
+      - name: Build for GitHub Pages (base /jbl/)
         working-directory: app
-        run: bun run build
+        run: bun run build --base=/jbl/
 
       # Upload for GitHub Pages deployment
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app/dist
 
-      # Upload for Vercel deployment (reuses the same dist, no rebuild)
+      - name: Build for Vercel (base /)
+        working-directory: app
+        run: bun run build --base=/
+
+      # Upload for Vercel deployment
       - uses: actions/upload-artifact@v4
         with:
           name: app-dist
