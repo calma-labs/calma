@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-jbl = "6pMJEHx5jRwwt85bKijyfkSgzhQ5bmurDdejBiopAQ7y"
+jbl = "zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ"
 
 [provider]
 cluster = "localnet"
