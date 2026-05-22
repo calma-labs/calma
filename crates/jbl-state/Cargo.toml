@@ -1,0 +1,9 @@
+[package]
+name = "jbl-state"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jbl-math = { path = "../jbl-math" }
+anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
+bytemuck = "1"
