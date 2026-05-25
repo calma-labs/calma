@@ -1,7 +1,6 @@
 import { useBorrow } from "@/hooks/program/useBorrow";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { sharesToAmount } from "@/lib/jblMath";
 import { computeFeeBps } from "@/lib/poolDisplay";
 import { cn } from "@/lib/utils";
 import type { PoolData } from "@/types/lending";
@@ -25,7 +24,6 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   const { wallet } = useWalletConnection();
 
   const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
 
   const walletPubKey = useMemo(
     () => (wallet ? new PublicKey(wallet.account.publicKey) : null),
@@ -35,30 +33,21 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     poolData.publicKey,
     walletPubKey,
   );
-
   const borrowMutation = useBorrow();
   const isPending = borrowMutation.isPending;
 
   const displaySymbol = pool.lendSymbol;
   const displayIcon = pool.lendIcon;
+  // On-chain: max_borrowable = collateral_raw * ltv / 100 (raw lend units)
   const userBorrowPower = useMemo(() => {
-    if (!userPosition || collateralDecimals == null) return 0;
-    const collateralUi =
-      Number(userPosition.collateralDeposited) / 10 ** collateralDecimals;
-    return collateralUi * (poolData.ltvPercent / 100);
-  }, [userPosition, collateralDecimals, poolData.ltvPercent]);
+    if (!userPosition || lendDecimals == null) return 0;
+    return Number(userPosition.max_borrowable(poolData.ltvPercent)) / 10 ** lendDecimals;
+  }, [userPosition, lendDecimals, poolData.ltvPercent]);
 
   // Current debt (to subtract from borrow power)
   const currentDebtUi = useMemo(() => {
-    if (!userPosition || !poolData || lendDecimals == null) return 0;
-    if (poolData.totalDebtShares === 0n) return 0;
-    const rawDebt =
-      sharesToAmount(
-        userPosition.debtShares,
-        poolData.totalBorrowed,
-        poolData.totalDebtShares,
-      ) ?? 0n;
-    return Number(rawDebt) / 10 ** lendDecimals;
+    if (!userPosition || lendDecimals == null) return 0;
+    return Number(userPosition.debt_amount(poolData.totalBorrowed, poolData.totalDebtShares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // Remaining borrow power, capped by pool available liquidity

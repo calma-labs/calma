@@ -25,12 +25,3 @@ export interface PoolData {
     /** Sum of all pending withdrawal amounts currently in the on-chain queue (raw token units). */
     pendingWithdrawals: bigint
 }
-
-export interface UserPositionData {
-    publicKey: PublicKey
-    authority: PublicKey
-    pool: PublicKey
-    collateralDeposited: bigint
-    debtShares: bigint
-    bump: number
-}

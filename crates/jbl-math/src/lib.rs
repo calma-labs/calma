@@ -72,6 +72,15 @@ pub fn amount_to_shares_burned(
     Some(shares)
 }
 
+/// Maximum amount a user may borrow against their collateral.
+///
+/// `max_borrowable = collateral * ltv_percent / 100`
+///
+/// Mirrors the on-chain LTV check in `borrow_handler`.
+pub fn max_borrowable(collateral: u64, ltv_percent: u8) -> u64 {
+    collateral.saturating_mul(ltv_percent as u64) / 100
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

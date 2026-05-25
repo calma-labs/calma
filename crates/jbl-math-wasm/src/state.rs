@@ -10,6 +10,7 @@
 
 use bytemuck::Pod;
 use jbl_state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
+use wasm_bindgen::prelude::*;
 
 const DISCRIMINATOR: usize = 8;
 
@@ -25,7 +26,9 @@ const _: () = {
 // ── wrapper types ─────────────────────────────────────────────────────────────
 
 pub struct PoolAccount(pub Pool);
-pub struct UserPositionAccount(pub UserPosition);
+/// Wasm-exposed wrapper around a parsed `UserPosition` account.
+#[wasm_bindgen]
+pub struct UserPositionAccount(pub(crate) UserPosition);
 pub struct RateHedgeOfferAccount(pub RateHedgeOffer);
 pub struct RateHedgeMatchAccount(pub RateHedgeMatch);
 
@@ -45,9 +48,80 @@ impl PoolAccount {
     }
 }
 
+#[wasm_bindgen]
 impl UserPositionAccount {
-    pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
+    /// Parse from raw Anchor account bytes (8-byte discriminator included).
+    pub fn from_bytes(account_data: &[u8]) -> Option<UserPositionAccount> {
         parse(account_data).map(Self)
+    }
+
+    /// Authority pubkey as raw 32 bytes (`Uint8Array` in JS).
+    /// Use `new PublicKey(pos.authority)` on the JS side to reconstruct.
+    #[wasm_bindgen(getter)]
+    pub fn authority(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.authority).to_vec()
+    }
+
+    /// Pool pubkey as raw 32 bytes (`Uint8Array` in JS).
+    /// Use `new PublicKey(pos.pool)` on the JS side to reconstruct.
+    #[wasm_bindgen(getter)]
+    pub fn pool(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.pool).to_vec()
+    }
+
+    /// Raw collateral deposited in token base units.
+    #[wasm_bindgen(getter)]
+    pub fn collateral_deposited(&self) -> u64 {
+        self.0.collateral_deposited
+    }
+
+    /// Raw debt shares held by this position.
+    #[wasm_bindgen(getter)]
+    pub fn debt_shares(&self) -> u64 {
+        self.0.debt_shares
+    }
+
+    /// PDA bump seed.
+    #[wasm_bindgen(getter)]
+    pub fn bump(&self) -> u8 {
+        self.0.bump
+    }
+
+    /// Returns `true` if collateral has been deposited.
+    pub fn has_collateral(&self) -> bool {
+        self.0.collateral_deposited > 0
+    }
+
+    /// Returns `true` if there is an active borrow (debt shares > 0).
+    pub fn has_debt(&self) -> bool {
+        self.0.debt_shares > 0
+    }
+
+    /// Raw debt amount in lend-token base units, derived from shares and pool totals.
+    /// Returns 0 when `total_debt_shares` is 0.
+    /// Delegates to `jbl_math::shares_to_amount` (ceiling division).
+    pub fn debt_amount(&self, total_borrowed: u64, total_debt_shares: u64) -> u64 {
+        jbl_math::shares_to_amount(self.0.debt_shares, total_borrowed, total_debt_shares)
+            .unwrap_or(0)
+    }
+
+    /// Maximum borrowable amount in raw lend-token units.
+    /// Delegates to `jbl_math::max_borrowable` — same formula as the on-chain LTV check.
+    pub fn max_borrowable(&self, ltv_percent: u8) -> u64 {
+        jbl_math::max_borrowable(self.0.collateral_deposited, ltv_percent)
+    }
+
+    /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
+    /// Trailing zeros are trimmed; at most 6 decimal places are shown.
+    pub fn format_collateral(&self, decimals: u8) -> String {
+        format_token_amount(self.0.collateral_deposited, decimals)
+    }
+
+    /// Human-readable debt amount as a decimal string.
+    /// Shares are resolved against `total_borrowed` / `total_debt_shares` first.
+    pub fn format_debt(&self, total_borrowed: u64, total_debt_shares: u64, decimals: u8) -> String {
+        let amount = self.debt_amount(total_borrowed, total_debt_shares);
+        format_token_amount(amount, decimals)
     }
 }
 
@@ -61,6 +135,36 @@ impl RateHedgeMatchAccount {
     pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
         parse(account_data).map(Self)
     }
+}
+
+// ── formatting helpers ────────────────────────────────────────────────────────
+
+/// Converts a raw token amount to a human-readable decimal string.
+/// Trims trailing fractional zeros and caps output at 6 decimal places.
+///
+/// Examples (decimals = 6):
+///   1_000_000 → "1"
+///   1_500_000 → "1.5"
+///   1_234_567 → "1.234567"
+///   1_234_560 → "1.23456"
+fn format_token_amount(raw: u64, decimals: u8) -> String {
+    if decimals == 0 {
+        return raw.to_string();
+    }
+    let scale = 10u64.pow(decimals as u32);
+    let whole = raw / scale;
+    let frac = raw % scale;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    // Left-pad fractional part to `decimals` digits, then trim to ≤ 6 places.
+    let frac_str = format!("{:0>width$}", frac, width = decimals as usize);
+    let max_places = 6_usize.min(decimals as usize);
+    let trimmed = frac_str[..max_places].trim_end_matches('0');
+    if trimmed.is_empty() {
+        return whole.to_string();
+    }
+    format!("{}.{}", whole, trimmed)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

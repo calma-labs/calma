@@ -3,7 +3,6 @@ import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
-import { sharesToAmount } from "@/lib/jblMath";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
@@ -250,22 +249,15 @@ export function PoolPositionPanel({
 
   const repayMutation = useRepay();
 
-  // Compute on-chain amounts as human-readable numbers
+  // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    if (poolData.totalDebtShares === 0n) return 0;
-    const rawDebt =
-      sharesToAmount(
-        userPosition.debtShares,
-        poolData.totalBorrowed,
-        poolData.totalDebtShares,
-      ) ?? 0n;
-    return Number(rawDebt) / 10 ** lendDecimals;
+    return Number(userPosition.debt_amount(poolData.totalBorrowed, poolData.totalDebtShares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
   const hasLp = (lpWalletBalance?.uiAmount ?? 0) > 0;
-  const hasDebt = userPosition != null && userPosition.debtShares > 0n;
+  const hasDebt = userPosition != null && userPosition.has_debt();
 
   const lendPos: WithdrawPosition | null = hasLp
     ? {
@@ -284,8 +276,8 @@ export function PoolPositionPanel({
       borrowedAsset: pool.lendSymbol,
       borrowedIcon: pool.lendIcon,
       debtAmount: debtUiAmount ?? 0,
-      rawDebtAmount: userPosition && poolData && lendDecimals != null && poolData.totalDebtShares > 0n
-        ? (sharesToAmount(userPosition.debtShares, poolData.totalBorrowed, poolData.totalDebtShares) ?? 0n).toString()
+      rawDebtAmount: userPosition && poolData && lendDecimals != null
+        ? userPosition.debt_amount(poolData.totalBorrowed, poolData.totalDebtShares).toString()
         : undefined,
       borrowAPY: pool.borrowAPY,
       walletBalance: lendWalletBalance?.uiAmount ?? undefined,

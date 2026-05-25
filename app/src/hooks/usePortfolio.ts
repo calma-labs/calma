@@ -89,21 +89,21 @@ export function useBorrowPositions(enabled = true) {
         if (!enabled || !userPositions.length || !pools.length) return []
 
         return userPositions.flatMap((pos) => {
-            if (pos.debtShares === 0n) return []
+            if (!pos.has_debt()) return []
 
-            const pool = pools.find((p) => p.publicKey.equals(pos.pool))
+            const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
             const metrics = derivePoolMetrics(pool)
             const totalDebtShares = Number(pool.totalDebtShares)
-            const debtShares = Number(pos.debtShares)
+            const debtShares = Number(pos.debt_shares)
 
             const debtRaw =
                 totalDebtShares > 0
                     ? (debtShares / totalDebtShares) * metrics.totalBorrowedRaw
                     : 0
             const debtAmount = debtRaw / DECIMALS_FACTOR
-            const collateralAmount = Number(pos.collateralDeposited) / DECIMALS_FACTOR
+            const collateralAmount = Number(pos.collateral_deposited) / DECIMALS_FACTOR
 
             const currentLtv =
                 collateralAmount > 0 ? (debtAmount / collateralAmount) * 100 : 0
@@ -122,7 +122,7 @@ export function useBorrowPositions(enabled = true) {
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
             return [{
-                id: pos.publicKey.toBase58(),
+                id: pool.publicKey.toBase58(),
                 poolId: pool.publicKey.toBase58(),
                 collateralAsset: meta.collateralSymbol,
                 collateralIcon: meta.collateralIcon,

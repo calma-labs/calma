@@ -67,14 +67,14 @@ export function PoolDetailPage() {
   );
 
   const withdrawPosition = useMemo<WithdrawPosition | null>(() => {
-    if (!pool || !userPosition || userPosition.collateralDeposited === 0n)
+    if (!pool || !userPosition || userPosition.collateral_deposited === 0n)
       return null;
     const decimals = collateralDecimals ?? 9;
     return {
       asset: pool.collateralSymbol,
       icon: pool.collateralIcon,
-      supplied: Number(userPosition.collateralDeposited) / 10 ** decimals,
-      rawSupplied: userPosition.collateralDeposited.toString(),
+      supplied: Number(userPosition.collateral_deposited) / 10 ** decimals,
+      rawSupplied: userPosition.collateral_deposited.toString(),
       apy: pool.supplyAPY,
       collateralEnabled: true,
     };
