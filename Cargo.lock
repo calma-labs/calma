@@ -1976,7 +1976,16 @@ name = "jbl-math"
 version = "0.1.0"
 
 [[package]]
-name = "jbl-math-wasm"
+name = "jbl-state"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+ "jbl-math",
+]
+
+[[package]]
+name = "jbl-wasm"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -1985,15 +1994,6 @@ dependencies = [
  "jbl-state",
  "wasm-bindgen",
  "wasmtime",
-]
-
-[[package]]
-name = "jbl-state"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "bytemuck",
- "jbl-math",
 ]
 
 [[package]]

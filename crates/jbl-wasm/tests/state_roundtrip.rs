@@ -1,4 +1,4 @@
-//! Integration tests that build the `jbl-math-wasm` WASM module, load it via
+//! Integration tests that build the `jbl-wasm` WASM module, load it via
 //! `wasmtime`, copy serialised account bytes into WASM linear memory, invoke
 //! the exported parse functions, read the decoded struct back from memory, and
 //! assert field-level round-trip fidelity.
