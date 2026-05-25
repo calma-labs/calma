@@ -39,13 +39,13 @@ export function useLendPositions(enabled = true) {
         if (!enabled || !pools.length || !balances?.tokens.length) return []
 
         return pools.flatMap((pool) => {
-            const lpToken = balances.tokens.find((t) => t.mint.equals(pool.lpMint))
+            const lpToken = balances.tokens.find((t) => t.mint.equals(new PublicKey(pool.account.lp_mint)))
             if (!lpToken || lpToken.amount === 0n) return []
 
-            const totalLpIssued = Number(pool.totalLpIssued)
+            const totalLpIssued = Number(pool.account.total_lp_issued)
             if (totalLpIssued === 0) return []
 
-            const metrics = derivePoolMetrics(pool)
+            const metrics = derivePoolMetrics(pool.account)
             const lpShare = Number(lpToken.amount) / totalLpIssued
             // totalLendRaw = totalLendDeposited + totalBorrowed (full supply including lent-out)
             const supplied = (lpShare * metrics.totalLendRaw) / DECIMALS_FACTOR
@@ -94,8 +94,8 @@ export function useBorrowPositions(enabled = true) {
             const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
-            const metrics = derivePoolMetrics(pool)
-            const totalDebtShares = Number(pool.totalDebtShares)
+            const metrics = derivePoolMetrics(pool.account)
+            const totalDebtShares = Number(pool.account.total_debt_shares)
             const debtShares = Number(pos.debt_shares)
 
             const debtRaw =
@@ -109,7 +109,7 @@ export function useBorrowPositions(enabled = true) {
                 collateralAmount > 0 ? (debtAmount / collateralAmount) * 100 : 0
             const healthFactor =
                 debtAmount > 0
-                    ? (collateralAmount * (pool.ltvPercent / 100)) / debtAmount
+                    ? (collateralAmount * (pool.account.ltv_percent / 100)) / debtAmount
                     : 999
 
             // Liquidation "price": the collateral-to-debt ratio at which the
@@ -117,7 +117,7 @@ export function useBorrowPositions(enabled = true) {
             // denomination assets (e.g. USDC/USDT) as a parity threshold.
             const liqPrice =
                 collateralAmount > 0
-                    ? debtAmount / (collateralAmount * (pool.ltvPercent / 100))
+                    ? debtAmount / (collateralAmount * (pool.account.ltv_percent / 100))
                     : 0
             const meta = getPoolMeta(pool.publicKey.toBase58())
 

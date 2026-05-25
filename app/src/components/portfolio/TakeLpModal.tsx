@@ -1,9 +1,10 @@
 // import { useTakeLp } from "@/hooks/program/useTakeLp";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
+import { PublicKey } from "@solana/web3.js";
 import { Layers, Loader2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -14,7 +15,7 @@ export interface TakeLpPosition {
 
 interface TakeLpModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolAccount;
   position: TakeLpPosition;
   onClose: () => void;
 }
@@ -23,7 +24,7 @@ export function TakeLpModal({ poolData, position, onClose }: TakeLpModalProps) {
   const [amount, setAmount] = useState("");
   const { wallet } = useWalletConnection();
 
-  const { data: lpDecimals } = useMintDecimals(poolData.lpMint);
+  const { data: lpDecimals } = useMintDecimals(new PublicKey(poolData.lp_mint));
   const decimals = lpDecimals ?? 6;
 
   const owedUi = useMemo(

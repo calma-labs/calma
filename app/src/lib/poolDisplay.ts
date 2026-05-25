@@ -1,5 +1,6 @@
 import { getPoolMeta } from '@/config/poolRegistry'
-import type { PoolData, UtilizationFeeConfig } from '@/types/lending'
+import { PoolAccount } from '@jbl/wasm-lib'
+import { PublicKey } from '@solana/web3.js'
 import type { Pool } from '@/types/pool'
 
 
@@ -12,23 +13,11 @@ const COLLATERAL_DECIMALS = 6
 const DECIMALS_FACTOR = 10 ** LEND_DECIMALS
 
 /**
- * Replicate the on-chain piecewise linear fee model in TypeScript.
- * Returns the borrow rate in basis points (e.g. 500 = 5%).
- * utilization_bps: 0..10_000
- */
-export function computeFeeBps(config: UtilizationFeeConfig, utilizationBps: number): number {
-    const u = Math.max(0, Math.min(10_000, utilizationBps))
-    const y1 = Math.floor(Number(config.m1) * u / 10_000) + Number(config.c1)
-    const y2 = Math.floor(Number(config.m2) * u / 10_000) + Number(config.c2)
-    return Math.max(y1, y2, 0)
-}
-
-/**
  * Derive APY figures and utilization from on-chain pool state.
  * Assumes 6-decimal lend tokens (USDC/USDT style). Supply APY uses the
  * standard formula: supply_apy = borrow_apy × utilization.
  */
-export function derivePoolMetrics(pd: PoolData): {
+export function derivePoolMetrics(pd: PoolAccount): {
     utilizationBps: number
     utilizationPct: number
     borrowAPY: number
@@ -38,10 +27,10 @@ export function derivePoolMetrics(pd: PoolData): {
     availableLiquidityRaw: number
     totalCollateralRaw: number
 } {
-    const totalLendRaw = Number(pd.totalLendDeposited)
-    const totalBorrowedRaw = Number(pd.totalBorrowed)
-    const totalCollateralRaw = Number(pd.totalCollateralDeposited)
-    const pendingWithdrawalsRaw = Number(pd.pendingWithdrawals)
+    const totalLendRaw = Number(pd.total_lend_deposited)
+    const totalBorrowedRaw = Number(pd.total_borrowed)
+    const totalCollateralRaw = Number(pd.total_collateral_deposited)
+    const pendingWithdrawalsRaw = Number(pd.pending_withdrawals())
 
     // total_lend_deposited tracks total deposits and does NOT decrease when
     // tokens are borrowed out. Utilization mirrors the on-chain formula:
@@ -56,7 +45,7 @@ export function derivePoolMetrics(pd: PoolData): {
 
     const utilizationPct = utilizationBps / 100
 
-    const borrowRateBps = computeFeeBps(pd.feeConfig, utilizationBps)
+    const borrowRateBps = pd.fee_bps(utilizationBps)
     const borrowAPY = borrowRateBps / 100
     const baseUtilizationPct = totalLendRaw > 0 ? (totalBorrowedRaw / totalLendRaw) * 100 : 0
     const supplyAPY = borrowAPY * (baseUtilizationPct / 100)
@@ -76,16 +65,16 @@ export function derivePoolMetrics(pd: PoolData): {
 }
 
 /**
- * Map on-chain PoolData to the display-friendly Pool shape used by UI
+ * Map on-chain PoolAccount to the display-friendly Pool shape used by UI
  * components. Amounts are kept as raw token counts (no USD valuation since
  * no price oracle is available).
  *
  * `address` and `id` are both the pool's own PublicKey base-58 string so
  * routing with `/pool/:address` resolves back to the same account.
  */
-export function poolDataToDisplayPool(pd: PoolData): Pool {
+export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolAccount): Pool {
     const metrics = derivePoolMetrics(pd)
-    const addr = pd.publicKey.toBase58()
+    const addr = publicKey.toBase58()
     const meta = getPoolMeta(addr)
 
     return {
@@ -99,7 +88,7 @@ export function poolDataToDisplayPool(pd: PoolData): Pool {
         totalBorrowed: metrics.totalBorrowedRaw / DECIMALS_FACTOR,
         totalCollateral: metrics.totalCollateralRaw / (10 ** COLLATERAL_DECIMALS),
         utilization: metrics.utilizationPct,
-        ltv: pd.ltvPercent,
+        ltv: pd.ltv_percent,
         availableLiquidity: metrics.availableLiquidityRaw / DECIMALS_FACTOR,
     }
 }

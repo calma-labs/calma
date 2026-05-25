@@ -57,13 +57,13 @@ export function PoolDetailPage() {
   const { data: poolData, isLoading } = useLendingAccount(poolPubKey);
   const { data: userPosition } = useUserPosition(poolPubKey, walletPubKey);
   const { data: collateralDecimals } = useMintDecimals(
-    poolData?.collateralMint ?? null,
+    poolData ? new PublicKey(poolData.collateral_mint) : null,
   );
   const withdrawMutation = useWithdraw();
 
   const pool = useMemo(
-    () => (poolData ? poolDataToDisplayPool(poolData) : null),
-    [poolData],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
+    [poolData, poolPubKey],
   );
 
   const withdrawPosition = useMemo<WithdrawPosition | null>(() => {
@@ -85,12 +85,12 @@ export function PoolDetailPage() {
     // Use raw amount if provided (for max withdrawal), otherwise calculate from UI amount
     const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (collateralDecimals ?? 9)));
     const userTokenAccount = getAssociatedTokenAddressSync(
-      poolData.collateralMint,
+      new PublicKey(poolData.collateral_mint),
       walletPubKey,
     );
     await withdrawMutation.mutateAsync({
       pool: poolPubKey,
-      collateralMint: poolData.collateralMint,
+      collateralMint: new PublicKey(poolData.collateral_mint),
       userTokenAccount,
       amount: rawAmount,
     });

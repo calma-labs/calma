@@ -25,7 +25,9 @@ const _: () = {
 
 // ── wrapper types ─────────────────────────────────────────────────────────────
 
-pub struct PoolAccount(pub Pool);
+/// Wasm-exposed wrapper around a parsed `Pool` account.
+#[wasm_bindgen]
+pub struct PoolAccount(pub(crate) Pool);
 /// Wasm-exposed wrapper around a parsed `UserPosition` account.
 #[wasm_bindgen]
 pub struct UserPositionAccount(pub(crate) UserPosition);
@@ -42,9 +44,117 @@ fn parse<T: Pod>(account_data: &[u8]) -> Option<T> {
     Some(bytemuck::pod_read_unaligned(body))
 }
 
+#[wasm_bindgen]
 impl PoolAccount {
-    pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
+    /// Parse from raw Anchor account bytes (8-byte discriminator included).
+    pub fn from_bytes(account_data: &[u8]) -> Option<PoolAccount> {
         parse(account_data).map(Self)
+    }
+
+    /// Authority pubkey as raw 32 bytes. Use `new PublicKey(pool.authority)` on the JS side.
+    #[wasm_bindgen(getter)]
+    pub fn authority(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.authority).to_vec()
+    }
+
+    /// Collateral mint pubkey as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn collateral_mint(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.collateral_mint).to_vec()
+    }
+
+    /// Lend mint pubkey as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn lend_mint(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.lend_mint).to_vec()
+    }
+
+    /// LP mint pubkey as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn lp_mint(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.lp_mint).to_vec()
+    }
+
+    /// Raw sum of collateral tokens deposited across all positions.
+    #[wasm_bindgen(getter)]
+    pub fn total_collateral_deposited(&self) -> u64 {
+        self.0.total_collateral_deposited
+    }
+
+    /// Sum of lend tokens currently deposited.
+    #[wasm_bindgen(getter)]
+    pub fn total_lend_deposited(&self) -> u64 {
+        self.0.total_lend_deposited
+    }
+
+    /// Total borrowed lend tokens outstanding.
+    #[wasm_bindgen(getter)]
+    pub fn total_borrowed(&self) -> u64 {
+        self.0.total_borrowed
+    }
+
+    /// Total debt shares outstanding.
+    #[wasm_bindgen(getter)]
+    pub fn total_debt_shares(&self) -> u64 {
+        self.0.total_debt_shares
+    }
+
+    /// Unix timestamp of the last interest accrual.
+    #[wasm_bindgen(getter)]
+    pub fn last_accrual_ts(&self) -> i64 {
+        self.0.last_accrual_ts
+    }
+
+    /// Total LP tokens outstanding for the lend side.
+    #[wasm_bindgen(getter)]
+    pub fn total_lp_issued(&self) -> u64 {
+        self.0.total_lp_issued
+    }
+
+    /// LTV percent (e.g. 80 means 80%).
+    #[wasm_bindgen(getter)]
+    pub fn ltv_percent(&self) -> u8 {
+        self.0.ltv_percent
+    }
+
+    /// LP mint PDA bump seed.
+    #[wasm_bindgen(getter)]
+    pub fn lp_mint_bump(&self) -> u8 {
+        self.0.lp_mint_bump
+    }
+
+    /// Sum of all pending withdrawal amounts currently in the on-chain queue.
+    pub fn pending_withdrawals(&self) -> u64 {
+        self.0.withdrawal_queue.iter().fold(0u64, |acc, e| acc.saturating_add(e.amount))
+    }
+
+    /// Borrow rate in basis points for a given utilization (0..10_000).
+    pub fn fee_bps(&self, utilization_bps: u16) -> u32 {
+        self.0.fee_config.get_fee_bps(utilization_bps as u64)
+    }
+
+    /// Fee config slope 1 (m1).
+    #[wasm_bindgen(getter)]
+    pub fn fee_m1(&self) -> u64 {
+        self.0.fee_config.m1
+    }
+
+    /// Fee config intercept 1 (c1, can be negative).
+    #[wasm_bindgen(getter)]
+    pub fn fee_c1(&self) -> i64 {
+        self.0.fee_config.c1
+    }
+
+    /// Fee config slope 2 (m2).
+    #[wasm_bindgen(getter)]
+    pub fn fee_m2(&self) -> u64 {
+        self.0.fee_config.m2
+    }
+
+    /// Fee config intercept 2 (c2, can be negative).
+    #[wasm_bindgen(getter)]
+    pub fn fee_c2(&self) -> i64 {
+        self.0.fee_config.c2
     }
 }
 

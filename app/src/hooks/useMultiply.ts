@@ -35,7 +35,7 @@ export function useMultiplyStrategies() {
   const strategies = useMemo<MultiplyStrategy[]>(
     () =>
       poolsData.map((pd) => {
-        const pool = poolDataToDisplayPool(pd);
+        const pool = poolDataToDisplayPool(pd.publicKey, pd.account);
         return { ...pool, meta: buildMultiplyMeta(pool) };
       }),
     [poolsData],

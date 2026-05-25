@@ -61,6 +61,13 @@ impl WithdrawalQueue {
     pub fn len(&self) -> usize {
         (self.tail as usize + WITHDRAWAL_QUEUE_LEN - self.head as usize) % WITHDRAWAL_QUEUE_LEN
     }
+
+    /// Iterate over entries in FIFO order (head → tail).
+    pub fn iter(&self) -> impl Iterator<Item = &WithdrawalQueueEntry> + '_ {
+        let head = self.head as usize;
+        let len = self.len();
+        (0..len).map(move |i| &self.entries[(head + i) % WITHDRAWAL_QUEUE_LEN])
+    }
 }
 
 #[cfg(test)]

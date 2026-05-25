@@ -31,8 +31,8 @@ export function MultiplyDetailPage() {
   const { data: poolData, isLoading } = useLendingAccount(poolPubKey);
 
   const pool = useMemo(
-    () => (poolData ? poolDataToDisplayPool(poolData) : null),
-    [poolData],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
+    [poolData, poolPubKey],
   );
 
   const chartSeed = useMemo(

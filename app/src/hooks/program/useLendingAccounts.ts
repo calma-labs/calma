@@ -1,14 +1,25 @@
+import { PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { program } from '../../lib/program'
+import { PoolAccount } from '@jbl/wasm-lib'
+import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
-import type { PoolData } from '../../types/lending'
-import { _mapPool } from './useLendingAccount'
+import { _poolDiscriminatorFilter } from './useLendingAccount'
 
-export type { PoolData }
+export type { PoolAccount }
 
-async function fetchAllPools(): Promise<PoolData[]> {
-    const all = await program.account.pool.all()
-    return all.map(({ publicKey, account }) => _mapPool(publicKey, account))
+export interface PoolAccountWithKey {
+    publicKey: PublicKey
+    account: PoolAccount
+}
+
+async function fetchAllPools(): Promise<PoolAccountWithKey[]> {
+    const accounts = await connection.getProgramAccounts(program.programId, {
+        filters: [_poolDiscriminatorFilter()],
+    })
+    return accounts.flatMap(({ pubkey, account }) => {
+        const pool = PoolAccount.from_bytes(account.data)
+        return pool ? [{ publicKey: pubkey, account: pool }] : []
+    })
 }
 
 export function useLendingAccounts() {

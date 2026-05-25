@@ -1,6 +1,6 @@
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import type { PoolData } from "@/types/lending";
+import type { PoolAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -35,7 +35,7 @@ type ModalState =
 
 interface MultiplyPositionPanelProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolAccount;
   connected: boolean;
 }
 
@@ -73,8 +73,8 @@ export function MultiplyPositionPanel({
     poolPubKey,
     walletPubKey,
   );
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
+  const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
 
   // Derive human-readable amounts and position metrics
   const position = useMemo(() => {
@@ -90,8 +90,8 @@ export function MultiplyPositionPanel({
       Number(userPosition.collateral_deposited) / 10 ** colDec;
 
     const debtRaw = userPosition.debt_amount(
-      poolData.totalBorrowed,
-      poolData.totalDebtShares,
+      poolData.total_borrowed,
+      poolData.total_debt_shares,
     );
     const debtUi = Number(debtRaw) / 10 ** lndDec;
 
@@ -109,8 +109,8 @@ export function MultiplyPositionPanel({
       netAPY,
       collateralFormatted: userPosition.format_collateral(colDec),
       debtFormatted: userPosition.format_debt(
-        poolData.totalBorrowed,
-        poolData.totalDebtShares,
+        poolData.total_borrowed,
+        poolData.total_debt_shares,
         lndDec,
       ),
     };
