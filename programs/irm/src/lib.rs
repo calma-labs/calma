@@ -1,3 +1,4 @@
+pub mod error;
 pub mod instructions;
 pub mod state;
 
@@ -11,8 +12,8 @@ declare_id!("3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC");
 pub mod irm {
     use super::*;
 
-    pub fn borrow_rate(ctx: Context<BorrowRate>) -> Result<u64> {
-        borrow_rate::handler(ctx)
+    pub fn borrow_rate(ctx: Context<BorrowRate>, utilization_bps: u32) -> Result<u32> {
+        borrow_rate::handler(ctx, utilization_bps)
     }
 
     pub fn initialize(ctx: Context<Initialize>, a: u64, b: u64) -> Result<()> {

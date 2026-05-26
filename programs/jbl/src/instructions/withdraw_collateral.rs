@@ -65,7 +65,8 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.remaining_accounts)?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. LTV check: ensure remaining collateral still covers open debt ──────
     {

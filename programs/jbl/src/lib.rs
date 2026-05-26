@@ -2,6 +2,7 @@ pub mod constants;
 pub mod error;
 pub mod fees;
 pub mod instructions;
+pub mod irm;
 pub mod math;
 pub mod state;
 pub mod withdrawal_queue;

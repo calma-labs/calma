@@ -78,42 +78,15 @@ impl Pool {
     /// Accrue interest into `total_borrow_assets` based on elapsed time since last
     /// accrual, then update `market.last_update` to `current_ts`.
     ///
-    /// When `rate_program` is set on the pool, `remaining_accounts` must contain
-    /// `[rate_program_account, rate_state_account]` for the IRM CPI. Pass
-    /// `ctx.remaining_accounts` from instruction handlers; pass an empty slice
-    /// when the pool uses its built-in `fee_config`.
-    pub fn accrue_interest(
-        &mut self,
-        current_ts: i64,
-        remaining_accounts: &[AccountInfo],
-    ) -> Result<()> {
+    /// Pass `Some(rate_bps)` when the caller has already fetched the rate (e.g. via
+    /// IRM CPI). Pass `None` to fall back to the pool's built-in `fee_config`.
+    pub fn accrue_interest(&mut self, current_ts: i64, rate_bps: Option<u32>) -> Result<()> {
         let elapsed = (current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
         if elapsed == 0 {
             return Ok(());
         }
-
-        if self.rate_program != Pubkey::default() {
-            require!(
-                !remaining_accounts.is_empty(),
-                crate::error::ErrorCode::MissingRateProgram
-            );
-            require!(
-                remaining_accounts.len() >= 2,
-                crate::error::ErrorCode::MissingRateState
-            );
-            require_keys_eq!(
-                remaining_accounts[0].key(),
-                self.rate_program,
-                crate::error::ErrorCode::MissingRateProgram
-            );
-            require_keys_eq!(
-                remaining_accounts[1].key(),
-                self.rate_state,
-                crate::error::ErrorCode::MissingRateState
-            );
-        }
-
-        let fee_bps = self.fee_config.get_fee_bps(self.calculate_utilization());
+        let fee_bps =
+            rate_bps.unwrap_or_else(|| self.fee_config.get_fee_bps(self.calculate_utilization()));
         let interest = compute_interest(self.market.total_borrow_assets, fee_bps, elapsed)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         self.market.total_borrow_assets = self
