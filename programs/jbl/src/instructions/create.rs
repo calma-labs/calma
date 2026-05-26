@@ -4,6 +4,16 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 
 pub const POOL_SPACE: usize = 8 + std::mem::size_of::<Pool>();
 
+/// Instruction-arg representation of a single linear fee curve.
+/// Borsh-serialized (separate from the on-chain zero-copy `PolynomialCurve`).
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct CurveArgs {
+    pub a: i64,
+    pub b: i64,
+    /// Whether this curve is active.
+    pub enabled: bool,
+}
+
 #[derive(Accounts)]
 pub struct Create<'info> {
     /// The pool data account.  Must be pre-allocated (size = POOL_SPACE) and
@@ -69,7 +79,7 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, ltv_percent: u8) -> Result<()> {
+pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_init()?;
 
     pool.authority = ctx.accounts.authority.key();
@@ -83,7 +93,9 @@ pub fn create_handler(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, 
     pool.last_accrual_ts = Clock::get()?.unix_timestamp;
     pool.total_lp_issued = 0;
     pool.ltv_percent = ltv_percent;
-    pool.fee_config = crate::fees::UtilizationFeeConfig { m1, c1, m2, c2 };
+    // Default: single enabled flat curve at 1% APY (100 bps); curves 1–3 stay disabled (zeroed).
+    pool.fee_config.curves[0].b = crate::fees::DEFAULT_POOL_FEE_BPS;
+    pool.fee_config.curves[0].enabled = 1;
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 

@@ -12,10 +12,10 @@ use jbl_math::compute_interest;
 /// Field ordering eliminates implicit repr(C) padding:
 ///   offsets 0-127   : four Pubkeys  (4 × 32 = 128 bytes, align 1)
 ///   offsets 128-175 : six u64/i64  (6 × 8 = 48)
-///   offsets 176-207 : fee_config   (4 × u64 = 32)
-///   offsets 208-209 : ltv_percent, lp_mint_bump  (2 × u8)
-///   offsets 210-215 : _pad [u8; 6]  (align withdrawal_queue to 8)
-///   offsets 216-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
+///   offsets 176-271 : fee_config   (4 curves × 24 bytes = 96 bytes)
+///   offsets 272-273 : ltv_percent, lp_mint_bump  (2 × u8)
+///   offsets 274-279 : _pad [u8; 6]  (align withdrawal_queue to 8)
+///   offsets 280-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
 #[account(zero_copy)]
 pub struct Pool {
     pub authority: Pubkey,

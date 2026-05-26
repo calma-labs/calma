@@ -215,10 +215,6 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &jbl::instruction::Create {
-            m1: 0,
-            c1: 50,
-            m2: 0,
-            c2: 0,
             ltv_percent: 75,
         }
         .data(),

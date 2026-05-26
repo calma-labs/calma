@@ -4,7 +4,7 @@ import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
-import { POOL_SPACE, DEFAULT_FEE_CURVE } from "./utils";
+import { POOL_SPACE } from "./utils";
 
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
@@ -63,7 +63,7 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(DEFAULT_FEE_CURVE.m1, DEFAULT_FEE_CURVE.c1, DEFAULT_FEE_CURVE.m2, DEFAULT_FEE_CURVE.c2, 75)
+                .create(75)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -115,7 +115,7 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(DEFAULT_FEE_CURVE.m1, DEFAULT_FEE_CURVE.c1, DEFAULT_FEE_CURVE.m2, DEFAULT_FEE_CURVE.c2, 75)
+                    .create(75)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,

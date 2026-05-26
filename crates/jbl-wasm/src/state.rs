@@ -17,7 +17,7 @@ const DISCRIMINATOR: usize = 8;
 // ── compile-time size assertions ──────────────────────────────────────────────
 
 const _: () = {
-    assert!(core::mem::size_of::<Pool>() == 41_184);
+    assert!(core::mem::size_of::<Pool>() == 41_248);
     assert!(core::mem::size_of::<UserPosition>() == 88);
     assert!(core::mem::size_of::<RateHedgeOffer>() == 120);
     assert!(core::mem::size_of::<RateHedgeMatch>() == 112);
@@ -133,28 +133,19 @@ impl PoolAccount {
         self.0.fee_config.get_fee_bps(utilization_bps as u64)
     }
 
-    /// Fee config slope 1 (m1).
-    #[wasm_bindgen(getter)]
-    pub fn fee_m1(&self) -> u64 {
-        self.0.fee_config.m1
+    /// Slope coefficient (a) for the given curve index (0–3).
+    pub fn fee_curve_a(&self, curve: u8) -> i64 {
+        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.a)
     }
 
-    /// Fee config intercept 1 (c1, can be negative).
-    #[wasm_bindgen(getter)]
-    pub fn fee_c1(&self) -> i64 {
-        self.0.fee_config.c1
+    /// Base rate (b) for the given curve index (0–3).
+    pub fn fee_curve_b(&self, curve: u8) -> i64 {
+        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.b)
     }
 
-    /// Fee config slope 2 (m2).
-    #[wasm_bindgen(getter)]
-    pub fn fee_m2(&self) -> u64 {
-        self.0.fee_config.m2
-    }
-
-    /// Fee config intercept 2 (c2, can be negative).
-    #[wasm_bindgen(getter)]
-    pub fn fee_c2(&self) -> i64 {
-        self.0.fee_config.c2
+    /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
+    pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
+        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.enabled)
     }
 }
 
@@ -291,7 +282,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_184);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_248);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);
