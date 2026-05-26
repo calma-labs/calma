@@ -54,7 +54,8 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
     let current_ts = Clock::get()?.unix_timestamp;
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.remaining_accounts)?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. Compute exact amount owed and shares to burn ───────────────────────
     let (repay_amount, shares_to_burn) = {
