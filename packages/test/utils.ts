@@ -9,7 +9,7 @@ import {
 import { Jbl } from "../../target/types/jbl";
 
 /** Size of the Pool account on-chain: 8-byte discriminant + Pool struct (41 312 bytes). */
-export const POOL_SPACE = 8 + 41312;
+export const POOL_SPACE = 8 + 41328;
 
 export interface TestSetup {
   provider: AnchorProvider;
@@ -116,7 +116,7 @@ export async function setupTest(ltvPercent: number = 75): Promise<TestSetup> {
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent)
+    .create(ltvPercent, SystemProgram.programId, SystemProgram.programId)
     .accounts({
       pool,
       collateralMint,

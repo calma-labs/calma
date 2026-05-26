@@ -20,8 +20,13 @@ declare_id!("zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ");
 pub mod jbl {
     use super::*;
 
-    pub fn create(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
-        create_handler(ctx, ltv_percent)
+    pub fn create(
+        ctx: Context<Create>,
+        ltv_percent: u8,
+        rate_program: Pubkey,
+        rate_state: Pubkey,
+    ) -> Result<()> {
+        create_handler(ctx, ltv_percent, rate_program, rate_state)
     }
 
     pub fn set_fee_curve(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {

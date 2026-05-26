@@ -17,7 +17,7 @@ const DISCRIMINATOR: usize = 8;
 // ── compile-time size assertions ──────────────────────────────────────────────
 
 const _: () = {
-    assert!(core::mem::size_of::<Pool>() == 41_264);
+    assert!(core::mem::size_of::<Pool>() == 41_328);
     assert!(core::mem::size_of::<UserPosition>() == 88);
     assert!(core::mem::size_of::<RateHedgeOffer>() == 120);
     assert!(core::mem::size_of::<RateHedgeMatch>() == 112);

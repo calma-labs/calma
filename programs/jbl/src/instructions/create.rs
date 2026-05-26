@@ -79,7 +79,12 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+pub fn create_handler(
+    ctx: Context<Create>,
+    ltv_percent: u8,
+    rate_program: Pubkey,
+    rate_state: Pubkey,
+) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_init()?;
 
     pool.authority = ctx.accounts.authority.key();
@@ -95,6 +100,8 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     pool.market.fee = 0;
     pool.market.assets_in_queue = 0;
     pool.ltv_percent = ltv_percent;
+    pool.rate_program = rate_program;
+    pool.rate_state = rate_state;
     // Default: single enabled flat curve at 1% APY (100 bps); curves 1–3 stay disabled (zeroed).
     pool.fee_config.curves[0].b = crate::fees::DEFAULT_POOL_FEE_BPS;
     pool.fee_config.curves[0].enabled = 1;

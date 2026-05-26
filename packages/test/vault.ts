@@ -63,7 +63,7 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(75)
+                .create(75, SystemProgram.programId, SystemProgram.programId)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -115,7 +115,7 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(75)
+                    .create(75, SystemProgram.programId, SystemProgram.programId)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,

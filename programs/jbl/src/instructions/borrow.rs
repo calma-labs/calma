@@ -68,7 +68,7 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, ctx.remaining_accounts)?;
 
     // ── 2. LTV check and share calculation ───────────────────────────────────
     let new_shares = {

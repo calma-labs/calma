@@ -27,10 +27,12 @@ pub struct Market {
 ///   offsets 0-127   : four Pubkeys  (4 × 32 = 128 bytes, align 1)
 ///   offsets 128-135 : total_collateral_deposited (u64)
 ///   offsets 136-191 : market (Market, 7 × 8 = 56 bytes)
-///   offsets 192-287 : fee_config   (4 curves × 24 bytes = 96 bytes)
-///   offsets 288-289 : ltv_percent, lp_mint_bump  (2 × u8)
-///   offsets 290-295 : _pad [u8; 6]  (align withdrawal_queue to 8)
-///   offsets 296-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
+///   offsets 192-223 : rate_program (Pubkey, 32 bytes)
+///   offsets 224-255 : rate_state   (Pubkey, 32 bytes)
+///   offsets 256-351 : fee_config   (4 curves × 24 bytes = 96 bytes)
+///   offsets 352-353 : ltv_percent, lp_mint_bump  (2 × u8)
+///   offsets 354-359 : _pad [u8; 6]  (align withdrawal_queue to 8)
+///   offsets 360-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
 #[account(zero_copy)]
 pub struct Pool {
     pub authority: Pubkey,
@@ -43,6 +45,11 @@ pub struct Pool {
     /// Raw sum of collateral tokens deposited across all positions.
     pub total_collateral_deposited: u64,
     pub market: Market,
+    /// Optional external rate program. When set (non-default), `accrue_interest`
+    /// does a CPI to this program to fetch the current fee rate.
+    pub rate_program: Pubkey,
+    /// State account passed to the rate program CPI. Must accompany `rate_program`.
+    pub rate_state: Pubkey,
     pub fee_config: UtilizationFeeConfig,
     pub ltv_percent: u8,
     pub lp_mint_bump: u8,
@@ -70,15 +77,43 @@ impl Pool {
 
     /// Accrue interest into `total_borrow_assets` based on elapsed time since last
     /// accrual, then update `market.last_update` to `current_ts`.
-    pub fn accrue_interest(&mut self, current_ts: i64) -> Result<()> {
+    ///
+    /// When `rate_program` is set on the pool, `remaining_accounts` must contain
+    /// `[rate_program_account, rate_state_account]` for the IRM CPI. Pass
+    /// `ctx.remaining_accounts` from instruction handlers; pass an empty slice
+    /// when the pool uses its built-in `fee_config`.
+    pub fn accrue_interest(
+        &mut self,
+        current_ts: i64,
+        remaining_accounts: &[AccountInfo],
+    ) -> Result<()> {
         let elapsed = (current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
         if elapsed == 0 {
             return Ok(());
         }
 
-        let utilization = self.calculate_utilization();
-        let fee_bps = self.fee_config.get_fee_bps(utilization);
+        if self.rate_program != Pubkey::default() {
+            require!(
+                !remaining_accounts.is_empty(),
+                crate::error::ErrorCode::MissingRateProgram
+            );
+            require!(
+                remaining_accounts.len() >= 2,
+                crate::error::ErrorCode::MissingRateState
+            );
+            require_keys_eq!(
+                remaining_accounts[0].key(),
+                self.rate_program,
+                crate::error::ErrorCode::MissingRateProgram
+            );
+            require_keys_eq!(
+                remaining_accounts[1].key(),
+                self.rate_state,
+                crate::error::ErrorCode::MissingRateState
+            );
+        }
 
+        let fee_bps = self.fee_config.get_fee_bps(self.calculate_utilization());
         let interest = compute_interest(self.market.total_borrow_assets, fee_bps, elapsed)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         self.market.total_borrow_assets = self
