@@ -15,10 +15,10 @@ mod size_tests {
     /// actual struct size (discriminator excluded — Anchor adds 8 bytes on top).
     #[test]
     fn pool_size() {
-        // 4 Pubkeys (128) + 6 u64/i64 (48) + UtilizationFeeConfig (32) +
+        // 4 Pubkeys (128) + 6 u64/i64 (48) + UtilizationFeeConfig (96) +
         // ltv_percent + lp_mint_bump (2) + _pad (6) + WithdrawalQueue
-        // Full value checked against POOL_SPACE constant in test utils (41 184).
-        assert_eq!(size_of::<Pool>(), 41_184);
+        // Full value checked against POOL_SPACE constant in test utils (41 248).
+        assert_eq!(size_of::<Pool>(), 41_248);
     }
 
     #[test]

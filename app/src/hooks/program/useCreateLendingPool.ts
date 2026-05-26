@@ -18,11 +18,9 @@ import { MINTER_KEYPAIR } from '../../store/wallet.store'
 const MINT_DECIMALS = 6
 
 /** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
-const POOL_SPACE = 41_192
+const POOL_SPACE = 41_256
 
 export interface CreatePoolParams {
-    /** Fee config: m1, c1 for low-utilization; m2, c2 for high-utilization. */
-    feeConfig?: { m1: number; c1: number; m2: number; c2: number }
     ltvPercent?: number
 }
 
@@ -37,8 +35,6 @@ async function createPool(
     wallet: Parameters<typeof signAndSendV1>[1],
     payer: PublicKey,
 ): Promise<CreatePoolResult> {
-    const { feeConfig = { m1: 0, c1: 200, m2: 0, c2: 1000 } } = params
-
     const collateralMintKeypair = Keypair.generate()
     const lendMintKeypair = Keypair.generate()
     const poolKeypair = Keypair.generate()
@@ -61,7 +57,7 @@ async function createPool(
                 createInitializeMint2Instruction(
                     collateralMintKeypair.publicKey,
                     MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey, // Hardcoded minter is the mint authority
+                    MINTER_KEYPAIR.publicKey,
                     null,
                 ),
                 SystemProgram.createAccount({
@@ -74,7 +70,7 @@ async function createPool(
                 createInitializeMint2Instruction(
                     lendMintKeypair.publicKey,
                     MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey, // Hardcoded minter is the mint authority
+                    MINTER_KEYPAIR.publicKey,
                     null,
                 ),
             )
@@ -90,13 +86,7 @@ async function createPool(
     const ltvPercent = params.ltvPercent ?? 75
 
     const createIx = await readonlyProgram.methods
-        .create(
-            new anchor.BN(feeConfig.m1),
-            new anchor.BN(feeConfig.c1),
-            new anchor.BN(feeConfig.m2),
-            new anchor.BN(feeConfig.c2),
-            ltvPercent,
-        )
+        .create(ltvPercent)
         .accounts({
             pool: poolKeypair.publicKey,
             collateralMint: collateralMintKeypair.publicKey,

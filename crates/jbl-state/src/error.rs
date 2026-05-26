@@ -34,4 +34,6 @@ pub enum ErrorCode {
     FlashRepayMissing,
     #[msg("Flash loan: no matching flash_borrow instruction found in this transaction")]
     FlashBorrowMissing,
+    #[msg("Curve index must be 0–3")]
+    InvalidCurveIndex,
 }

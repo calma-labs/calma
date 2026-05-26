@@ -20,8 +20,20 @@ declare_id!("zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ");
 pub mod jbl {
     use super::*;
 
-    pub fn create(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, ltv_percent: u8) -> Result<()> {
-        create_handler(ctx, m1, c1, m2, c2, ltv_percent)
+    pub fn create(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+        create_handler(ctx, ltv_percent)
+    }
+
+    pub fn set_fee_curve(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
+        set_fee_curve_handler(ctx, index, curve)
+    }
+
+    pub fn enable_fee_curve(ctx: Context<EnableFeeCurve>, index: u8) -> Result<()> {
+        enable_fee_curve_handler(ctx, index)
+    }
+
+    pub fn disable_fee_curve(ctx: Context<DisableFeeCurve>, index: u8) -> Result<()> {
+        disable_fee_curve_handler(ctx, index)
     }
 
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {
