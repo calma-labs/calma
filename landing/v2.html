@@ -1,0 +1,1261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0E17">
+<title>Calma — Lending optimised for tradfi, available to everyone</title>
+<meta name="description" content="Institutional-grade lending protocol. Powered by Solana. Built by lenders. Join the closed beta.">
+<meta property="og:title" content="Calma — Lending optimised for tradfi">
+<meta property="og:description" content="Powered by Solana. Built by lenders. Institutional-grade lending protocol.">
+<meta property="og:type" content="website">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        base:   '#FFFFFF',
+        ink:    '#F6F8FB',
+        surface:'#EDF1F8',
+        rule:   '#D6DCEA',
+        muted:  '#6B7299',
+        soft:   '#3F4866',
+        fg:     '#0A0E17',
+        accent: '#0A0E17',
+        accent2:'#3F4866',
+      },
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      letterSpacing: {
+        tightest: '-0.04em',
+        tighter:  '-0.025em',
+      },
+      maxWidth: {
+        page: '1200px',
+      },
+    }
+  }
+}
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    font-feature-settings: 'ss01', 'cv11', 'tnum';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background:
+      radial-gradient(1200px 600px at 50% -200px, rgba(10,14,23,0.04), transparent 60%),
+      #FFFFFF;
+    background-attachment: fixed;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .faq-chev { transform: rotate(180deg); }
+  .faq-chev { transition: transform 200ms ease; }
+
+  .fade-up { opacity: 0; transform: translateY(16px); transition: opacity 700ms cubic-bezier(.2,.6,.2,1), transform 700ms cubic-bezier(.2,.6,.2,1); }
+  .fade-up.is-in { opacity: 1; transform: translateY(0); }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(150,160,185,0.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(150,160,185,0.18) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%);
+  }
+
+  /* Curve animation handled by JS — just keep stroke styles */
+  .curve-line { fill: none; stroke: #0A0E17; stroke-width: 2.5; stroke-linecap: round; }
+  .curve-grid line { stroke: #D6DCEA; stroke-width: 1; }
+  .curve-axis text { fill: #6B7299; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+  /* Sticky nav blur after scroll */
+  .nav-scrolled { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #E6EBF5; }
+
+  /* hero phase transition — promote each phase layer to its own GPU layer so Chrome composites
+     opacity/transform without repainting. Eliminates ghost-frame + scroll stutter on Chrome. */
+  #heroContent,
+  #heroMini {
+    will-change: opacity, transform;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  #heroMini { opacity: 0; }
+  /* canvas fills the pin like a video would */
+  #heroCanvas { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fade-up { opacity: 1; transform: none; transition: none; }
+    .anim-dot { animation: none !important; }
+    .bento-anim, .bento-anim * { animation: none !important; }
+  }
+
+  /* ===== Bento section animations ===== */
+  /* Tile 01 — utilization horizontal fill */
+  @keyframes utilFillGrow {
+    0%, 5%   { transform: scaleX(0); }
+    35%, 95% { transform: scaleX(var(--target, 1)); }
+    100%     { transform: scaleX(var(--target, 1)); }
+  }
+  .util-fill {
+    transform-origin: left center;
+    animation: utilFillGrow 5s cubic-bezier(.2,.8,.2,1) infinite;
+  }
+
+  /* Tile 02 — spread converge */
+  @keyframes spreadDown {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(8px); }
+  }
+  @keyframes spreadUp {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+  }
+  .spread-top  { animation: spreadDown 4.5s ease-in-out infinite; transform-origin: center; }
+  .spread-bot  { animation: spreadUp 4.5s ease-in-out infinite; transform-origin: center; }
+
+  /* Tile 03 — chaotic to flat (wave morph) handled inline via <animate> in SVG */
+
+  /* Tile 05 — RWA bars grow */
+  @keyframes barRise {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+  }
+  .rwa-bar { transform-origin: bottom; animation: barRise 1.6s cubic-bezier(.2,.8,.2,1) both; }
+</style>
+</head>
+
+<body class="font-sans text-fg antialiased">
+
+<!-- ============ LOGO SVG (reusable, referenced via <use>) ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="cmL0" x1="4.74599" y1="52.1001" x2="34.03" y2="52.1001" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5F5F5F"/><stop offset="1" stop-color="#0D0D0D"/>
+    </linearGradient>
+    <linearGradient id="cmL1" x1="23.1691" y1="21.1046" x2="23.1691" y2="83.0889" gradientUnits="userSpaceOnUse">
+      <stop/><stop offset="1" stop-color="#666666"/>
+    </linearGradient>
+    <linearGradient id="cmL2" x1="53.8003" y1="88.8708" x2="61.9626" y2="69.1095" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2C2C2C"/><stop offset="1" stop-color="#585858"/>
+    </linearGradient>
+    <linearGradient id="cmL3" x1="70.5085" y1="11.8377" x2="6.58764" y2="38.4077" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A5A5A"/><stop offset="1" stop-color="#0B0B0B"/>
+    </linearGradient>
+    <linearGradient id="cmL4" x1="43.9473" y1="0.000701904" x2="43.9473" y2="45.9832" gradientUnits="userSpaceOnUse">
+      <stop stop-opacity="0"/><stop offset="1" stop-color="#494949"/>
+    </linearGradient>
+    <clipPath id="cmClip"><rect width="91.0637" height="100.542" fill="white"/></clipPath>
+    <symbol id="calma-mark" viewBox="0 0 92 101">
+      <g clip-path="url(#cmClip)">
+        <path d="M27.8827 58.7179L46.3382 68.9702L23.747 83.0889L3.44016 71.5648C1.31265 70.3579 0 68.1008 0 65.6562V33.781C0 32.7821 0.545516 31.8581 1.42175 31.3774L20.0614 21.1046L44.3198 34.7732L26.7235 43.0923C25.2983 43.7674 24.388 45.2028 24.388 46.7814V52.7786C24.388 55.2471 25.7245 57.5178 27.8827 58.7179Z" fill="url(#cmL0)"/>
+        <path d="M43.8838 34.757L26.6377 42.9113C25.1428 43.6194 24.1875 45.1254 24.1875 46.7814V52.7784C24.1875 55.3195 25.5637 57.6573 27.7852 58.8927L45.9453 68.9796L23.7412 82.8556L3.53906 71.3907C1.47428 70.2194 0.200247 68.029 0.200195 65.6564V33.7814C0.200195 32.8554 0.705719 31.9984 1.51758 31.5529H1.51855L20.0596 21.3331L43.8838 34.757Z" stroke="url(#cmL1)" stroke-width="0.4"/>
+        <path d="M23.5038 83.1088C23.0605 82.8531 23.0571 82.2156 23.4969 81.9564L54.339 63.8555C57.5099 61.9974 61.4069 61.878 64.6834 63.5419L89.0407 77.0638C91.1136 78.2469 91.1341 81.2302 89.0748 82.4372L60.517 99.3789C57.8951 100.917 54.6527 100.93 52.0206 99.4164L23.5038 83.1088Z" fill="url(#cmL2)"/>
+        <path d="M0.0209876 33.4606C0.0209876 33.4606 -0.0676587 32.3968 0.900632 31.6638L55.0294 1.05695C57.5286 -0.33412 60.5664 -0.351168 63.086 1.0058L86.4887 13.6277C88.398 14.6948 88.323 17.4702 86.3557 18.4316L31.2075 45.4347C29.7005 46.1745 27.9309 46.1643 26.4308 45.4142C26.4308 45.4142 7.95484 36.1063 1.7905 33.0139C0.644921 32.4377 0.0175781 33.4606 0.0175781 33.4606H0.0209876Z" fill="url(#cmL3)"/>
+        <path d="M55.127 1.23215C57.5663 -0.125618 60.5315 -0.142391 62.9912 1.18234V1.18137L86.3906 13.8015V13.8025C88.1591 14.7909 88.0898 17.3611 86.2676 18.2517L31.1191 45.2546V45.2556C29.7592 45.9232 28.1767 45.9557 26.7939 45.362L26.5205 45.2351H26.5195L26.5078 45.2292C26.4989 45.2247 26.4853 45.2175 26.4678 45.2087C26.4326 45.191 26.3799 45.165 26.3115 45.1306C26.1747 45.0617 25.9734 44.96 25.7148 44.8298C25.1976 44.5693 24.4513 44.1936 23.5371 43.7331C21.7087 42.8122 19.2064 41.5517 16.5117 40.195C11.1228 37.4818 4.96335 34.382 1.88086 32.8357C1.23951 32.5131 0.722276 32.6348 0.370117 32.8503C0.340711 32.8683 0.313043 32.888 0.286133 32.907C0.287593 32.9015 0.288517 32.8959 0.290039 32.8904C0.379356 32.5673 0.577034 32.1623 1.01367 31.8288L55.126 1.23117L55.127 1.23215Z" stroke="url(#cmL4)" stroke-width="0.4"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ HEADER ============ -->
+<header id="nav" class="fixed top-0 inset-x-0 z-50 transition-colors">
+  <div class="max-w-page mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-2.5">
+      <svg class="w-7 h-7" aria-hidden="true"><use href="#calma-mark"/></svg>
+      <span class="text-fg text-lg font-semibold tracking-tighter">Calma</span>
+    </a>
+    <nav class="hidden md:flex items-center gap-8 text-sm text-soft">
+      <a href="#why" class="hover:text-fg transition-colors">Why Calma</a>
+      <a href="#institutions" class="hover:text-fg transition-colors">Institutions</a>
+      <a href="#whales" class="hover:text-fg transition-colors">Whales</a>
+      <a href="#how" class="hover:text-fg transition-colors">How it works</a>
+      <a href="#faq" class="hover:text-fg transition-colors">FAQ</a>
+    </nav>
+    <div class="flex items-center gap-3">
+      <a href="#beta" class="hidden sm:inline-flex items-center gap-2 bg-accent hover:bg-accent2 text-base px-4 py-2 rounded-md text-sm font-medium transition-colors">
+        Join closed beta
+      </a>
+      <button id="menuBtn" class="md:hidden p-2 text-soft hover:text-fg" aria-label="Open menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+  <!-- Mobile menu -->
+  <div id="mobileMenu" class="md:hidden hidden border-t border-rule bg-base/95 backdrop-blur">
+    <div class="px-6 py-4 flex flex-col gap-4 text-soft">
+      <a href="#why" class="py-1">Why Calma</a>
+      <a href="#institutions" class="py-1">Institutions</a>
+      <a href="#whales" class="py-1">Whales</a>
+      <a href="#how" class="py-1">How it works</a>
+      <a href="#faq" class="py-1">FAQ</a>
+      <a href="#beta" class="mt-2 inline-flex justify-center bg-accent text-base px-4 py-2 rounded-md text-sm font-medium">Join closed beta</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ HERO (V2 — parallax video pin, bottom-left text, blend-mode auto invert) ============ -->
+<section id="heroWrap" class="relative" style="height: 250vh">
+  <div id="heroPin" class="sticky top-0 h-screen w-full overflow-hidden bg-base">
+    <!-- Background animation: image-sequence player on a canvas. Way more performant than scroll-
+         scrubbed <video> on Chrome/Firefox (no per-frame decode). Frames live in media/frames/. -->
+    <canvas id="heroCanvas" class="absolute inset-0 w-full h-full object-cover" aria-hidden="true"></canvas>
+
+    <!-- Hero content: centered.
+         Strategy: each element decides its own blending.
+         - Pill + CTAs: solid white background, dark text — always readable on any video frame.
+         - Headline + subhead: mix-blend-mode: difference — auto-inverts vs video luminance. -->
+    <div id="heroContent" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pointer-events-none">
+      <!-- eyebrow pill — SOLID white background, no blend mode, always visible -->
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white text-xs font-mono uppercase tracking-wider mb-8 text-black pointer-events-auto shadow-sm">
+        <span class="w-1.5 h-1.5 rounded-full bg-black animate-pulse"></span>
+        Testnet live — Mainnet Summer 2026
+      </div>
+      <!-- headline — black text, visible on the light opening frames -->
+      <h1 class="text-4xl sm:text-5xl xl:text-[64px] font-semibold leading-[1.05] tracking-tightest max-w-4xl text-black pointer-events-auto">
+        <span class="sm:whitespace-nowrap">Lending optimised for tradfi,</span><br class="hidden sm:block">
+        available to everyone.
+      </h1>
+      <!-- subhead — black -->
+      <p class="mt-6 text-lg md:text-xl max-w-2xl text-black/80 pointer-events-auto">
+        Powered by Solana. Built by lenders. Institutional-grade lending infrastructure for capital that doesn't sit idle.
+      </p>
+      <!-- CTAs — black primary, outlined secondary -->
+      <div class="mt-10 flex flex-col sm:flex-row gap-3 justify-center pointer-events-auto">
+        <a href="#beta" class="inline-flex items-center justify-center gap-2 bg-black text-white px-6 py-3 rounded-md font-medium transition-opacity hover:opacity-90">
+          Join closed beta
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#institutions" class="inline-flex items-center justify-center gap-2 border-2 border-black text-black px-6 py-3 rounded-md font-medium transition-colors hover:bg-black hover:text-white">
+          Join institutional waitlist
+        </a>
+      </div>
+    </div>
+
+    <!-- PHASE 2 — compact panel bottom-left, white background. Fades IN once the symbol appears. -->
+    <div id="heroMini" class="absolute bottom-8 left-8 md:bottom-10 md:left-10 max-w-md bg-white rounded-xl px-6 py-5 pointer-events-none border border-rule" style="box-shadow: 0 8px 32px rgba(10,14,23,0.08);">
+      <div class="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-muted mb-3">
+        <span class="w-1 h-1 rounded-full bg-black animate-pulse"></span>
+        Testnet live — Mainnet Summer 2026
+      </div>
+      <h2 class="text-xl md:text-2xl font-semibold tracking-tighter text-black leading-snug">
+        Lending optimised for tradfi,<br>available to everyone.
+      </h2>
+      <p class="mt-2 text-sm text-soft">
+        Powered by Solana. Built by lenders.
+      </p>
+      <div class="mt-4 flex gap-2 pointer-events-auto">
+        <a href="#beta" class="inline-flex items-center gap-1.5 bg-black text-white px-3 py-1.5 rounded-md text-xs font-medium hover:opacity-90 transition-opacity">
+          Join closed beta
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#institutions" class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-black/20 text-black hover:border-black transition-colors">
+          Join waitlist
+        </a>
+      </div>
+    </div>
+
+    <!-- scroll indicator: bottom-right corner, also blend-mode inverted -->
+    <div id="heroScrollHint" class="absolute bottom-6 right-6 z-20 flex flex-col items-center gap-2 text-white text-[10px] font-mono uppercase tracking-wider" style="mix-blend-mode: difference;">
+      <span>Scroll</span>
+      <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="1" width="10" height="18" rx="5"/>
+        <line x1="6" y1="6" x2="6" y2="10">
+          <animate attributeName="y2" values="6;12;6" dur="1.8s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;0.3;1" dur="1.8s" repeatCount="indefinite"/>
+        </line>
+      </svg>
+    </div>
+
+    <!-- progress bar at bottom of hero (also blend mode) -->
+    <div class="absolute bottom-0 left-0 right-0 h-[3px] z-20" style="mix-blend-mode: difference;">
+      <div class="h-full w-full bg-white/30"></div>
+      <div id="heroProgress" class="h-full bg-white absolute top-0 left-0" style="width: 0%"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 1 — WHY CALMA (BENTO) ============ -->
+<section id="why" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Why Calma</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Better lending for better finance.</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl">
+        Lending is the base unit of finance. If the base layer is inefficient, every derivative product built on top is fundamentally flawed.
+      </p>
+    </div>
+
+    <!-- Bento grid -->
+    <div class="mt-16 grid grid-cols-12 auto-rows-[minmax(180px,auto)] gap-4 md:gap-5" data-gsap-stagger>
+
+      <!-- ============== Tile 01 — BIG: Utilization meter ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 md:row-span-2 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="flex items-center justify-between">
+          <div class="text-xs text-muted font-mono uppercase tracking-wider">01 · Capital efficiency</div>
+          <div class="text-[10px] text-muted font-mono uppercase tracking-wider">live</div>
+        </div>
+        <h3 class="mt-4 text-fg font-semibold text-2xl tracking-tight">Optimized capital utilization.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">Every dollar works harder. 98–100% utilization on Calma, while typical DeFi lending sits at 40%.</p>
+
+        <!-- animation: utilization bars -->
+        <div class="bento-anim mt-7 flex-1 flex flex-col gap-4 justify-end">
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Calma</span>
+              <span class="text-fg font-mono tabular text-sm">98%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#0A0E17">
+                  <animate attributeName="width" values="0;196;196" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Industry avg</span>
+              <span class="text-soft font-mono tabular text-sm">40%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#D6DCEA">
+                  <animate attributeName="width" values="0;80;80" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div class="text-[11px] text-muted font-mono leading-relaxed pt-1">
+            Higher utilization → better economics for everyone. Less idle capital, tighter spread, more yield.
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== Tile 02 — Better rates, both sides ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">02 · Both sides win</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Better rates for lenders <em class="not-italic text-soft">and</em> borrowers.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Higher utilization means better economics on both sides of the trade.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 240 120" class="w-full max-w-xs">
+            <line x1="20" y1="60" x2="220" y2="60" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 3"/>
+            <g class="spread-top">
+              <line x1="40" y1="30" x2="200" y2="30" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="30" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="30" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="22" font-family="JetBrains Mono" font-size="9" fill="#6B7299">LEND</text>
+            <text x="200" y="22" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">↑ 12.4%</text>
+
+            <g class="spread-bot">
+              <line x1="40" y1="90" x2="200" y2="90" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="90" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="90" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="108" font-family="JetBrains Mono" font-size="9" fill="#6B7299">BORROW</text>
+            <text x="200" y="108" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">↓ 13.2%</text>
+
+            <text x="120" y="64" font-family="JetBrains Mono" font-size="8" fill="#6B7299" text-anchor="middle">SPREAD 0.8%</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ============== Tile 03 — Fixed rates / predictability ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">03 · Predictability</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Fixed rates, by design.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Institutions need certainty. Traders need leverage. Both need rates that don't surprise.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 260 100" class="w-full max-w-xs">
+            <line x1="10" y1="50" x2="250" y2="50" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <path fill="none" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <animate attributeName="d"
+                values="
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 30 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 L 250 50;
+                  M 10 50 L 250 50;
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50"
+                dur="6s" repeatCount="indefinite"
+                keyTimes="0; 0.25; 0.5; 0.85; 1"/>
+            </path>
+            <text x="10" y="95" font-family="JetBrains Mono" font-size="9" fill="#6B7299">VOLATILE</text>
+            <text x="250" y="95" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">FIXED</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ============== Tile 04 — Liquid by architecture (queue) ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">04 · Always liquid</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Liquid by architecture, not luck.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">Withdraw queue + dynamic curve = never stuck, even during stress. Predictable exits, no front-running, no panic.</p>
+
+        <div class="bento-anim mt-6 flex-1 flex items-center">
+          <svg viewBox="0 0 320 60" class="w-full">
+            <line x1="20" y1="30" x2="240" y2="30" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <g transform="translate(248, 12)">
+              <rect x="0" y="0" width="3" height="36" fill="#0A0E17"/>
+              <rect x="14" y="0" width="3" height="36" fill="#0A0E17"/>
+              <text x="-2" y="52" font-family="JetBrains Mono" font-size="8" fill="#6B7299">GATE</text>
+            </g>
+            <text x="290" y="34" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="middle">EXIT</text>
+            <text x="20" y="14" font-family="JetBrains Mono" font-size="8" fill="#6B7299">QUEUE</text>
+            <g>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+          </svg>
+        </div>
+        <div class="mt-4 text-[11px] text-muted font-mono">
+          # In order. Guaranteed. <span class="text-fg">No race conditions.</span>
+        </div>
+      </div>
+
+      <!-- ============== Tile 05 — RWA opportunity gap ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">05 · Market gap</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">The RWA opportunity gap.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">RWA grew +44%. Utilization <em class="not-italic text-fg">dropped</em> 16%. The market is broken.</p>
+
+        <div class="bento-anim mt-5 flex-1 flex items-end gap-3">
+          <div class="flex-1 flex flex-col items-center">
+            <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$30.97B</div>
+            <div class="w-full h-20 bg-base border border-rule rounded overflow-hidden flex items-end">
+              <div class="rwa-bar w-full bg-fg" style="height: 88%; animation-delay: 0.1s"></div>
+            </div>
+            <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Mcap<br>+44.4%</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center">
+            <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$956M</div>
+            <div class="w-full h-20 bg-base border border-rule rounded overflow-hidden flex items-end">
+              <div class="rwa-bar w-full bg-fg" style="height: 60%; animation-delay: 0.25s"></div>
+            </div>
+            <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Lent<br>+20.9%</div>
+          </div>
+          <div class="flex-1 flex flex-col items-center">
+            <div class="text-[10px] text-fg font-mono uppercase mb-2 tabular">3.09%</div>
+            <div class="w-full h-20 bg-base border border-rule rounded overflow-hidden flex items-end">
+              <div class="rwa-bar w-full bg-soft" style="height: 14%; animation-delay: 0.4s"></div>
+            </div>
+            <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Util<br>−16.3%</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 2 — FOR INSTITUTIONS ============ -->
+<section id="institutions" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For institutions</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Build financial products on top of the best infrastructure.</h2>
+      <p class="mt-5 text-soft text-lg fade-up">
+        TradFi-grade lending for institutions, issuers, and protocol builders. We handle the infrastructure. You build the products.
+      </p>
+    </div>
+
+    <div class="mt-16 grid lg:grid-cols-3 gap-6" data-gsap-stagger>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Distribution platform for RWA</h3>
+        <p class="mt-3 text-soft leading-relaxed">Tokenized real-world assets deserve the deepest liquidity and the best economics. Every product built on Calma gets better rates.</p>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Hedge risk with the best rates</h3>
+        <p class="mt-3 text-soft leading-relaxed">Borrow at lower costs to delta-hedge exposure. Lend idle capital for better returns than staking. Dynamic rates always on the efficient frontier.</p>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Run your onchain hedge fund</h3>
+        <p class="mt-3 text-soft leading-relaxed">Access best-performing markets via Calma's infrastructure. Build leverage, arbitrage, and market-making strategies on a reliable base layer.</p>
+      </div>
+    </div>
+
+    <!-- Institutional waitlist form -->
+    <div id="beta" class="mt-20 grid lg:grid-cols-2 gap-10 items-start fade-up">
+      <div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">Institutional program</div>
+        <h3 class="text-2xl md:text-3xl font-semibold tracking-tighter">Tell us what you'd build with Calma.</h3>
+        <p class="mt-4 text-soft">We're onboarding hedge funds, treasuries, RWA issuers, and integrators ahead of mainnet. Tell us where you want better economics — we'll get back to you.</p>
+        <div class="mt-8 space-y-3">
+          <div class="flex items-start gap-3">
+            <span class="text-accent mt-0.5">✓</span>
+            <span class="text-soft text-sm">Testnet live with real mechanisms (queue, dynamic curves, LTV optimization)</span>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-accent mt-0.5">✓</span>
+            <span class="text-soft text-sm">Built by lenders, for lenders</span>
+          </div>
+          <div class="flex items-start gap-3">
+            <span class="text-accent mt-0.5">✓</span>
+            <span class="text-soft text-sm">Security first — professional audits before mainnet launch</span>
+          </div>
+        </div>
+      </div>
+
+      <form id="instForm" class="rounded-xl border border-rule bg-ink p-8 space-y-5">
+        <div>
+          <label class="block text-sm text-soft mb-2">Email <span class="text-accent">*</span></label>
+          <input type="email" name="email" required placeholder="you@firm.com"
+                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Organization <span class="text-accent">*</span></label>
+          <input type="text" name="org" required placeholder="Firm / DAO / Protocol"
+                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Interest</label>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="rwa" class="accent-accent"> RWA distribution
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="hedging" class="accent-accent"> Hedging
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="strategy" class="accent-accent"> Strategy building
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="other" class="accent-accent"> Other
+            </label>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Message <span class="text-muted text-xs">(optional)</span></label>
+          <textarea name="msg" rows="3" placeholder="What are you trying to build / hedge / deploy?"
+                    class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors resize-none"></textarea>
+        </div>
+        <button type="submit"
+                class="w-full bg-accent hover:bg-accent2 text-base py-3 rounded-md font-medium transition-colors">
+          Join institutional program
+        </button>
+        <p id="instStatus" class="text-xs text-center text-muted"></p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 3 — FOR WHALES ============ -->
+<section id="whales" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For whales</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Don't let capital sit idle. Use it fully.</h2>
+      <p class="mt-5 text-soft text-lg fade-up">
+        Your capital is your edge. The best yields come from capital that's fully deployed, efficiently utilized, and always earning. Calma is the best place for your capital to work.
+      </p>
+    </div>
+
+    <div class="mt-16 grid md:grid-cols-3 gap-6" data-gsap-stagger>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Better rates, across the board</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Lend and earn more on the same capital</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Borrow at lower cost, deeper liquidity</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Fixed rates coming — lock in yield, reduce variance</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Closed beta access</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Join while mechanisms are being shaped</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Live leaderboard, see your rank</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Your capital helps build the most efficient market</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Referral network</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Invite 5 people OR hit 1M USD volume</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Whichever comes first unlocks beta</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Every referral strengthens the ecosystem</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Leaderboard mock -->
+    <div class="mt-12 fade-up rounded-xl border border-rule bg-ink overflow-hidden">
+      <div class="px-6 py-4 border-b border-rule flex items-center justify-between">
+        <div>
+          <div class="text-xs text-muted font-mono uppercase tracking-wider">Closed beta leaderboard</div>
+          <div class="text-fg font-medium mt-0.5">Top contributors — last 24h</div>
+        </div>
+        <div class="text-xs text-muted font-mono">SIMULATED</div>
+      </div>
+      <div class="divide-y divide-rule" data-gsap-rows>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-accent font-mono tabular">01</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0xA9...8E4F</div>
+          <div class="col-span-3 text-soft text-sm">RWA looping</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$12.4M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">02</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x73...2B1C</div>
+          <div class="col-span-3 text-soft text-sm">Stable lending</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$8.9M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">03</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x55...9F02</div>
+          <div class="col-span-3 text-soft text-sm">Leverage long</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$6.2M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">04</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x21...77AD</div>
+          <div class="col-span-3 text-soft text-sm">Delta hedge</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$4.8M</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10 flex flex-col sm:flex-row sm:items-center gap-4 fade-up">
+      <a href="#" class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-8 py-3.5 rounded-md font-medium transition-colors self-start">
+        Join closed beta
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <span class="text-xs text-muted font-mono">5-MINUTE SETUP · BEST RATES AVAILABLE</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 4 — HOW IT WORKS ============ -->
+<section id="how" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>How it works</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">2 mechanisms, 1 outcome:<br>capital working harder.</h2>
+    </div>
+
+    <div class="mt-16 grid lg:grid-cols-2 gap-8" data-gsap-stagger>
+      <!-- Mechanism 1 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M1</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Withdraw Queue</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">When everyone wants their money out at once, lending breaks. Lenders panic, rates spike, systems crisis.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Instead of race conditions, we use a queue. You request a withdrawal, it processes in order. Predictable. Fair. No front-running.</p>
+        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
+          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
+          <p class="text-fg text-sm leading-relaxed">You deposit <span class="font-mono tabular">$1M</span> at <span class="font-mono tabular">10% APY</span>. Market stress hits. Instead of "is my money still there?" you know: <em class="text-accent2">"I'm #47 in queue, I withdraw in 2 days guaranteed."</em></p>
+        </div>
+      </div>
+
+      <!-- Mechanism 2 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M2</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Dynamic Curve</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">Static interest curves don't adapt to real demand. Utilization spikes, but rates stay the same. Capital locks in inefficient markets.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Our curve moves in real-time. More demand → rates rise smoothly. Less demand → rates drop. Supply and demand, always balanced.</p>
+        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
+          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
+          <p class="text-fg text-sm leading-relaxed">Your <span class="font-mono tabular">$5M</span> is deployed. As leverage traders borrow, utilization rises. Your rates increase <em class="text-accent2">automatically</em> — earning more on the same capital. When leverage unwinds, rates adjust back.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 5 — STATUS & ROADMAP ============ -->
+<section id="roadmap" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Status & roadmap</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Where we are. Where we're going.</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl">Traction-driven, not timeline-driven. We're building for years, not hype cycles.</p>
+    </div>
+
+    <!-- Status row -->
+    <div class="mt-12 grid sm:grid-cols-3 gap-4" data-gsap-stagger>
+      <div class="rounded-lg border border-rule bg-ink p-5 flex items-center gap-4">
+        <div class="w-8 h-8 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">✓</div>
+        <div>
+          <div class="text-fg font-medium">Testnet live</div>
+          <div class="text-xs text-muted mt-0.5">Points system active</div>
+        </div>
+      </div>
+      <div class="rounded-lg border border-rule bg-ink p-5 flex items-center gap-4">
+        <div class="w-8 h-8 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center text-accent">✓</div>
+        <div>
+          <div class="text-fg font-medium">Early users earning</div>
+          <div class="text-xs text-muted mt-0.5">Airdrop points tracked</div>
+        </div>
+      </div>
+      <div class="rounded-lg border border-rule bg-ink p-5 flex items-center gap-4">
+        <div class="w-8 h-8 rounded-full bg-ink border border-rule flex items-center justify-center text-muted font-mono text-sm">○</div>
+        <div>
+          <div class="text-fg font-medium">Mainnet</div>
+          <div class="text-xs text-muted mt-0.5">Summer 2026 or later</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phases -->
+    <div class="mt-12">
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4" data-gsap-stagger>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 1</div>
+          <div class="text-fg font-semibold mb-2">Liquidity Genesis</div>
+          <div class="text-sm text-soft">ETH / SOL / blue-chip stables. RWA Looping with Terminal-First UX.</div>
+        </div>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 2</div>
+          <div class="text-fg font-semibold mb-2">Fixed-Rate Integration</div>
+          <div class="text-sm text-soft">From variable volatility to institutional predictability.</div>
+        </div>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 3</div>
+          <div class="text-fg font-semibold mb-2">Vault Expansion</div>
+          <div class="text-sm text-soft">External Vault Curators. LP tokens as productive collateral.</div>
+        </div>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 4</div>
+          <div class="text-fg font-semibold mb-2">Risk Mitigation 2.0</div>
+          <div class="text-sm text-soft">Dynamic LTV. Soft Liquidation. Flash-crash protection.</div>
+        </div>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 5</div>
+          <div class="text-fg font-semibold mb-2">Retail Leap</div>
+          <div class="text-sm text-soft">4-Click Strategies. Mobile-Native Interface. Mass-market UX.</div>
+        </div>
+        <div class="fade-up rounded-xl border border-rule bg-ink p-6">
+          <div class="text-xs text-accent font-mono tracking-wider mb-2">PHASE 6</div>
+          <div class="text-fg font-semibold mb-2">Omni-Collateral & P2P</div>
+          <div class="text-sm text-soft">Cross-Collateral positions. P2P layer for niche assets.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 6 — FAQ ============ -->
+<section id="faq" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="grid lg:grid-cols-12 gap-12">
+      <div class="lg:col-span-4">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>FAQ</div>
+        <h2 class="text-3xl md:text-4xl font-semibold tracking-tighter fade-up">Questions, answered.</h2>
+        <p class="mt-4 text-soft fade-up">Not finding what you need? <a href="mailto:founders@calma.fi" class="text-accent hover:underline">Email us</a>.</p>
+      </div>
+
+      <div class="lg:col-span-8 divide-y divide-rule border-y border-rule" data-gsap-rows>
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">When is mainnet?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Summer 2026 or later. Traction-driven, not timeline-driven. Mainnet launches when product is stable and audited, testnet shows real demand and meaningful TVL, and the community is ready. Rushing to mainnet with weak traction = doomed protocol.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">Is Calma safe?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Testnet is for testing — only use money you can afford to lose. Professional security audits will run before mainnet. All findings will be public. If critical issues arise, we fix them before launch — no matter the timeline.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">How does the referral program work?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Unique referral link in your profile. To access closed beta: invite 5+ people OR hit <span class="font-mono tabular">$1M</span> in lending/borrowing volume. Whichever comes first unlocks your beta access. All tracked on-chain.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">What if I lose my seed phrase?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">This is testnet. Points are non-custodial (stored on-chain), but if you lose access to your wallet, we cannot recover them. Use a wallet you're comfortable with.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">Will there be a token?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">We're exploring tokenomics, but nothing is decided. Once mainnet launches, governance will determine token mechanics, supply, and how it relates to your testnet points. No guarantees on 1:1 conversion or anything else.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">How can I get involved beyond testnet?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Join Discord for community. Follow Twitter/X (<a href="#" class="text-accent hover:underline">@CalmaFi</a>) for updates. Reach out at <a href="mailto:founders@calma.fi" class="text-accent hover:underline">founders@calma.fi</a> if you're an institution, integrator, or researcher.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FLOATING VERSION SWITCHER ============ -->
+<div id="versionSwitcher" class="fixed bottom-5 right-5 z-[100]">
+  <div id="vMenu" class="hidden mb-3 rounded-xl border border-rule bg-base shadow-lg overflow-hidden min-w-[200px]">
+    <div class="px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted border-b border-rule">Page version</div>
+    <a href="index.html" data-vlink="v1" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors">
+      <div>
+        <div class="text-fg text-sm font-medium">Version 1</div>
+        <div class="text-muted text-xs">Clean · monochrome</div>
+      </div>
+      <span data-vactive="v1" class="hidden text-fg text-lg">●</span>
+    </a>
+    <a href="v2.html" data-vlink="v2" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors border-t border-rule">
+      <div>
+        <div class="text-fg text-sm font-medium">Version 2</div>
+        <div class="text-muted text-xs">Work in progress</div>
+      </div>
+      <span data-vactive="v2" class="hidden text-fg text-lg">●</span>
+    </a>
+  </div>
+  <button id="vToggle" class="flex items-center gap-2 bg-fg text-base px-4 py-3 rounded-full shadow-lg hover:opacity-90 transition-opacity">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    <span id="vLabel" class="text-xs font-mono uppercase tracking-wider">v1</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="vChev"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="border-t border-rule bg-base">
+  <div class="max-w-page mx-auto px-6 py-16">
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-5">
+        <div class="flex items-center gap-2.5 mb-4">
+          <svg class="w-8 h-8"><use href="#calma-mark"/></svg>
+          <span class="text-fg text-xl font-semibold tracking-tighter">Calma</span>
+        </div>
+        <p class="text-soft max-w-sm">Built by lenders, for better finance.</p>
+        <p class="mt-2 text-xs text-muted font-mono uppercase tracking-wider">Powered by Solana / Built by lenders</p>
+      </div>
+      <div class="md:col-span-2">
+        <div class="text-fg font-medium mb-4 text-sm">Product</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="#how" class="hover:text-fg transition-colors">How it works</a></li>
+          <li><a href="#roadmap" class="hover:text-fg transition-colors">Roadmap</a></li>
+          <li><a href="#" class="hover:text-fg transition-colors">Docs</a></li>
+        </ul>
+      </div>
+      <div class="md:col-span-2">
+        <div class="text-fg font-medium mb-4 text-sm">Community</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="#" class="hover:text-fg transition-colors">Twitter / X</a></li>
+          <li><a href="#" class="hover:text-fg transition-colors">Discord</a></li>
+          <li><a href="mailto:founders@calma.fi" class="hover:text-fg transition-colors">Email</a></li>
+        </ul>
+      </div>
+      <div class="md:col-span-3">
+        <div class="text-fg font-medium mb-4 text-sm">Legal</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="#" class="hover:text-fg transition-colors">Terms of Service</a></li>
+          <li><a href="#" class="hover:text-fg transition-colors">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="mt-14 pt-8 border-t border-rule flex flex-col md:flex-row gap-3 items-center justify-between">
+      <div class="text-xs text-muted font-mono">© 2026 Calma Protocol · Just Better Lending</div>
+      <div class="text-xs text-muted font-mono">v0.1 · testnet</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ===== Nav scrolled state =====
+const nav = document.getElementById('nav');
+const onScroll = () => {
+  if (window.scrollY > 16) nav.classList.add('nav-scrolled');
+  else nav.classList.remove('nav-scrolled');
+};
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// ===== Mobile menu =====
+document.getElementById('menuBtn').addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.toggle('hidden');
+});
+document.querySelectorAll('#mobileMenu a').forEach(a => a.addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.add('hidden');
+}));
+
+// ===== Fade-up on scroll =====
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('is-in'); });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
+// Fallback — ensure everything is visible after 1.2s in case observer is suppressed (headless screenshots etc.)
+setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el => el.classList.add('is-in')), 1200);
+
+// ===== Hero image-sequence player (replaces video) =====
+// Pre-renders frames to <img> objects, then on scroll progress draws the appropriate frame
+// into a canvas. This is the Apple-style approach and runs identically fast on every browser
+// because there is no per-frame video decode — just a cached image swap.
+(function(){
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  const wrap    = document.getElementById('heroWrap');
+  const canvas  = document.getElementById('heroCanvas');
+  const content = document.getElementById('heroContent');
+  const progressBar = document.getElementById('heroProgress');
+  const hint    = document.getElementById('heroScrollHint');
+  if (!wrap || !canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const FRAME_COUNT = 85;
+  const PAD = (n) => String(n).padStart(3, '0');
+  const frames = [];
+  let lastDrawn = -1;
+  let canvasSized = false;
+
+  // Preload every frame. Browsers cache them so re-draws are instant.
+  for (let i = 1; i <= FRAME_COUNT; i++) {
+    const img = new Image();
+    img.src = `media/frames/frame_${PAD(i)}.jpg`;
+    frames.push(img);
+  }
+
+  function sizeCanvas(img) {
+    if (canvasSized) return;
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvasSized = true;
+  }
+
+  function drawFrame(idx) {
+    if (idx === lastDrawn) return;
+    const img = frames[idx];
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+    sizeCanvas(img);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    lastDrawn = idx;
+  }
+
+  // Draw first frame as soon as it's available so the canvas isn't blank at load.
+  if (frames[0].complete) drawFrame(0);
+  else frames[0].addEventListener('load', () => drawFrame(0), { once: true });
+
+  const setupScrub = () => {
+    // Main scroll → frame map. scrub:true so each scroll tick maps 1:1 to a frame index.
+    ScrollTrigger.create({
+      trigger: wrap,
+      start: 'top top',
+      end:   'bottom bottom',
+      scrub: true,
+      onUpdate: (self) => {
+        const idx = Math.min(FRAME_COUNT - 1, Math.max(0, Math.floor(self.progress * FRAME_COUNT)));
+        drawFrame(idx);
+        if (progressBar) progressBar.style.width = (self.progress * 100).toFixed(2) + '%';
+        if (hint) hint.style.opacity = Math.max(0, 1 - self.progress * 3).toFixed(2);
+      }
+    });
+
+    // Cinematic zoom on the canvas (cheap GPU transform — no decode cost)
+    gsap.fromTo(canvas, { scale: 1.0 }, {
+      scale: 1.12,
+      ease: 'none',
+      scrollTrigger: { trigger: wrap, start: 'top top', end: 'bottom bottom', scrub: true }
+    });
+
+    // === Phase transitions ===
+    // CRITICAL: do NOT use scrub on opacity/transform fades on Chrome — scrub interpolates
+    // across many scroll frames and you get the ghost-translucent flash + stutter. Instead
+    // fire discrete tweens once a threshold is crossed (play / reverse on scroll-back).
+    const mini = document.getElementById('heroMini');
+
+    // Phase 1 → fade out the centered hero block (one clean animation, 0.5s)
+    gsap.to(content, {
+      opacity: 0, y: -30, scale: 0.97,
+      duration: 0.5, ease: 'power2.out',
+      paused: true,
+      onStart:    () => content.style.pointerEvents = 'none',
+      onReverseComplete: () => content.style.pointerEvents = 'auto',
+    });
+    ScrollTrigger.create({
+      trigger: wrap,
+      start: '7% top',  // start fading out almost immediately — symbol begins emerging early
+      onEnter:     () => gsap.to(content, { opacity: 0, y: -30, scale: 0.97, duration: 0.4, ease: 'power2.out', overwrite: true }),
+      onLeaveBack: () => gsap.to(content, { opacity: 1, y: 0,   scale: 1,    duration: 0.4, ease: 'power2.out', overwrite: true }),
+      invalidateOnRefresh: true,
+    });
+
+    // Phase 2 → fade in compact bottom-left card (kicks in AFTER phase 1 completed)
+    if (mini) {
+      ScrollTrigger.create({
+        trigger: wrap,
+        start: '14% top',
+        onEnter:     () => gsap.to(mini, { opacity: 1, y: 0,   duration: 0.5, ease: 'power2.out', overwrite: true,
+                              onComplete: () => mini.style.pointerEvents = 'auto' }),
+        onLeaveBack: () => gsap.to(mini, { opacity: 0, y: 30,  duration: 0.4, ease: 'power2.out', overwrite: true,
+                              onStart:    () => mini.style.pointerEvents = 'none' }),
+        invalidateOnRefresh: true,
+      });
+    }
+
+  };
+
+  // Image-sequence is ready as soon as first frame is decoded; setup right away.
+  setupScrub();
+})();
+
+// ===== GSAP scroll-driven animations for all sections =====
+// IMPORTANT: hero is position:sticky inside a 250vh wrapper. ScrollTrigger can
+// mis-calculate where post-hero sections "enter" the viewport in that context, so
+// every reveal here uses a forgiving trigger AND never sets opacity:0 as the initial
+// state — elements remain visible if for any reason the trigger doesn't fire.
+(function(){
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Always immediately reveal fade-up CSS class members so they're visible regardless of GSAP
+  gsap.utils.toArray('.fade-up').forEach(el => el.classList.add('is-in'));
+  if (reduce) return;
+
+  const baseST = {
+    start: 'top 92%',
+    toggleActions: 'play none none none',
+    once: true,
+    invalidateOnRefresh: true,
+  };
+
+  // 1) Section eyebrows + h2 + intro paragraph: subtle slide-up on enter
+  gsap.utils.toArray('main section').forEach(section => {
+    if (section.id === 'heroWrap') return;
+    const eyebrow = section.querySelector('[data-section-eyebrow]');
+    const heading = section.querySelector('h2');
+    const intro   = section.querySelector('h2 + p, h2 + * + p');
+    const trio = [eyebrow, heading, intro].filter(Boolean);
+    if (!trio.length) return;
+    gsap.fromTo(trio,
+      { y: 22 },
+      {
+        y: 0,
+        duration: 0.7,
+        stagger: 0.08,
+        ease: 'power3.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: section, start: 'top 88%' },
+      }
+    );
+  });
+
+  // 2) Stagger reveal for grids marked with data-gsap-stagger
+  //    Use fromTo with immediateRender:false so content is visible if ScrollTrigger
+  //    doesn't fire (e.g. inside pinned hero context). Animation is purely additive lift.
+  gsap.utils.toArray('[data-gsap-stagger]').forEach(group => {
+    const items = Array.from(group.children);
+    if (!items.length) return;
+    gsap.fromTo(items,
+      { y: 30 },
+      {
+        y: 0,
+        duration: 0.7,
+        stagger: 0.07,
+        ease: 'power3.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: group },
+      }
+    );
+  });
+
+  // 3) Row reveal (leaderboard, FAQ accordion)
+  gsap.utils.toArray('[data-gsap-rows]').forEach(group => {
+    const rows = Array.from(group.children);
+    if (!rows.length) return;
+    gsap.fromTo(rows,
+      { x: -18 },
+      {
+        x: 0,
+        duration: 0.55,
+        stagger: 0.06,
+        ease: 'power2.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: group },
+      }
+    );
+  });
+
+  // 4) Continuous parallax on section h2 — drift upward as you scroll through
+  gsap.utils.toArray('main section h2').forEach(h => {
+    gsap.to(h, {
+      yPercent: -18,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: h.closest('section'),
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1.2,
+        invalidateOnRefresh: true,
+      }
+    });
+  });
+
+  // 5) Counter-parallax on section eyebrows (only section-level, not bento tile labels)
+  gsap.utils.toArray('[data-section-eyebrow]').forEach(eb => {
+    gsap.to(eb, {
+      yPercent: 30,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: eb.closest('section'),
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1.5,
+        invalidateOnRefresh: true,
+      }
+    });
+  });
+
+  // 6) Form panel: subtle slide reveal
+  const form = document.getElementById('instForm');
+  if (form) {
+    gsap.fromTo(form, { y: 40 }, {
+      y: 0,
+      duration: 0.8,
+      ease: 'power3.out',
+      immediateRender: false,
+      scrollTrigger: { ...baseST, trigger: form },
+    });
+  }
+
+  // 7) Whales CTA — small spring lift
+  const whalesCta = document.querySelector('#whales a[href="#"]');
+  if (whalesCta) {
+    gsap.fromTo(whalesCta, { y: 20 }, {
+      y: 0,
+      duration: 0.7,
+      ease: 'back.out(1.4)',
+      immediateRender: false,
+      scrollTrigger: { ...baseST, trigger: whalesCta, start: 'top 95%' },
+    });
+  }
+
+  // 8) Footer reveal — small stagger
+  const footer = document.querySelector('footer');
+  if (footer) {
+    const cols = footer.querySelectorAll('.md\\:col-span-5, .md\\:col-span-2, .md\\:col-span-3');
+    if (cols.length) {
+      gsap.fromTo(cols, { y: 20 }, {
+        y: 0,
+        duration: 0.55,
+        stagger: 0.08,
+        ease: 'power2.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: footer },
+      });
+    }
+  }
+
+  // Refresh ScrollTrigger after layout settles (covers webfont loading, video meta, etc.)
+  setTimeout(() => ScrollTrigger.refresh(), 400);
+  window.addEventListener('load', () => ScrollTrigger.refresh());
+
+  // Safety net: if GSAP somehow leaves any element at opacity 0 / translated, clear it after 4s
+  setTimeout(() => {
+    document.querySelectorAll('[data-gsap-stagger] > *, [data-gsap-rows] > *, #instForm, footer .md\\:col-span-5, footer .md\\:col-span-2, footer .md\\:col-span-3, main section [data-section-eyebrow], main section h2, main section h2 + p').forEach(el => {
+      const cs = getComputedStyle(el);
+      if (parseFloat(cs.opacity) < 0.1) el.style.opacity = '1';
+    });
+  }, 4000);
+})();
+
+// ===== Version switcher =====
+(function(){
+  const path = location.pathname.split('/').pop() || 'index.html';
+  const currentVersion = path.startsWith('v2') ? 'v2' : 'v1';
+  document.getElementById('vLabel').textContent = currentVersion;
+  const activeMark = document.querySelector(`[data-vactive="${currentVersion}"]`);
+  if (activeMark) activeMark.classList.remove('hidden');
+
+  const toggle = document.getElementById('vToggle');
+  const menu = document.getElementById('vMenu');
+  const chev = document.getElementById('vChev');
+  let open = false;
+  function setOpen(state){
+    open = state;
+    menu.classList.toggle('hidden', !open);
+    chev.style.transform = open ? 'rotate(180deg)' : '';
+  }
+  toggle.addEventListener('click', (e) => { e.stopPropagation(); setOpen(!open); });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('versionSwitcher').contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+})();
+
+// ===== Form fake-submit =====
+document.getElementById('instForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const status = document.getElementById('instStatus');
+  status.textContent = 'Submitting…';
+  status.className = 'text-xs text-center text-muted';
+  setTimeout(() => {
+    status.textContent = '✓ Got it. We will reach out within 48h.';
+    status.className = 'text-xs text-center text-accent';
+    e.target.reset();
+  }, 600);
+});
+</script>
+
+</body>
+</html>
