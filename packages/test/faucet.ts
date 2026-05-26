@@ -224,7 +224,7 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75)
+        .create(75, SystemProgram.programId, SystemProgram.programId)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint

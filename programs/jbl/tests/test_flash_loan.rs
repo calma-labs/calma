@@ -216,6 +216,8 @@ fn setup(seed_lend_amount: u64) -> Setup {
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
+            rate_program: Pubkey::default(),
+            rate_state: Pubkey::default(),
         }
         .data(),
         jbl::accounts::Create {

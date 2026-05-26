@@ -111,6 +111,8 @@ fn test_create() {
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
+            rate_program: Pubkey::default(),
+            rate_state: Pubkey::default(),
         }
         .data(),
         jbl::accounts::Create {

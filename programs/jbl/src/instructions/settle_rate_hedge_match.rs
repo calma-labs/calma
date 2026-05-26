@@ -125,7 +125,7 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
     // ── 1. Accrue interest so shares reflect current state ────────────────────
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, ctx.remaining_accounts)?;
 
     // ── 2. Snapshot match fields already done above ───────────────────────────
     let fixed_total = borrow_amount
