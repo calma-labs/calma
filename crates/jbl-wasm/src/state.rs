@@ -133,9 +133,9 @@ impl PoolAccount {
         self.0.lp_mint_bump
     }
 
-    /// Sum of all pending withdrawal amounts currently in the on-chain queue.
+    /// Total lend tokens committed to pending withdrawals in the on-chain queue.
     pub fn pending_withdrawals(&self) -> u64 {
-        self.0.withdrawal_queue.iter().fold(0u64, |acc, e| acc.saturating_add(e.amount))
+        self.0.market.assets_in_queue
     }
 
     /// Borrow rate in basis points for a given utilization (0..10_000).

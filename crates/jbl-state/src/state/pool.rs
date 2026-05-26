@@ -53,15 +53,19 @@ pub struct Pool {
 
 impl Pool {
     pub fn calculate_utilization(&self) -> u64 {
-        if self.market.total_supply_assets == 0 {
-            0
-        } else {
-            (self.market.total_borrow_assets as u128)
-                .checked_mul(10_000)
-                .unwrap_or(0)
-                .checked_div(self.market.total_supply_assets as u128)
-                .unwrap_or(0) as u64
+        let total_supply = self.market.total_supply_assets;
+        if total_supply == 0 {
+            return 0;
         }
+        let effective_borrowed = self
+            .market
+            .total_borrow_assets
+            .saturating_add(self.market.assets_in_queue);
+        (effective_borrowed as u128)
+            .checked_mul(10_000)
+            .unwrap_or(0)
+            .checked_div(total_supply as u128)
+            .unwrap_or(0) as u64
     }
 
     /// Accrue interest into `total_borrow_assets` based on elapsed time since last
