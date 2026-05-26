@@ -34,11 +34,11 @@ pub struct DepositCollateral<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + UserPosition::INIT_SPACE,
+        space = 8 + 88, // UserPosition: 32+32+8+8+1+7 = 88
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
         bump,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -80,20 +80,26 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
     };
 
     // Initialize or accumulate into the user position PDA.
-    let position = &mut ctx.accounts.user_position;
-    if position.authority == Pubkey::default() {
-        **position = UserPosition {
-            authority: ctx.accounts.authority.key(),
-            pool: ctx.accounts.pool.key(),
-            collateral_deposited: amount,
-            debt_shares: 0,
-            bump: ctx.bumps.user_position,
+    {
+        let needs_init = {
+            let account_info = ctx.accounts.user_position.to_account_info();
+            let data = account_info.try_borrow_data()?;
+            data.len() >= 8 && data[..8].iter().all(|&b| b == 0)
         };
-    } else {
-        position.collateral_deposited = position
-            .collateral_deposited
-            .checked_add(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        if needs_init {
+            let mut position = ctx.accounts.user_position.load_init()?;
+            position.authority = ctx.accounts.authority.key();
+            position.pool = ctx.accounts.pool.key();
+            position.collateral_deposited = amount;
+            position.debt_shares = 0;
+            position.bump = ctx.bumps.user_position;
+        } else {
+            let mut position = ctx.accounts.user_position.load_mut()?;
+            position.collateral_deposited = position
+                .collateral_deposited
+                .checked_add(amount)
+                .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        }
     }
 
     msg!(

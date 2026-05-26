@@ -1,9 +1,8 @@
-import { type PoolData } from "@/hooks/program/useLendingAccount";
+import { type PoolAccount } from "@/hooks/program/useLendingAccount";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
-import { sharesToAmount } from "@/lib/jblMath";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
@@ -211,7 +210,7 @@ type ModalState =
 
 interface PoolPositionPanelProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolAccount;
   connected: boolean;
 }
 
@@ -244,28 +243,21 @@ export function PoolPositionPanel({
     poolPubKey,
     walletPubKey,
   );
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint ?? null);
-  const lpWalletBalance = useTokenBalance(poolData.lpMint ?? null);
-  const lendWalletBalance = useTokenBalance(poolData.lendMint ?? null);
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
+  const lpWalletBalance = useTokenBalance(new PublicKey(poolData.lp_mint));
+  const lendWalletBalance = useTokenBalance(new PublicKey(poolData.lend_mint));
 
   const repayMutation = useRepay();
 
-  // Compute on-chain amounts as human-readable numbers
+  // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    if (poolData.totalDebtShares === 0n) return 0;
-    const rawDebt =
-      sharesToAmount(
-        userPosition.debtShares,
-        poolData.totalBorrowed,
-        poolData.totalDebtShares,
-      ) ?? 0n;
-    return Number(rawDebt) / 10 ** lendDecimals;
+    return Number(userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
   const hasLp = (lpWalletBalance?.uiAmount ?? 0) > 0;
-  const hasDebt = userPosition != null && userPosition.debtShares > 0n;
+  const hasDebt = userPosition != null && userPosition.has_debt();
 
   const lendPos: WithdrawPosition | null = hasLp
     ? {
@@ -284,8 +276,8 @@ export function PoolPositionPanel({
       borrowedAsset: pool.lendSymbol,
       borrowedIcon: pool.lendIcon,
       debtAmount: debtUiAmount ?? 0,
-      rawDebtAmount: userPosition && poolData && lendDecimals != null && poolData.totalDebtShares > 0n
-        ? (sharesToAmount(userPosition.debtShares, poolData.totalBorrowed, poolData.totalDebtShares) ?? 0n).toString()
+      rawDebtAmount: userPosition && poolData && lendDecimals != null
+        ? userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares).toString()
         : undefined,
       borrowAPY: pool.borrowAPY,
       walletBalance: lendWalletBalance?.uiAmount ?? undefined,
@@ -298,7 +290,7 @@ export function PoolPositionPanel({
     const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (lendDecimals ?? 6)));
     await repayMutation.mutateAsync({
       pool: poolPubKey,
-      lendMint: poolData.lendMint,
+      lendMint: new PublicKey(poolData.lend_mint),
       amount: rawAmount,
     });
   }

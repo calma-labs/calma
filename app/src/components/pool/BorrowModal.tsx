@@ -1,10 +1,8 @@
 import { useBorrow } from "@/hooks/program/useBorrow";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { sharesToAmount } from "@/lib/jblMath";
-import { computeFeeBps } from "@/lib/poolDisplay";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -14,7 +12,7 @@ import { useMemo, useState } from "react";
 
 interface BorrowModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolAccount;
   onClose: () => void;
 }
 
@@ -24,41 +22,31 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   const [fixedDuration, setFixedDuration] = useState<"1w" | "1m">("1w");
   const { wallet } = useWalletConnection();
 
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
 
   const walletPubKey = useMemo(
     () => (wallet ? new PublicKey(wallet.account.publicKey) : null),
     [wallet],
   );
   const { data: userPosition } = useUserPosition(
-    poolData.publicKey,
+    new PublicKey(pool.address),
     walletPubKey,
   );
-
   const borrowMutation = useBorrow();
   const isPending = borrowMutation.isPending;
 
   const displaySymbol = pool.lendSymbol;
   const displayIcon = pool.lendIcon;
+  // On-chain: max_borrowable = collateral_raw * ltv / 100 (raw lend units)
   const userBorrowPower = useMemo(() => {
-    if (!userPosition || collateralDecimals == null) return 0;
-    const collateralUi =
-      Number(userPosition.collateralDeposited) / 10 ** collateralDecimals;
-    return collateralUi * (poolData.ltvPercent / 100);
-  }, [userPosition, collateralDecimals, poolData.ltvPercent]);
+    if (!userPosition || lendDecimals == null) return 0;
+    return Number(userPosition.max_borrowable(poolData.ltv_percent)) / 10 ** lendDecimals;
+  }, [userPosition, lendDecimals, poolData.ltv_percent]);
 
   // Current debt (to subtract from borrow power)
   const currentDebtUi = useMemo(() => {
-    if (!userPosition || !poolData || lendDecimals == null) return 0;
-    if (poolData.totalDebtShares === 0n) return 0;
-    const rawDebt =
-      sharesToAmount(
-        userPosition.debtShares,
-        poolData.totalBorrowed,
-        poolData.totalDebtShares,
-      ) ?? 0n;
-    return Number(rawDebt) / 10 ** lendDecimals;
+    if (!userPosition || lendDecimals == null) return 0;
+    return Number(userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // Remaining borrow power, capped by pool available liquidity
@@ -74,11 +62,11 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     const decimals = lendDecimals ?? 6;
     const numAmount = parseFloat(amount);
     const borrowRaw = numAmount > 0 ? numAmount * 10 ** decimals : 0;
-    const newTotalBorrowed = Number(poolData.totalBorrowed) + borrowRaw;
-    const totalLend = Number(poolData.totalLendDeposited);
+    const newTotalBorrowed = Number(poolData.total_borrowed) + borrowRaw;
+    const totalLend = Number(poolData.total_lend_deposited);
     const newUtilBps =
       totalLend > 0 ? Math.round((newTotalBorrowed / totalLend) * 10_000) : 0;
-    const feeBps = computeFeeBps(poolData.feeConfig, newUtilBps);
+    const feeBps = poolData.fee_bps(newUtilBps);
     return feeBps / 100;
   }, [amount, lendDecimals, poolData]);
 
@@ -96,8 +84,8 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
 
     await borrowMutation.mutateAsync({
-      pool: poolData.publicKey,
-      lendMint: poolData.lendMint,
+      pool: new PublicKey(pool.address),
+      lendMint: new PublicKey(poolData.lend_mint),
       amount: rawAmount,
     });
 
@@ -271,7 +259,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
                 <Info className="h-3 w-3" />
-                LTV ({poolData.ltvPercent}%)
+                LTV ({poolData.ltv_percent}%)
               </span>
               <span className="text-xs font-semibold tabular-nums text-[#efe0f7]/60">
                 {userBorrowPower.toLocaleString("en-US", {

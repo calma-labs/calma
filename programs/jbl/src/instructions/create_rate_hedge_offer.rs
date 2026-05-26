@@ -18,7 +18,7 @@ pub struct CreateRateHedgeOffer<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + RateHedgeOffer::INIT_SPACE,
+        space = 8 + 120, // RateHedgeOffer: 32+32+8+8+8+8+8+8+1+7 = 120
         seeds = [
             b"rate_hedge_offer",
             pool.key().as_ref(),
@@ -29,7 +29,7 @@ pub struct CreateRateHedgeOffer<'info> {
         ],
         bump,
     )]
-    pub rate_hedge_offer: Account<'info, RateHedgeOffer>,
+    pub rate_hedge_offer: AccountLoader<'info, RateHedgeOffer>,
 
     /// Token vault that holds the collateral locked for this offer.
     ///
@@ -111,25 +111,27 @@ pub fn create_rate_hedge_offer_handler(
     )?;
 
     // Initialise the offer account.
-    let offer = &mut ctx.accounts.rate_hedge_offer;
-    offer.pool = ctx.accounts.pool.key();
-    offer.authority = ctx.accounts.authority.key();
-    offer.amount = amount;
-    offer.fixed_rate_bps = fixed_rate_bps;
-    offer.min_duration = min_duration;
-    offer.max_duration = max_duration;
-    offer.collateral_deposited = collateral_amount;
-    offer.bump = ctx.bumps.rate_hedge_offer;
+    {
+        let mut offer = ctx.accounts.rate_hedge_offer.load_init()?;
+        offer.pool = ctx.accounts.pool.key();
+        offer.authority = ctx.accounts.authority.key();
+        offer.amount = amount;
+        offer.fixed_rate_bps = fixed_rate_bps;
+        offer.min_duration = min_duration;
+        offer.max_duration = max_duration;
+        offer.collateral_deposited = collateral_amount;
+        offer.bump = ctx.bumps.rate_hedge_offer;
+    }
 
     msg!(
         "RateHedgeOffer created: pool={} authority={} amount={} rate_bps={} min_dur={} max_dur={} collateral={}",
-        offer.pool,
-        offer.authority,
-        offer.amount,
-        offer.fixed_rate_bps,
-        offer.min_duration,
-        offer.max_duration,
-        offer.collateral_deposited,
+        ctx.accounts.pool.key(),
+        ctx.accounts.authority.key(),
+        amount,
+        fixed_rate_bps,
+        min_duration,
+        max_duration,
+        collateral_amount,
     );
 
     Ok(())

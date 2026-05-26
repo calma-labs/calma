@@ -36,14 +36,14 @@ pub struct Repay<'info> {
     #[account(
         mut,
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
-        bump = user_position.bump,
-        has_one = authority,
-        constraint = user_position.pool == pool.key()
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.authority == authority.key(),
+        constraint = user_position.load()?.pool == pool.key()
             @ crate::error::ErrorCode::NoBorrowFound,
-        constraint = user_position.debt_shares > 0
+        constraint = user_position.load()?.debt_shares > 0
             @ crate::error::ErrorCode::NoBorrowFound,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -59,7 +59,8 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
     // ── 2. Compute exact amount owed and shares to burn ───────────────────────
     let (repay_amount, shares_to_burn) = {
         let pool = ctx.accounts.pool.load()?;
-        let debt_shares = ctx.accounts.user_position.debt_shares;
+        let position = ctx.accounts.user_position.load()?;
+        let debt_shares = position.debt_shares;
         let total_due =
             shares_to_amount(debt_shares, pool.total_borrowed, pool.total_debt_shares)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?;
@@ -110,12 +111,13 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
         (pool.total_borrowed, pool.total_debt_shares)
     };
 
-    ctx.accounts.user_position.debt_shares = ctx
-        .accounts
-        .user_position
-        .debt_shares
-        .checked_sub(shares_to_burn)
-        .ok_or(crate::error::ErrorCode::MathOverflow)?;
+    {
+        let mut position = ctx.accounts.user_position.load_mut()?;
+        position.debt_shares = position
+            .debt_shares
+            .checked_sub(shares_to_burn)
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+    }
 
     msg!(
         "Repaid {} tokens ({} shares). Pool total_borrowed: {}, total_shares: {}",

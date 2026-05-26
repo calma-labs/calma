@@ -1,7 +1,7 @@
 import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolData, UserPositionData } from "@/types/lending";
+import type { PoolAccount, UserPositionAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -16,8 +16,8 @@ export type CloseMultiplyPosition = ManageMultiplyPosition;
 
 interface ClosePositionModalProps {
   pool: Pool;
-  poolData: PoolData;
-  userPosition: UserPositionData;
+  poolData: PoolAccount;
+  userPosition: UserPositionAccount;
   /** Pre-computed display data (leverage, netAPY, etc.). */
   position: ManageMultiplyPosition;
   onClose: () => void;
@@ -41,28 +41,21 @@ export function ClosePositionModal({
   const [confirmed, setConfirmed] = useState(false);
   const { wallet } = useWalletConnection();
 
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
+  const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
 
   const closeMutation = useCloseMultiply();
   const isPending = closeMutation.isPending;
 
-  // Raw debt derived from debt shares
-  const debtRaw = useMemo(() => {
-    if (poolData.totalDebtShares === 0n) return 0n;
-    return (
-      (userPosition.debtShares * poolData.totalBorrowed) /
-      poolData.totalDebtShares
-    );
-  }, [
-    userPosition.debtShares,
-    poolData.totalBorrowed,
-    poolData.totalDebtShares,
-  ]);
+  // Raw debt derived from debt shares via WASM
+  const debtRaw = useMemo(
+    () => userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares),
+    [userPosition, poolData.total_borrowed, poolData.total_debt_shares],
+  );
 
-  const collateralRaw = userPosition.collateralDeposited;
+  const collateralRaw = userPosition.collateral_deposited;
 
-  // Human-readable amounts for display
+  // Numeric amounts needed for flash-fee and estimated-return math
   const debtUi = Number(debtRaw) / 10 ** (lendDecimals ?? 6);
   const collateralUi = Number(collateralRaw) / 10 ** (collateralDecimals ?? 6);
   const flashFee =
@@ -79,18 +72,18 @@ export function ClosePositionModal({
     const walletPubKey = new PublicKey(wallet.account.publicKey);
     const poolPubKey = new PublicKey(pool.address);
     const userCollateralAta = getAssociatedTokenAddressSync(
-      poolData.collateralMint,
+      new PublicKey(poolData.collateral_mint),
       walletPubKey,
     );
     const userLendAta = getAssociatedTokenAddressSync(
-      poolData.lendMint,
+      new PublicKey(poolData.lend_mint),
       walletPubKey,
     );
 
     await closeMutation.mutateAsync({
       pool: poolPubKey,
-      lendMint: poolData.lendMint,
-      collateralMint: poolData.collateralMint,
+      lendMint: new PublicKey(poolData.lend_mint),
+      collateralMint: new PublicKey(poolData.collateral_mint),
       userCollateralAta,
       userLendAta,
       debtRaw: new BN(debtRaw.toString()),
@@ -146,16 +139,14 @@ export function ClosePositionModal({
                 Collateral to withdraw
               </span>
               <span className="text-xs font-semibold tabular-nums text-[#efe0f7]/70">
-                {collateralUi.toLocaleString("en-US", {
-                  maximumFractionDigits: 6,
-                })}{" "}
+                {userPosition.format_collateral(collateralDecimals ?? 6)}{" "}
                 {pool.collateralSymbol}
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="text-xs text-[#efe0f7]/40">Debt to repay</span>
               <span className="text-xs font-semibold tabular-nums text-[#d45677]">
-                {debtUi.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
+                {userPosition.format_debt(poolData.total_borrowed, poolData.total_debt_shares, lendDecimals ?? 6)}{" "}
                 {pool.lendSymbol}
               </span>
             </div>

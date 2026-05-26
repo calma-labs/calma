@@ -29,25 +29,25 @@ pub struct SettleRateHedgeMatch<'info> {
         mut,
         close = cranker,
         seeds = [b"rate_hedge_match", user_position.key().as_ref()],
-        bump = rate_hedge_match.bump,
-        has_one = user_position @ ErrorCode::InvalidAmount,
-        constraint = rate_hedge_match.offer == rate_hedge_offer.key() @ ErrorCode::InvalidAmount,
+        bump = rate_hedge_match.load()?.bump,
+        constraint = rate_hedge_match.load()?.user_position == user_position.key() @ ErrorCode::InvalidAmount,
+        constraint = rate_hedge_match.load()?.offer == rate_hedge_offer.key() @ ErrorCode::InvalidAmount,
     )]
-    pub rate_hedge_match: Box<Account<'info, RateHedgeMatch>>,
+    pub rate_hedge_match: AccountLoader<'info, RateHedgeMatch>,
 
     /// The offer that backed this match.
     #[account(
         mut,
-        constraint = rate_hedge_offer.pool == pool.key() @ ErrorCode::InvalidAmount,
+        constraint = rate_hedge_offer.load()?.pool == pool.key() @ ErrorCode::InvalidAmount,
     )]
-    pub rate_hedge_offer: Box<Account<'info, RateHedgeOffer>>,
+    pub rate_hedge_offer: AccountLoader<'info, RateHedgeOffer>,
 
     /// The borrower's position.
     #[account(
         mut,
-        constraint = user_position.pool == pool.key() @ ErrorCode::InvalidAmount,
+        constraint = user_position.load()?.pool == pool.key() @ ErrorCode::InvalidAmount,
     )]
-    pub user_position: Box<Account<'info, UserPosition>>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     /// The pool's lend vault — source of the upfront-fee payout to the offer creator.
     #[account(
@@ -61,7 +61,7 @@ pub struct SettleRateHedgeMatch<'info> {
     /// The offer creator's lend-token account — receives the upfront fee.
     #[account(
         mut,
-        constraint = offer_creator_token_account.owner == rate_hedge_offer.authority @ ErrorCode::Unauthorized,
+        constraint = offer_creator_token_account.owner == rate_hedge_offer.load()?.authority @ ErrorCode::Unauthorized,
         constraint = offer_creator_token_account.mint == lend_mint.key() @ ErrorCode::InvalidMint,
     )]
     pub offer_creator_token_account: Box<Account<'info, TokenAccount>>,
@@ -114,20 +114,20 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     let current_ts = Clock::get()?.unix_timestamp;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
-    let m = &ctx.accounts.rate_hedge_match;
-    let settlement_ts = m
-        .start_ts
-        .checked_add(m.duration as i64)
-        .ok_or(ErrorCode::MathOverflow)?;
+    let (settlement_ts, initial_debt_shares, borrow_amount, upfront_fee) = {
+        let m = ctx.accounts.rate_hedge_match.load()?;
+        let settlement_ts = m
+            .start_ts
+            .checked_add(m.duration as i64)
+            .ok_or(ErrorCode::MathOverflow)?;
+        (settlement_ts, m.initial_debt_shares, m.amount, m.upfront_fee)
+    };
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
     // ── 1. Accrue interest so shares reflect current state ────────────────────
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
 
-    // ── 2. Snapshot match fields (avoid borrow-checker issues with mutable refs) ──
-    let initial_debt_shares = m.initial_debt_shares;
-    let borrow_amount = m.amount;       // borrower's cap
-    let upfront_fee = m.upfront_fee;
+    // ── 2. Snapshot match fields already done above ───────────────────────────
     let fixed_total = borrow_amount
         .checked_add(upfront_fee)
         .ok_or(ErrorCode::MathOverflow)?;
@@ -222,26 +222,26 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
             .ok_or(ErrorCode::MathOverflow)?;
 
         // Update user position.
-        ctx.accounts.user_position.debt_shares = ctx
-            .accounts
-            .user_position
-            .debt_shares
+        let new_debt_shares = ctx.accounts.user_position.load()?.debt_shares
             .checked_sub(initial_debt_shares)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_add(new_shares)
             .ok_or(ErrorCode::MathOverflow)?;
+        ctx.accounts.user_position.load_mut()?.debt_shares = new_debt_shares;
     }
 
     // ── 8. Update offer ───────────────────────────────────────────────────────
-    let offer = &mut ctx.accounts.rate_hedge_offer;
-    offer.amount = offer
-        .amount
-        .checked_add(borrow_amount)
-        .ok_or(ErrorCode::MathOverflow)?;
-    offer.locked_tokens = offer
-        .locked_tokens
-        .checked_sub(upfront_fee)
-        .ok_or(ErrorCode::MathOverflow)?;
+    {
+        let mut offer = ctx.accounts.rate_hedge_offer.load_mut()?;
+        offer.amount = offer
+            .amount
+            .checked_add(borrow_amount)
+            .ok_or(ErrorCode::MathOverflow)?;
+        offer.locked_tokens = offer
+            .locked_tokens
+            .checked_sub(upfront_fee)
+            .ok_or(ErrorCode::MathOverflow)?;
+    }
 
     msg!(
         "SettleRateHedgeMatch: current_value={} fixed_total={} excess={} upfront_fee={}",

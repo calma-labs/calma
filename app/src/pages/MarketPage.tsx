@@ -45,7 +45,7 @@ export function MarketPage() {
   const allPools = useMemo<Pool[]>(
     () => lendingAccounts
       .filter(pool => validPoolIds.has(pool.publicKey.toBase58()))
-      .map(poolDataToDisplayPool),
+      .map(pd => poolDataToDisplayPool(pd.publicKey, pd.account)),
     [lendingAccounts, validPoolIds],
   );
 

@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "cd app && vite",
     "setup": "npm i && anchor build && npm run wasm",
-    "wasm": "wasm-pack build crates/jbl-math-wasm --target bundler --out-dir $PWD/packages/wasm-lib && npm pkg set name='@jbl/wasm-lib' --prefix packages/wasm-lib",
+    "wasm": "cargo build --target wasm32-unknown-unknown && wasm-pack build crates/jbl-wasm --target bundler --out-dir $PWD/packages/wasm-lib && npm pkg set name='@jbl/wasm-lib' --prefix packages/wasm-lib",
     "build": "bun run wasm && bun run --filter @jbl/app build",
     "preview": "bun run --filter @jbl/app preview",
     "test": "bun run --filter @jbl/test test",

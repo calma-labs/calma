@@ -1,23 +1,30 @@
-import { PublicKey } from '@solana/web3.js'
+import { type GetProgramAccountsFilter, PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { program } from '../../lib/program'
+import { UserPositionAccount } from '@jbl/wasm-lib'
+import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
-import type { UserPositionData } from '../../types/lending'
 
-export type { UserPositionData }
+export type { UserPositionAccount }
 
-function mapUserPosition(
-    publicKey: PublicKey,
-    data: Awaited<ReturnType<typeof program.account.userPosition.fetch>>,
-): UserPositionData {
-    return {
-        publicKey,
-        authority: data.authority,
-        pool: data.pool,
-        collateralDeposited: BigInt(data.collateralDeposited.toString()),
-        debtShares: BigInt(data.debtShares.toString()),
-        bump: data.bump,
-    }
+/** Discriminator memcmp filter that selects only UserPosition accounts. */
+function discriminatorFilter(): GetProgramAccountsFilter {
+    return { memcmp: program.coder.accounts.memcmp('userPosition') }
+}
+
+async function fetchUserPosition(address: PublicKey): Promise<UserPositionAccount | null> {
+    const info = await connection.getAccountInfo(address)
+    if (!info) return null
+    return UserPositionAccount.from_bytes(info.data) ?? null
+}
+
+async function fetchAllUserPositions(extraFilters: GetProgramAccountsFilter[] = []): Promise<UserPositionAccount[]> {
+    const accounts = await connection.getProgramAccounts(program.programId, {
+        filters: [discriminatorFilter(), ...extraFilters],
+    })
+    return accounts.flatMap(({ account }) => {
+        const pos = UserPositionAccount.from_bytes(account.data)
+        return pos ? [pos] : []
+    })
 }
 
 /** Derive the UserPosition PDA address for a given pool + authority pair. */
@@ -39,9 +46,7 @@ export function useUserPosition(pool: PublicKey | null, authority: PublicKey | n
         queryKey: pool && authority ? queryKeys.userPosition.one(pool, authority) : ['user-positions', 'null', 'null'],
         queryFn: async () => {
             const pda = getUserPositionAddress(pool!, authority!)
-            const data = await program.account.userPosition.fetchNullable(pda)
-            if (!data) return null
-            return mapUserPosition(pda, data)
+            return fetchUserPosition(pda)
         },
         enabled: !!pool && !!authority,
     })
@@ -51,10 +56,7 @@ export function useUserPosition(pool: PublicKey | null, authority: PublicKey | n
 export function useUserPositions() {
     return useQuery({
         queryKey: queryKeys.userPosition.all(),
-        queryFn: async () => {
-            const all = await program.account.userPosition.all()
-            return all.map(({ publicKey, account }) => mapUserPosition(publicKey, account))
-        },
+        queryFn: () => fetchAllUserPositions(),
     })
 }
 
@@ -62,12 +64,9 @@ export function useUserPositions() {
 export function useUserPositionsByPool(pool: PublicKey | null) {
     return useQuery({
         queryKey: pool ? queryKeys.userPosition.byPool(pool) : ['user-positions', 'pool', 'null'],
-        queryFn: async () => {
-            const all = await program.account.userPosition.all()
-            return all
-                .filter(({ account }) => account.pool.equals(pool!))
-                .map(({ publicKey, account }) => mapUserPosition(publicKey, account))
-        },
+        queryFn: () => fetchAllUserPositions([
+            { memcmp: { offset: 8 + 32, bytes: pool!.toBase58() } },
+        ]),
         enabled: !!pool,
     })
 }
@@ -79,17 +78,9 @@ export function useUserPositionsByPool(pool: PublicKey | null) {
 export function useUserPositionsByAuthority(authority: PublicKey | null) {
     return useQuery({
         queryKey: authority ? queryKeys.userPosition.byAuthority(authority) : ['user-positions', 'authority', 'null'],
-        queryFn: async () => {
-            const all = await program.account.userPosition.all([
-                {
-                    memcmp: {
-                        offset: 8, // authority field starts after 8-byte discriminator
-                        bytes: authority!.toBase58(),
-                    },
-                },
-            ])
-            return all.map(({ publicKey, account }) => mapUserPosition(publicKey, account))
-        },
+        queryFn: () => fetchAllUserPositions([
+            { memcmp: { offset: 8, bytes: authority!.toBase58() } },
+        ]),
         enabled: !!authority,
     })
 }

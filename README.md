@@ -2,6 +2,24 @@
 
 A Solana lending protocol with an Anchor program and a React/Vite frontend.
 
+## Setup
+
+```mermaid
+flowchart LR
+    I("npm install") -->
+    A("npm run setup\n─────────────\nanchor build\n+ npm run wasm")
+
+    A --> B("npm run dev\n─────────────\nstart Vite\ndev server")
+
+    A --> C("npm run test\n─────────────\nrun Anchor\nintegration tests")
+
+    A --> D("npm run build\n─────────────\nwasm → app/dist\nproduction bundle")
+
+    D --> E("npm run preview\n─────────────\npreview production\nbuild locally")
+```
+
+> **Prerequisites:** [Rust](https://rustup.rs), [Anchor CLI](https://www.anchor-lang.com/docs/installation), [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), Node ≥ 18
+
 ## Repository layout
 
 ```

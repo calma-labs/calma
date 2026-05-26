@@ -38,11 +38,11 @@ pub struct ProcessQueueEntry<'info> {
             pool.key().as_ref(),
             user_token_account.owner.as_ref(),
         ],
-        bump = user_position.bump,
-        constraint = user_position.pool == pool.key()
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.pool == pool.key()
             @ crate::error::ErrorCode::QueueEntryMismatch,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     /// The pool's token vault (source of funds).
     #[account(

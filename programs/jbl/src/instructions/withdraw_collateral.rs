@@ -42,12 +42,12 @@ pub struct WithdrawCollateral<'info> {
     #[account(
         mut,
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
-        bump = user_position.bump,
-        has_one = authority,
-        constraint = user_position.pool == pool.key()
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.authority == authority.key(),
+        constraint = user_position.load()?.pool == pool.key()
             @ crate::error::ErrorCode::InvalidAmount,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -55,10 +55,13 @@ pub struct WithdrawCollateral<'info> {
 
 pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
-    require!(
-        amount <= ctx.accounts.user_position.collateral_deposited,
-        crate::error::ErrorCode::InsufficientFunds
-    );
+    {
+        let position = ctx.accounts.user_position.load()?;
+        require!(
+            amount <= position.collateral_deposited,
+            crate::error::ErrorCode::InsufficientFunds
+        );
+    }
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
@@ -67,7 +70,7 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
     // ── 2. LTV check: ensure remaining collateral still covers open debt ──────
     {
         let pool = ctx.accounts.pool.load()?;
-        let position = &ctx.accounts.user_position;
+        let position = ctx.accounts.user_position.load()?;
 
         let remaining_collateral = position
             .collateral_deposited
@@ -126,16 +129,19 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
     }
 
-    let position = &mut ctx.accounts.user_position;
-    position.collateral_deposited = position
-        .collateral_deposited
-        .checked_sub(amount)
-        .ok_or(crate::error::ErrorCode::MathOverflow)?;
+    let remaining = {
+        let mut position = ctx.accounts.user_position.load_mut()?;
+        position.collateral_deposited = position
+            .collateral_deposited
+            .checked_sub(amount)
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        position.collateral_deposited
+    };
 
     msg!(
         "Withdrew {} collateral tokens. Remaining collateral deposit: {}",
         amount,
-        position.collateral_deposited,
+        remaining,
     );
 
     Ok(())

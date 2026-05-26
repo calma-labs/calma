@@ -1,11 +1,9 @@
 [package]
-name = "jbl-math-wasm"
+name = "jbl-state"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-crate-type = ["cdylib"]
-
 [dependencies]
 jbl-math = { path = "../jbl-math" }
-wasm-bindgen = "0.2"
+anchor-lang = { version = "1.0.2", default-features = false }
+bytemuck = "1"
