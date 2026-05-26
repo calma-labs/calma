@@ -1,4 +1,3 @@
-import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import {
     createInitializeMint2Instruction,

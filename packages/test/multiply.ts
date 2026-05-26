@@ -162,8 +162,8 @@ describe("multiply (leverage)", () => {
       // Calculate actual leverage: Total Collateral / (Total Collateral - Debt)
       // Debt = debt_shares * total_borrowed / total_debt_shares
       const debtShares = BigInt(position.debtShares.toString());
-      const totalBorrowed = BigInt(poolAccount.totalBorrowed.toString());
-      const totalDebtShares = BigInt(poolAccount.totalDebtShares.toString());
+      const totalBorrowed = BigInt(poolAccount.market.totalBorrowShares.toString());
+      const totalDebtShares = BigInt(poolAccount.market.totalBorrowShares.toString());
 
       const debtAmount = Number((debtShares * totalBorrowed) / totalDebtShares);
       const collateralAmount = Number(position.collateralDeposited);
@@ -185,8 +185,8 @@ describe("multiply (leverage)", () => {
       // Calculate current LTV: Debt / Collateral Value
       // Assuming 1:1 collateral to lend price for this test
       const debtShares = BigInt(position.debtShares.toString());
-      const totalBorrowed = BigInt(poolAccount.totalBorrowed.toString());
-      const totalDebtShares = BigInt(poolAccount.totalDebtShares.toString());
+      const totalBorrowed = BigInt(poolAccount.market.totalBorrowShares.toString());
+      const totalDebtShares = BigInt(poolAccount.market.totalBorrowShares.toString());
 
       const debtAmount = Number((debtShares * totalBorrowed) / totalDebtShares);
       const collateralAmount = Number(position.collateralDeposited);

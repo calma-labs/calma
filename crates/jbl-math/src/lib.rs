@@ -51,6 +51,53 @@ pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64
     u64::try_from(result).ok()
 }
 
+/// Compute Loan-to-Value (LTV) ratio in basis points (100% = 10,000).
+/// Returns None if debt is 0 to indicate "N/A".
+pub fn compute_ltv(debt: u64, collateral: u64) -> Option<u32> {
+    if debt == 0 {
+        return None;
+    }
+    if collateral == 0 {
+        return Some(0);
+    }
+    let ltv_bps = (debt as u128).checked_mul(10_000)? / (collateral as u128);
+    u32::try_from(ltv_bps).ok()
+}
+
+/// Compute Health Factor in basis points (1.0 = 10,000).
+/// health_factor = (collateral * ltv_percent / 100) / debt
+/// Returns None if debt is 0 to indicate "N/A".
+pub fn compute_health_factor(collateral: u64, ltv_percent: u8, debt: u64) -> Option<u32> {
+    if debt == 0 {
+        return None;
+    }
+    // (collateral * (ltv_percent / 100) * 10,000) / debt
+    // = (collateral * ltv_percent * 100) / debt
+    let numerator = (collateral as u128)
+        .checked_mul(ltv_percent as u128)?
+        .checked_mul(100)?;
+    let hf_bps = numerator / (debt as u128);
+    u32::try_from(hf_bps).ok()
+}
+
+/// Compute Liquidation "Price" (ratio) in basis points.
+/// liq_price = debt / (collateral * ltv_percent / 100)
+/// Returns None if debt is 0 to indicate "N/A".
+pub fn compute_liquidation_threshold(debt: u64, collateral: u64, ltv_percent: u8) -> Option<u32> {
+    if debt == 0 {
+        return None;
+    }
+    if collateral == 0 || ltv_percent == 0 {
+        return Some(0);
+    }
+    // (debt * 10,000) / (collateral * ltv_percent / 100)
+    // = (debt * 1,000,000) / (collateral * ltv_percent)
+    let numerator = (debt as u128).checked_mul(1_000_000)?;
+    let denominator = (collateral as u128).checked_mul(ltv_percent as u128)?;
+    let liq_bps = numerator / denominator;
+    u32::try_from(liq_bps).ok()
+}
+
 /// Convert a repay token amount to the number of debt shares to burn.
 ///
 /// `shares = repay_amount × total_debt_shares / total_borrowed`

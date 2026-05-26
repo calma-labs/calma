@@ -182,7 +182,7 @@ export function MarketTable({
             {/* LTV */}
             <div className="text-right">
               <p className="text-sm mr-2 tabular-nums text-[#efe0f7]/75">
-                {pool.ltv}%
+                {pool.account.ltv_percent}%
               </p>
             </div>
 

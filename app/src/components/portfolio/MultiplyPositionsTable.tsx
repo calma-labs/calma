@@ -93,7 +93,7 @@ export function MultiplyPositionsTable() {
                 ${pos.positionSize.toLocaleString()}
               </td>
               <td className={TD + " text-right tabular-nums text-[#efe0f7]/55"}>
-                {pos.liqPrice > 0 ? `$${pos.liqPrice.toFixed(4)}` : "—"}
+                {pos.liqPrice !== null ? `$${pos.liqPrice.toFixed(4)}` : "N/A"}
               </td>
               <td className={TD + " text-right pr-5"}>
                 <ExternalLink className="h-3.5 w-3.5 text-[#efe0f7]/25" />

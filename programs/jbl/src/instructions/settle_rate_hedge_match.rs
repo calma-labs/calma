@@ -135,7 +135,7 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     // ── 3. Compute current variable value of the initial debt shares ──────────
     let current_value = {
         let pool = ctx.accounts.pool.load()?;
-        shares_to_amount(initial_debt_shares, pool.total_borrowed, pool.total_debt_shares)
+        shares_to_amount(initial_debt_shares, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(ErrorCode::MathOverflow)?
     };
 
@@ -192,32 +192,36 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
         let mut pool = ctx.accounts.pool.load_mut()?;
 
         // Remove old shares from pool.
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_sub(initial_debt_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_sub(current_value)
             .ok_or(ErrorCode::MathOverflow)?;
 
         // Account for the upfront fee that just left the pool.
-        // total_lend_deposited tracks the lend vault balance.
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .saturating_sub(upfront_fee);
 
         // Re-issue shares for the borrower's capped amount.
         let new_shares =
-            amount_to_shares(borrow_amount, pool.total_borrowed, pool.total_debt_shares)
+            amount_to_shares(borrow_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
                 .ok_or(ErrorCode::MathOverflow)?;
 
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(borrow_amount)
             .ok_or(ErrorCode::MathOverflow)?;
 

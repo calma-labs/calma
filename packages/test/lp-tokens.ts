@@ -29,8 +29,8 @@ describe("lp tokens", () => {
 
         it("pool records total_lp_issued and total_lend_deposited", async () => {
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalLpIssued.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
-            expect(poolAccount.totalLendDeposited.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
         });
     });
 });

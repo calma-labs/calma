@@ -82,14 +82,14 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     let lp_to_mint = {
         let pool = ctx.accounts.pool.load()?;
 
-        if pool.total_lp_issued == 0 || pool.total_lend_deposited == 0 {
+        if pool.market.total_supply_shares == 0 || pool.market.total_supply_assets == 0 {
             // First lend deposit: 1 LP per token.
             amount
         } else {
             (amount as u128)
-                .checked_mul(pool.total_lp_issued as u128)
+                .checked_mul(pool.market.total_supply_shares as u128)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?
-                .checked_div(pool.total_lend_deposited as u128)
+                .checked_div(pool.market.total_supply_assets as u128)
                 .ok_or(crate::error::ErrorCode::MathOverflow)? as u64
         }
     };
@@ -130,21 +130,23 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     // ── 4. Update pool lend totals ────────────────────────────────────────────
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .checked_add(amount)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.total_lp_issued = pool
-            .total_lp_issued
+        pool.market.total_supply_shares = pool
+            .market
+            .total_supply_shares
             .checked_add(lp_to_mint)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
 
         msg!(
-            "DepositLent: deposited {} lend tokens, minted {} LP tokens. total_lend_deposited: {}, total_lp_issued: {}",
+            "DepositLent: deposited {} lend tokens, minted {} LP tokens. total_supply_assets: {}, total_supply_shares: {}",
             amount,
             lp_to_mint,
-            pool.total_lend_deposited,
-            pool.total_lp_issued,
+            pool.market.total_supply_assets,
+            pool.market.total_supply_shares,
         );
     }
 

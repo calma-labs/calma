@@ -64,8 +64,8 @@ describe("borrow", () => {
             await borrow(setup, authority, BORROW_AMOUNT);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toString()).to.equal(BORROW_AMOUNT.toString());
-            expect(poolAccount.totalDebtShares.toNumber()).to.be.greaterThan(0);
+            expect(poolAccount.market.totalBorrowAssets.toString()).to.equal(BORROW_AMOUNT.toString());
+            expect(poolAccount.market.totalBorrowShares.toNumber()).to.be.greaterThan(0);
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.debtShares.toNumber()).to.be.greaterThan(0);
@@ -104,7 +104,7 @@ describe("borrow", () => {
             await borrow(setup, authority, MAX_BORROW);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toString()).to.equal(MAX_BORROW.toString());
+            expect(poolAccount.market.totalBorrowAssets.toString()).to.equal(MAX_BORROW.toString());
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.debtShares.toNumber()).to.be.greaterThan(0);
@@ -205,7 +205,7 @@ describe("borrow", () => {
             await borrow(setup, authority, FIRST_BORROW);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toString()).to.equal(FIRST_BORROW.toString());
+            expect(poolAccount.market.totalBorrowAssets.toString()).to.equal(FIRST_BORROW.toString());
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.debtShares.toNumber()).to.be.greaterThan(0);
@@ -220,7 +220,7 @@ describe("borrow", () => {
             await borrow(setup, authority, SECOND_BORROW);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThanOrEqual(FIRST_BORROW + SECOND_BORROW);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.be.greaterThanOrEqual(FIRST_BORROW + SECOND_BORROW);
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.debtShares.toNumber()).to.be.greaterThan(sharesBefore);
@@ -281,7 +281,7 @@ describe("borrow", () => {
             await borrow(setup, borrowerA.authority, BORROW_A);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThanOrEqual(BORROW_A);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.be.greaterThanOrEqual(BORROW_A);
 
             const lendVault = await getAccount(connection, lendVaultPda);
             expect(Number(lendVault.amount)).to.equal(LEND_LIQUIDITY - BORROW_A);
@@ -293,8 +293,8 @@ describe("borrow", () => {
             await borrow(setup, borrowerB.authority, BORROW_B);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThanOrEqual(BORROW_A + BORROW_B);
-            expect(poolAccount.totalDebtShares.toNumber()).to.be.greaterThan(0);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.be.greaterThanOrEqual(BORROW_A + BORROW_B);
+            expect(poolAccount.market.totalBorrowShares.toNumber()).to.be.greaterThan(0);
 
             const positionA = await program.account.userPosition.fetch(borrowerA.userPositionPda);
             expect(positionA.debtShares.toNumber()).to.be.greaterThan(0);
@@ -328,8 +328,8 @@ describe("borrow", () => {
             await repay(setup, authority, BORROW_AMOUNT * 2);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toNumber()).to.equal(0);
-            expect(poolAccount.totalDebtShares.toNumber()).to.equal(0);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.equal(0);
+            expect(poolAccount.market.totalBorrowShares.toNumber()).to.equal(0);
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.debtShares.toNumber()).to.equal(0);
@@ -367,8 +367,8 @@ describe("borrow", () => {
             expect(position.debtShares.toNumber()).to.be.lessThan(positionBefore.debtShares.toNumber());
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThan(0);
-            expect(poolAccount.totalBorrowed.toNumber()).to.be.lessThan(BORROW_AMOUNT);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.be.greaterThan(0);
+            expect(poolAccount.market.totalBorrowAssets.toNumber()).to.be.lessThan(BORROW_AMOUNT);
         });
     });
 
@@ -380,7 +380,12 @@ describe("borrow", () => {
         let setup: TestSetup;
 
         before(async () => {
-            setup = await setupTest();
+            setup = await setupTest({
+                m1: new anchor.BN(0),
+                c1: new anchor.BN(0),
+                m2: new anchor.BN(0),
+                c2: new anchor.BN(0),
+            });
             await participateInPool(setup, LEND_LIQUIDITY);
             await depositCollateral(setup, setup.authority, setup.userCollateralTokenAccount, COLLATERAL_DEPOSIT);
             await borrow(setup, setup.authority, BORROW_AMOUNT);
@@ -395,8 +400,8 @@ describe("borrow", () => {
 
             // Calculate exact debt amount using BigInt for precision (matches program's ceiling division)
             const debtShares = BigInt(positionBefore.debtShares.toString());
-            const totalBorrowed = BigInt(poolBefore.totalBorrowed.toString());
-            const totalDebtShares = BigInt(poolBefore.totalDebtShares.toString());
+            const totalBorrowed = BigInt(poolBefore.market.totalBorrowAssets.toString());
+            const totalDebtShares = BigInt(poolBefore.market.totalBorrowShares.toString());
             // shares_to_amount uses ceiling division: (shares * total_borrowed + total_debt_shares - 1) / total_debt_shares
             const exactDebt = Number((debtShares * totalBorrowed + totalDebtShares - BigInt(1)) / totalDebtShares);
 
@@ -408,8 +413,8 @@ describe("borrow", () => {
             expect(positionAfter.debtShares.toNumber()).to.equal(0);
 
             const poolAfter = await program.account.pool.fetch(pool);
-            expect(poolAfter.totalDebtShares.toNumber()).to.equal(0);
-            expect(poolAfter.totalBorrowed.toNumber()).to.equal(0);
+            expect(poolAfter.market.totalBorrowShares.toNumber()).to.equal(0);
+            expect(poolAfter.market.totalBorrowAssets.toNumber()).to.equal(0);
         });
     });
 

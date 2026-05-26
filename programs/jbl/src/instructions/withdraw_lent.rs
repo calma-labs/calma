@@ -79,14 +79,14 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             crate::error::ErrorCode::InvalidAmount
         );
         require!(
-            pool.total_lp_issued > 0,
+            pool.market.total_supply_shares > 0,
             crate::error::ErrorCode::InvalidAmount
         );
     }
 
     // ── 1. Burn LP tokens from user (always) ─────────────────────────────────
     // Burning here prevents double-use while the request sits in the queue.
-    // `total_lp_issued` is NOT decremented yet — queued shares keep accruing
+    // `total_supply_shares` is NOT decremented yet — queued shares keep accruing
     // proportional value relative to the lend vault balance until processed.
     anchor_spl::token::burn(
         CpiContext::new(
@@ -103,7 +103,7 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     // ── 2. Decide: immediate withdrawal or enqueue ────────────────────────────
     // We go immediate only when the queue is empty AND the lend vault holds
     // enough tokens to cover the shares' full proportional value (based on
-    // total_lend_deposited, not just the current vault balance).
+    // total_supply_assets, not just the current vault balance).
     let vault_balance = ctx.accounts.lend_vault.amount;
 
     let immediate = {
@@ -111,9 +111,9 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
         // Proportional lend tokens for `shares` based on full deposited amount.
         let lend_for_shares = (shares as u128)
-            .checked_mul(pool.total_lend_deposited as u128)
+            .checked_mul(pool.market.total_supply_assets as u128)
             .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(pool.total_lp_issued as u128)
+            .checked_div(pool.market.total_supply_shares as u128)
             .ok_or(crate::error::ErrorCode::MathOverflow)? as u64;
         queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0
     };
@@ -123,22 +123,24 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         let withdraw_amount = {
             let pool = ctx.accounts.pool.load()?;
             (shares as u128)
-                .checked_mul(pool.total_lend_deposited as u128)
+                .checked_mul(pool.market.total_supply_assets as u128)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?
-                .checked_div(pool.total_lp_issued as u128)
+                .checked_div(pool.market.total_supply_shares as u128)
                 .ok_or(crate::error::ErrorCode::MathOverflow)? as u64
         };
 
-        // Decrement total_lp_issued and total_lend_deposited on immediate path.
+        // Decrement total_supply_shares and total_supply_assets on immediate path.
         {
             let mut pool = ctx.accounts.pool.load_mut()?;
-            pool.total_lp_issued = pool
-                .total_lp_issued
+            pool.market.total_supply_shares = pool
+                .market
+                .total_supply_shares
                 .checked_sub(shares)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?;
-            pool.total_lend_deposited = pool
-                .total_lend_deposited
-                .checked_sub(withdraw_amount.min(pool.total_lend_deposited))
+            pool.market.total_supply_assets = pool
+                .market
+                .total_supply_assets
+                .checked_sub(withdraw_amount.min(pool.market.total_supply_assets))
                 .ok_or(crate::error::ErrorCode::MathOverflow)?;
         }
 
@@ -160,10 +162,10 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         )?;
 
         msg!(
-            "Leave: burned {} LP, withdrew {} lend tokens immediately. total_lp_issued: {}",
+            "Leave: burned {} LP, withdrew {} lend tokens immediately. total_supply_shares: {}",
             shares,
             withdraw_amount,
-            ctx.accounts.pool.load()?.total_lp_issued,
+            ctx.accounts.pool.load()?.market.total_supply_shares,
         );
     } else {
         // ── 3b. Queued: store shares in queue; totals unchanged ───────────────
@@ -175,9 +177,9 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             amount: shares,
         })?;
         msg!(
-            "Leave: burned {} LP, enqueued for later withdrawal. total_lp_issued: {}",
+            "Leave: burned {} LP, enqueued for later withdrawal. total_supply_shares: {}",
             shares,
-            pool.total_lp_issued,
+            pool.market.total_supply_shares,
         );
     }
 

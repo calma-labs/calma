@@ -1,6 +1,5 @@
 import { getPoolMeta } from '@/config/poolRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
-import { derivePoolMetrics } from '@/lib/poolDisplay'
 import type {
     BorrowPosition,
     LendPosition,
@@ -42,20 +41,19 @@ export function useLendPositions(enabled = true) {
             const lpToken = balances.tokens.find((t) => t.mint.equals(new PublicKey(pool.account.lp_mint)))
             if (!lpToken || lpToken.amount === 0n) return []
 
-            const totalLpIssued = Number(pool.account.total_lp_issued)
+            const totalLpIssued = Number(pool.account.total_supply_shares)
             if (totalLpIssued === 0) return []
 
-            const metrics = derivePoolMetrics(pool.account)
             const lpShare = Number(lpToken.amount) / totalLpIssued
             // totalLendRaw = totalLendDeposited + totalBorrowed (full supply including lent-out)
-            const supplied = (lpShare * metrics.totalLendRaw) / DECIMALS_FACTOR
+            const supplied = (lpShare * Number(pool.account.total_supply_assets)) / DECIMALS_FACTOR
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).
-            const health = Math.max(0, Math.min(100, Math.round(100 - metrics.utilizationPct)))
+            const health = Math.max(0, Math.min(100, Math.round(100 - pool.account.utilization_bps() / 100)))
 
             // Rough earned estimate (~1 month at current APY). No historical data on-chain.
-            const earnedEstimate = +(supplied * (metrics.supplyAPY / 100) / 12).toFixed(4)
+            const earnedEstimate = +(supplied * (pool.account.supply_apy_bps() / 10_000) / 12).toFixed(4)
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
             return [{
@@ -65,7 +63,7 @@ export function useLendPositions(enabled = true) {
                 collateralAsset: meta.collateralSymbol,
                 collateralIcon: meta.collateralIcon,
                 supplied,
-                apy: metrics.supplyAPY,
+                apy: pool.account.supply_apy_bps() / 100,
                 earned: earnedEstimate,
                 health,
                 collateralEnabled: true,
@@ -89,36 +87,30 @@ export function useBorrowPositions(enabled = true) {
         if (!enabled || !userPositions.length || !pools.length) return []
 
         return userPositions.flatMap((pos) => {
-            if (!pos.has_debt()) return []
+            if (!pos.has_debt() && !pos.has_collateral()) return []
 
             const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
-            const metrics = derivePoolMetrics(pool.account)
-            const totalDebtShares = Number(pool.account.total_debt_shares)
-            const debtShares = Number(pos.debt_shares)
+            const totalBorrowed = pool.account.total_borrow_assets
+            const totalDebtShares = pool.account.total_borrow_shares
 
-            const debtRaw =
-                totalDebtShares > 0
-                    ? (debtShares / totalDebtShares) * metrics.totalBorrowedRaw
-                    : 0
-            const debtAmount = debtRaw / DECIMALS_FACTOR
+            const debtRaw = pos.debt_amount(totalBorrowed, totalDebtShares)
+            const debtAmount = Number(debtRaw) / DECIMALS_FACTOR
             const collateralAmount = Number(pos.collateral_deposited) / DECIMALS_FACTOR
 
-            const currentLtv =
-                collateralAmount > 0 ? (debtAmount / collateralAmount) * 100 : 0
-            const healthFactor =
-                debtAmount > 0
-                    ? (collateralAmount * (pool.account.ltv_percent / 100)) / debtAmount
-                    : 999
+            const ltvBps = pos.ltv(totalBorrowed, totalDebtShares)
+            const healthFactorBps = pos.health_factor(
+                totalBorrowed,
+                totalDebtShares,
+                pool.account.ltv_percent
+            )
+            const liqPriceBps = pos.liq_price(
+                totalBorrowed,
+                totalDebtShares,
+                pool.account.ltv_percent
+            )
 
-            // Liquidation "price": the collateral-to-debt ratio at which the
-            // position becomes eligible for liquidation. Meaningful for same-
-            // denomination assets (e.g. USDC/USDT) as a parity threshold.
-            const liqPrice =
-                collateralAmount > 0
-                    ? debtAmount / (collateralAmount * (pool.account.ltv_percent / 100))
-                    : 0
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
             return [{
@@ -130,10 +122,10 @@ export function useBorrowPositions(enabled = true) {
                 borrowedAsset: meta.lendSymbol,
                 borrowedIcon: meta.lendIcon,
                 debtAmount,
-                borrowAPY: metrics.borrowAPY,
-                ltv: currentLtv,
-                liqPrice,
-                healthFactor: isFinite(healthFactor) ? healthFactor : 999,
+                borrowAPY: pool.account.borrow_apy_bps() / 100,
+                ltv: ltvBps != null ? ltvBps / 100 : null,
+                liqPrice: liqPriceBps != null ? liqPriceBps / 10000 : null,
+                healthFactor: healthFactorBps != null ? healthFactorBps / 10000 : null,
             } satisfies BorrowPosition]
         })
     }, [enabled, userPositions, pools])

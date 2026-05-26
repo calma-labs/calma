@@ -103,7 +103,7 @@ fn try_send_ixs(
 
 // ── Account data helpers ──────────────────────────────────────────────────────
 
-/// Read pool.total_lend_deposited from raw account data.
+/// Read pool.market.total_supply_assets from raw account data.
 ///
 /// Layout (after 8-byte discriminator):
 ///   0..32   authority
@@ -111,7 +111,7 @@ fn try_send_ixs(
 ///   64..96  lend_mint
 ///   96..128 lp_mint
 ///   128..136 total_collateral_deposited
-///   136..144 total_lend_deposited
+///   136..144 market.total_supply_assets
 fn read_total_lend_deposited(svm: &LiteSVM, pool: &Pubkey) -> u64 {
     let data = svm.get_account(pool).unwrap().data;
     u64::from_le_bytes(data[8 + 136..8 + 144].try_into().unwrap())

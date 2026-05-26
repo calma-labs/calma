@@ -424,7 +424,7 @@ describe("rate-hedge", () => {
 
             it("pool totalBorrowed increased by amount + upfront fee", async () => {
                 const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-                expect(poolAccount.totalBorrowed.toNumber()).to.equal(BORROW_AMOUNT + EXPECTED_UPFRONT_FEE);
+                expect(poolAccount.market.totalBorrowShares.toNumber()).to.equal(BORROW_AMOUNT + EXPECTED_UPFRONT_FEE);
             });
         });
 
@@ -932,7 +932,7 @@ describe("rate-hedge", () => {
 
                 const poolAccount = await setup.program.account.pool.fetch(setup.pool);
                 // Ensure pool accounting is consistent — totalBorrowed >= 0
-                expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThanOrEqual(0);
+                expect(poolAccount.market.totalBorrowShares.toNumber()).to.be.greaterThanOrEqual(0);
             });
         });
     });

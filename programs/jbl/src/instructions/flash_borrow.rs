@@ -134,8 +134,9 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     // ── 3. Update pool accounting ─────────────────────────────────────────────
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .checked_sub(amount)
             .ok_or(ErrorCode::MathOverflow)?;
     }

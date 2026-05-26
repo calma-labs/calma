@@ -39,8 +39,8 @@ describe("participate and leave", () => {
 
         it("increments pool.totalLpIssued by the minted LP amount", async () => {
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalLpIssued.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
-            expect(poolAccount.totalLendDeposited.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal(PARTICIPATE_AMOUNT.toString());
         });
 
         it("decrements authority lend token account by the deposited amount", async () => {
@@ -94,7 +94,7 @@ describe("participate and leave", () => {
 
         it("decrements pool.totalLpIssued to 0 after full redemption", async () => {
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalLpIssued.toString()).to.equal("0");
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal("0");
         });
     });
 
@@ -118,8 +118,8 @@ describe("participate and leave", () => {
 
             const poolAccount = await setup.program.account.pool.fetch(pool);
             // totalLpIssued = FIRST_AMOUNT + SECOND_AMOUNT (1:1 and 2:1 ratio gives 1M + 2M = 3M)
-            expect(poolAccount.totalLpIssued.toString()).to.equal((FIRST_AMOUNT + SECOND_AMOUNT).toString());
-            expect(poolAccount.totalLendDeposited.toString()).to.equal((FIRST_AMOUNT + SECOND_AMOUNT).toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal((FIRST_AMOUNT + SECOND_AMOUNT).toString());
+            expect(poolAccount.market.totalSupplyAssets.toString()).to.equal((FIRST_AMOUNT + SECOND_AMOUNT).toString());
         });
     });
 

@@ -62,7 +62,7 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
         let position = ctx.accounts.user_position.load()?;
         let debt_shares = position.debt_shares;
         let total_due =
-            shares_to_amount(debt_shares, pool.total_borrowed, pool.total_debt_shares)
+            shares_to_amount(debt_shares, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?;
         let repay_amount = amount.min(total_due);
         require!(
@@ -75,8 +75,8 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
         } else {
             amount_to_shares_burned(
                 repay_amount,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
                 debt_shares,
             )
             .ok_or(crate::error::ErrorCode::MathOverflow)?
@@ -98,17 +98,19 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
     )?;
 
     // ── 4. Update pool and position state ─────────────────────────────────────
-    let (total_borrowed, total_debt_shares) = {
+    let (total_borrow_assets, total_borrow_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_sub(shares_to_burn)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_sub(repay_amount)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        (pool.total_borrowed, pool.total_debt_shares)
+        (pool.market.total_borrow_assets, pool.market.total_borrow_shares)
     };
 
     {
@@ -120,11 +122,11 @@ pub fn repay_handler(ctx: Context<Repay>, amount: u64) -> Result<()> {
     }
 
     msg!(
-        "Repaid {} tokens ({} shares). Pool total_borrowed: {}, total_shares: {}",
+        "Repaid {} tokens ({} shares). Pool total_borrow_assets: {}, total_shares: {}",
         repay_amount,
         shares_to_burn,
-        total_borrowed,
-        total_debt_shares,
+        total_borrow_assets,
+        total_borrow_shares,
     );
 
     Ok(())
