@@ -81,11 +81,11 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
             .checked_div(100)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
 
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 position.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(crate::error::ErrorCode::MathOverflow)?
         } else {
@@ -97,7 +97,7 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
             .ok_or(crate::error::ErrorCode::InsufficientFunds)?;
         require!(amount <= available, crate::error::ErrorCode::InsufficientFunds);
 
-        let new_shares = amount_to_shares(amount, pool.total_borrowed, pool.total_debt_shares)
+        let new_shares = amount_to_shares(amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         require!(new_shares > 0, crate::error::ErrorCode::InvalidAmount);
 
@@ -131,25 +131,27 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
     )?;
 
     // ── 5. Update pool state ──────────────────────────────────────────────────
-    let (total_borrowed, total_debt_shares) = {
+    let (total_borrow_assets, total_borrow_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(amount)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        (pool.total_borrowed, pool.total_debt_shares)
+        (pool.market.total_borrow_assets, pool.market.total_borrow_shares)
     };
 
     msg!(
-        "Borrowed {} lend tokens → {} shares. Pool total_borrowed: {}, total_shares: {}",
+        "Borrowed {} lend tokens → {} shares. Pool total_borrow_assets: {}, total_shares: {}",
         amount,
         new_shares,
-        total_borrowed,
-        total_debt_shares,
+        total_borrow_assets,
+        total_borrow_shares,
     );
 
     Ok(())

@@ -81,11 +81,11 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
             .ok_or(crate::error::ErrorCode::MathOverflow)?
             .checked_div(100)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 position.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(crate::error::ErrorCode::MathOverflow)?
         } else {

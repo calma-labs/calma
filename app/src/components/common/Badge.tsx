@@ -16,7 +16,14 @@ export function HealthBadge({ value }: { value: number }) {
   );
 }
 
-export function HFBadge({ value }: { value: number }) {
+export function HFBadge({ value }: { value: number | null }) {
+  if (value === null) {
+    return (
+      <span className="w-fit px-2 py-0.5 rounded-full text-[10px] font-semibold tabular-nums text-[#efe0f7]/30 bg-[#efe0f7]/5">
+        N/A
+      </span>
+    );
+  }
   const color =
     value >= 2.5
       ? "text-[#34d399] bg-[#34d399]/10"

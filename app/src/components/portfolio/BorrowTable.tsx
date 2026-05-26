@@ -78,10 +78,10 @@ export function BorrowTable() {
                   {pos.borrowAPY.toFixed(2)}%
                 </td>
                 <td className={TD + " text-right tabular-nums"}>
-                  {pos.ltv.toFixed(1)}%
+                  {pos.ltv !== null ? `${pos.ltv.toFixed(1)}%` : "N/A"}
                 </td>
                 <td className={TD + " text-right tabular-nums"}>
-                  ${pos.liqPrice.toFixed(4)}
+                  {pos.liqPrice !== null ? `$${pos.liqPrice.toFixed(4)}` : "N/A"}
                 </td>
                 <td className={TD + " text-right"}>
                   <div className="flex justify-end">

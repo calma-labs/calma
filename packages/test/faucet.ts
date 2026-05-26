@@ -11,7 +11,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
-import { setupTest, DEFAULT_FEE_CURVE, POOL_SPACE } from "./utils";
+import { POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
 // Hardcoded minter keypair for proof-of-concept faucet

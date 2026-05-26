@@ -90,8 +90,8 @@ export function MultiplyPositionPanel({
       Number(userPosition.collateral_deposited) / 10 ** colDec;
 
     const debtRaw = userPosition.debt_amount(
-      poolData.total_borrowed,
-      poolData.total_debt_shares,
+      poolData.total_borrow_assets,
+      poolData.total_borrow_shares,
     );
     const debtUi = Number(debtRaw) / 10 ** lndDec;
 
@@ -109,8 +109,8 @@ export function MultiplyPositionPanel({
       netAPY,
       collateralFormatted: userPosition.format_collateral(colDec),
       debtFormatted: userPosition.format_debt(
-        poolData.total_borrowed,
-        poolData.total_debt_shares,
+        poolData.total_borrow_assets,
+        poolData.total_borrow_shares,
         lndDec,
       ),
     };

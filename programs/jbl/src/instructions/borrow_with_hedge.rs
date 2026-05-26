@@ -141,11 +141,11 @@ pub fn borrow_with_hedge_handler(
             .checked_div(100)
             .ok_or(ErrorCode::MathOverflow)?;
 
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 ctx.accounts.user_position.load()?.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(ErrorCode::MathOverflow)?
         } else {
@@ -158,7 +158,7 @@ pub fn borrow_with_hedge_handler(
         // LTV check uses only `amount` (principal); fee is offer creator's risk.
         require!(amount <= available, ErrorCode::InsufficientFunds);
 
-        let shares = amount_to_shares(total_debt_amount, pool.total_borrowed, pool.total_debt_shares)
+        let shares = amount_to_shares(total_debt_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(ErrorCode::MathOverflow)?;
         require!(shares > 0, ErrorCode::InvalidAmount);
         shares
@@ -193,12 +193,14 @@ pub fn borrow_with_hedge_handler(
     // ── 6. Update pool state ──────────────────────────────────────────────────
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(total_debt_amount)
             .ok_or(ErrorCode::MathOverflow)?;
     }

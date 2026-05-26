@@ -1,3 +1,5 @@
+import type { PoolAccount } from '@/hooks/program/useLendingAccounts'
+
 export type Category = "stablecoin" | "volatile" | "lsd";
 
 export interface Pool {
@@ -12,14 +14,15 @@ export interface Pool {
   /** Lend token (borrowed / supplied as LP) */
   lendSymbol: string;
   lendIcon: string;
+  category: Category;
+  binancePerp?: string;
+  account: PoolAccount;
   supplyAPY: number;
   borrowAPY: number;
   totalSupplied: number;
   totalBorrowed: number;
   totalCollateral: number;
   utilization: number;
-  ltv: number;
-  category: Category;
   availableLiquidity: number;
 }
 

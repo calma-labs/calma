@@ -71,7 +71,7 @@ describe("flash-loan", () => {
                 await getAccount(connection, userLendTokenAccount)
             ).amount;
             const poolAccount = await program.account.pool.fetch(pool);
-            totalLendBefore = poolAccount.totalLendDeposited;
+            totalLendBefore = poolAccount.market.totalSupplyAssets;
 
             const borrowIx = await buildFlashBorrowIx(
                 setup,
@@ -99,7 +99,7 @@ describe("flash-loan", () => {
             const { program, pool } = setup;
             const poolAccount = await program.account.pool.fetch(pool);
             expect(
-                poolAccount.totalLendDeposited.sub(totalLendBefore).toNumber()
+                poolAccount.market.totalSupplyAssets.sub(totalLendBefore).toNumber()
             ).to.equal(FEE);
         });
 

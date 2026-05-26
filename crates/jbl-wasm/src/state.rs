@@ -17,7 +17,7 @@ const DISCRIMINATOR: usize = 8;
 // ── compile-time size assertions ──────────────────────────────────────────────
 
 const _: () = {
-    assert!(core::mem::size_of::<Pool>() == 41_248);
+    assert!(core::mem::size_of::<Pool>() == 41_264);
     assert!(core::mem::size_of::<UserPosition>() == 88);
     assert!(core::mem::size_of::<RateHedgeOffer>() == 120);
     assert!(core::mem::size_of::<RateHedgeMatch>() == 112);
@@ -83,32 +83,42 @@ impl PoolAccount {
 
     /// Sum of lend tokens currently deposited.
     #[wasm_bindgen(getter)]
-    pub fn total_lend_deposited(&self) -> u64 {
-        self.0.total_lend_deposited
-    }
-
-    /// Total borrowed lend tokens outstanding.
-    #[wasm_bindgen(getter)]
-    pub fn total_borrowed(&self) -> u64 {
-        self.0.total_borrowed
-    }
-
-    /// Total debt shares outstanding.
-    #[wasm_bindgen(getter)]
-    pub fn total_debt_shares(&self) -> u64 {
-        self.0.total_debt_shares
-    }
-
-    /// Unix timestamp of the last interest accrual.
-    #[wasm_bindgen(getter)]
-    pub fn last_accrual_ts(&self) -> i64 {
-        self.0.last_accrual_ts
+    pub fn total_supply_assets(&self) -> u64 {
+        self.0.market.total_supply_assets
     }
 
     /// Total LP tokens outstanding for the lend side.
     #[wasm_bindgen(getter)]
-    pub fn total_lp_issued(&self) -> u64 {
-        self.0.total_lp_issued
+    pub fn total_supply_shares(&self) -> u64 {
+        self.0.market.total_supply_shares
+    }
+
+    /// Total borrowed lend tokens outstanding.
+    #[wasm_bindgen(getter)]
+    pub fn total_borrow_assets(&self) -> u64 {
+        self.0.market.total_borrow_assets
+    }
+
+    /// Total debt shares outstanding.
+    #[wasm_bindgen(getter)]
+    pub fn total_borrow_shares(&self) -> u64 {
+        self.0.market.total_borrow_shares
+    }
+
+    /// Unix timestamp of the last interest accrual.
+    #[wasm_bindgen(getter)]
+    pub fn last_update(&self) -> i64 {
+        self.0.market.last_update
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn fee(&self) -> u64 {
+        self.0.market.fee
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn assets_in_queue(&self) -> u64 {
+        self.0.market.assets_in_queue
     }
 
     /// LTV percent (e.g. 80 means 80%).
@@ -146,6 +156,40 @@ impl PoolAccount {
     /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
     pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
         self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.enabled)
+    }
+
+    /// Effective utilization in basis points (0..10_000), including pending withdrawals.
+    pub fn utilization_bps(&self) -> u16 {
+        let total_lend = self.0.market.total_supply_assets;
+        if total_lend == 0 {
+            return 0;
+        }
+        let effective_borrowed =
+            self.0.market.total_borrow_assets.saturating_add(self.pending_withdrawals());
+        ((effective_borrowed as u128 * 10_000 / total_lend as u128).min(10_000)) as u16
+    }
+
+    /// Borrow APY in basis points at the current utilization.
+    pub fn borrow_apy_bps(&self) -> u32 {
+        self.0.fee_config.get_fee_bps(self.utilization_bps() as u64)
+    }
+
+    /// Supply APY in basis points: borrow_apy × (total_borrow_assets / total_supply_assets).
+    pub fn supply_apy_bps(&self) -> u32 {
+        let total_lend = self.0.market.total_supply_assets;
+        if total_lend == 0 {
+            return 0;
+        }
+        let borrow_apy = self.borrow_apy_bps() as u128;
+        let total_borrowed = self.0.market.total_borrow_assets as u128;
+        ((borrow_apy * total_borrowed) / total_lend as u128) as u32
+    }
+
+    /// Available liquidity in raw token units (lend deposited minus effective borrowed).
+    pub fn available_liquidity(&self) -> u64 {
+        let effective_borrowed =
+            self.0.market.total_borrow_assets.saturating_add(self.pending_withdrawals());
+        self.0.market.total_supply_assets.saturating_sub(effective_borrowed)
     }
 }
 
@@ -210,6 +254,34 @@ impl UserPositionAccount {
     /// Delegates to `jbl_math::max_borrowable` — same formula as the on-chain LTV check.
     pub fn max_borrowable(&self, ltv_percent: u8) -> u64 {
         jbl_math::max_borrowable(self.0.collateral_deposited, ltv_percent)
+    }
+
+    /// Compute Loan-to-Value (LTV) ratio in basis points.
+    pub fn ltv(&self, total_borrowed: u64, total_debt_shares: u64) -> Option<u32> {
+        let debt = self.debt_amount(total_borrowed, total_debt_shares);
+        jbl_math::compute_ltv(debt, self.0.collateral_deposited)
+    }
+
+    /// Compute Health Factor in basis points (1.0 = 10,000).
+    pub fn health_factor(
+        &self,
+        total_borrowed: u64,
+        total_debt_shares: u64,
+        ltv_percent: u8,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(total_borrowed, total_debt_shares);
+        jbl_math::compute_health_factor(self.0.collateral_deposited, ltv_percent, debt)
+    }
+
+    /// Compute Liquidation "Price" (ratio) in basis points.
+    pub fn liq_price(
+        &self,
+        total_borrowed: u64,
+        total_debt_shares: u64,
+        ltv_percent: u8,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(total_borrowed, total_debt_shares);
+        jbl_math::compute_liquidation_threshold(debt, self.0.collateral_deposited, ltv_percent)
     }
 
     /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
@@ -282,7 +354,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_248);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_264);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);

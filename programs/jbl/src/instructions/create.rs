@@ -87,11 +87,13 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     pool.lend_mint = ctx.accounts.lend_mint.key();
     pool.lp_mint = ctx.accounts.lp_mint.key();
     pool.total_collateral_deposited = 0;
-    pool.total_lend_deposited = 0;
-    pool.total_borrowed = 0;
-    pool.total_debt_shares = 0;
-    pool.last_accrual_ts = Clock::get()?.unix_timestamp;
-    pool.total_lp_issued = 0;
+    pool.market.total_supply_assets = 0;
+    pool.market.total_supply_shares = 0;
+    pool.market.total_borrow_assets = 0;
+    pool.market.total_borrow_shares = 0;
+    pool.market.last_update = Clock::get()?.unix_timestamp;
+    pool.market.fee = 0;
+    pool.market.assets_in_queue = 0;
     pool.ltv_percent = ltv_percent;
     // Default: single enabled flat curve at 1% APY (100 bps); curves 1–3 stay disabled (zeroed).
     pool.fee_config.curves[0].b = crate::fees::DEFAULT_POOL_FEE_BPS;

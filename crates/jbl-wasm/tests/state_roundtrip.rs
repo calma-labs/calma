@@ -46,13 +46,15 @@ fn build_and_load() -> (Store<()>, Instance) {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest_dir.parent().unwrap().parent().unwrap();
 
+    const CRATE_NAME: &str = "jbl-wasm"; 
+
     let status = std::process::Command::new("cargo")
         .args([
             "build",
             "--target",
             "wasm32-unknown-unknown",
             "-p",
-            "jbl-math-wasm",
+            CRATE_NAME,
         ])
         .current_dir(workspace)
         .status()
@@ -64,7 +66,7 @@ fn build_and_load() -> (Store<()>, Instance) {
          (`rustup target add wasm32-unknown-unknown`)"
     );
 
-    let wasm_path = workspace.join("target/wasm32-unknown-unknown/debug/jbl_math_wasm.wasm");
+    let wasm_path = workspace.join(format!("target/wasm32-unknown-unknown/debug/{}.wasm", CRATE_NAME.replace('-', "_")));
     let wasm_bytes = std::fs::read(&wasm_path)
         .expect("WASM binary not found after a successful build -- this is a bug");
 
@@ -267,8 +269,8 @@ fn pool_zeroed_roundtrip_wasm() {
 
     assert_eq!(parsed.lend_mint, original.lend_mint);
     assert_eq!(parsed.collateral_mint, original.collateral_mint);
-    assert_eq!(parsed.total_borrowed, original.total_borrowed);
-    assert_eq!(parsed.total_debt_shares, original.total_debt_shares);
+    assert_eq!(parsed.market.total_borrow_assets, original.market.total_borrow_assets);
+    assert_eq!(parsed.market.total_borrow_shares, original.market.total_borrow_shares);
 }
 
 // ── error path ────────────────────────────────────────────────────────────────
