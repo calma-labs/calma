@@ -76,26 +76,11 @@ pub fn process_vault_queue_entry_handler(ctx: Context<ProcessVaultQueueEntry>) -
         crate::error::ErrorCode::QueueEntryMismatch
     );
 
-    // ── 3. Convert LP shares → lend tokens using total_supply_assets ──────────
-    // `entry.amount` stores the LP shares burned at `leave` time.
-    // Using total_supply_assets (not vault_balance) gives each share its full
-    // proportional claim; the vault-balance liquidity check in step 4 ensures
-    // we only process when liquidity is available.
-    let shares = entry.amount;
+    // ── 3. Read the token amount locked in at enqueue time ───────────────────
+    // `entry.amount` stores the lend-token amount fixed when the user requested
+    // withdrawal; `total_supply_shares` was already decremented at that point.
+    let withdraw_amount = entry.amount;
     let vault_balance = ctx.accounts.lend_vault.amount;
-
-    let withdraw_amount = {
-        let pool = ctx.accounts.pool.load()?;
-        require!(
-            pool.market.total_supply_shares > 0,
-            crate::error::ErrorCode::InvalidAmount
-        );
-        (shares as u128)
-            .checked_mul(pool.market.total_supply_assets as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(pool.market.total_supply_shares as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)? as u64
-    };
 
     // ── 4. Check liquidity — do NOT dequeue on failure ────────────────────────
     require!(
@@ -104,19 +89,19 @@ pub fn process_vault_queue_entry_handler(ctx: Context<ProcessVaultQueueEntry>) -
     );
     require!(withdraw_amount > 0, crate::error::ErrorCode::InvalidAmount);
 
-    // ── 5. Dequeue, decrement total_supply_shares and total_supply_assets ─────
+    // ── 5. Dequeue and decrement total_supply_assets ──────────────────────────
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
         pool.withdrawal_queue.pop()?;
-        pool.market.total_supply_shares = pool
-            .market
-            .total_supply_shares
-            .checked_sub(shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
         pool.market.total_supply_assets = pool
             .market
             .total_supply_assets
             .checked_sub(withdraw_amount.min(pool.market.total_supply_assets))
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        pool.market.assets_in_queue = pool
+            .market
+            .assets_in_queue
+            .checked_sub(withdraw_amount)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
     }
 
@@ -138,13 +123,10 @@ pub fn process_vault_queue_entry_handler(ctx: Context<ProcessVaultQueueEntry>) -
         withdraw_amount,
     )?;
 
-    let total_supply_shares = ctx.accounts.pool.load()?.market.total_supply_shares;
     msg!(
-        "ProcessVaultQueue: fulfilled {} LP shares → {} lend tokens for {}. total_supply_shares remaining: {}",
-        shares,
+        "ProcessVaultQueue: fulfilled {} lend tokens for {}.",
         withdraw_amount,
         entry.requester,
-        total_supply_shares,
     );
 
     Ok(())
