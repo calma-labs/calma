@@ -2,7 +2,7 @@ import * as anchor from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
 import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
-import { setupTest, createLender, participateInPool, TestSetup } from "./utils";
+import { setupTest, createLender, participateInPool, TestSetup, irmAccounts } from "./utils";
 
 /** Deposited by setup.authority into the lend vault so borrowers have something to borrow. */
 const LEND_LIQUIDITY = 500_000_000; // 500 lend tokens
@@ -28,6 +28,7 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
             lendMint: setup.lendMint,
             authority: authority.publicKey,
         })
+        .remainingAccounts(irmAccounts(setup))
         .signers([authority])
         .rpc();
 }
@@ -40,6 +41,7 @@ async function repay(setup: TestSetup, authority: anchor.web3.Keypair, amount: n
             lendMint: setup.lendMint,
             authority: authority.publicKey,
         })
+        .remainingAccounts(irmAccounts(setup))
         .signers([authority])
         .rpc();
 }
@@ -176,6 +178,7 @@ describe("borrow", () => {
                 await setup.program.methods
                     .borrow(new anchor.BN(50_000_000))
                     .accounts({ pool: setup.pool, lendMint: setup.lendMint, authority: stranger.publicKey })
+                    .remainingAccounts(irmAccounts(setup))
                     .signers([stranger])
                     .rpc();
                 expect.fail("expected borrow to be rejected");
@@ -393,15 +396,18 @@ describe("borrow", () => {
             const positionBefore = await program.account.userPosition.fetch(userPositionPda);
             const poolBefore = await program.account.pool.fetch(pool);
 
-            // Calculate exact debt amount using BigInt for precision (matches program's ceiling division)
+            // Calculate the current debt using ceiling division (matches program's shares_to_amount).
+            // Add a small buffer (10 tokens) so the repay covers any interest that accrues
+            // during the repay transaction itself (accrue_interest runs before the repay math).
+            // The repay handler caps the actual transfer at total_due, so over-paying is safe.
             const debtShares = BigInt(positionBefore.debtShares.toString());
             const totalBorrowed = BigInt(poolBefore.market.totalBorrowAssets.toString());
             const totalDebtShares = BigInt(poolBefore.market.totalBorrowShares.toString());
-            // shares_to_amount uses ceiling division: (shares * total_borrowed + total_debt_shares - 1) / total_debt_shares
-            const exactDebt = Number((debtShares * totalBorrowed + totalDebtShares - BigInt(1)) / totalDebtShares);
+            const currentDebt = Number((debtShares * totalBorrowed + totalDebtShares - BigInt(1)) / totalDebtShares);
+            const repayAmount = currentDebt + 10;
 
-            // Repay the exact calculated debt
-            await repay(setup, authority, exactDebt);
+            // Repay with a small buffer — the handler will only transfer total_due
+            await repay(setup, authority, repayAmount);
 
             // Verify all debt is cleared
             const positionAfter = await program.account.userPosition.fetch(userPositionPda);
@@ -437,6 +443,7 @@ describe("borrow", () => {
                         authority: setup.authority.publicKey,
                         userTokenAccount: setup.userCollateralTokenAccount,
                     })
+                    .remainingAccounts(irmAccounts(setup))
                     .signers([setup.authority])
                     .rpc();
                 expect.fail("expected withdraw to be rejected");

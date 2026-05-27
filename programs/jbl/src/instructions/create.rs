@@ -2,17 +2,8 @@ use crate::state::Pool;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-pub const POOL_SPACE: usize = 8 + std::mem::size_of::<Pool>();
-
-/// Instruction-arg representation of a single linear fee curve.
-/// Borsh-serialized (separate from the on-chain zero-copy `PolynomialCurve`).
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
-pub struct CurveArgs {
-    pub a: i64,
-    pub b: i64,
-    /// Whether this curve is active.
-    pub enabled: bool,
-}
+#[constant]
+pub const POOL_SPACE: u64 = (8 + std::mem::size_of::<Pool>()) as u64;
 
 #[derive(Accounts)]
 pub struct Create<'info> {
@@ -102,9 +93,6 @@ pub fn create_handler(
     pool.ltv_percent = ltv_percent;
     pool.rate_program = rate_program;
     pool.rate_state = rate_state;
-    // Default: single enabled flat curve at 1% APY (100 bps); curves 1–3 stay disabled (zeroed).
-    pool.fee_config.curves[0].b = crate::fees::DEFAULT_POOL_FEE_BPS;
-    pool.fee_config.curves[0].enabled = 1;
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 

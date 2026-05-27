@@ -75,7 +75,7 @@ pub struct BorrowWithHedge<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 112, // RateHedgeMatch: 32+32+8+8+8+8+8+1+7 = 112
+        space = 8 + std::mem::size_of::<RateHedgeMatch>(),
         seeds = [b"rate_hedge_match", user_position.key().as_ref()],
         bump,
     )]
@@ -122,7 +122,7 @@ pub fn borrow_with_hedge_handler<'a>(
         .checked_add(upfront_fee)
         .ok_or(ErrorCode::MathOverflow)?;
 
-    // ── 2. Accrue interest ────────────────────────────────────────────────────
+    // ── 2. Accrue interest via IRM CPI ───────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
     let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;

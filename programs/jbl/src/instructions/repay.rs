@@ -53,7 +53,7 @@ pub struct Repay<'info> {
 pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
     let current_ts = Clock::get()?.unix_timestamp;
 
-    // ── 1. Accrue interest on the pool ────────────────────────────────────────
+    // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 

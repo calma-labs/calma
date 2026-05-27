@@ -3,7 +3,6 @@ import { Program, AnchorProvider, BN } from "@anchor-lang/core";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
-import { Jbl } from "../../target/types/jbl";
 import { setupTest, participateInPool, TestSetup } from "./utils";
 
 describe("irm initialize", () => {
@@ -12,13 +11,17 @@ describe("irm initialize", () => {
     const program = anchor.workspace.Irm as Program<Irm>;
 
     let payer: Keypair;
+    let authority: Keypair;
     let pool: PublicKey;
     let irmConfig: PublicKey;
 
     before(async () => {
         payer = Keypair.generate();
+        authority = Keypair.generate();
         const sig = await provider.connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
         await provider.connection.confirmTransaction(sig);
+        const sigAuth = await provider.connection.requestAirdrop(authority.publicKey, 2 * LAMPORTS_PER_SOL);
+        await provider.connection.confirmTransaction(sigAuth);
 
         pool = Keypair.generate().publicKey;
         [irmConfig] = PublicKey.findProgramAddressSync(
@@ -27,35 +30,34 @@ describe("irm initialize", () => {
         );
     });
 
-    it("initializes irm config with correct a, b, and pool", async () => {
-        const a = new BN(1000);
-        const b = new BN(500);
-
+    it("initializes irm config with default flat 100 bps curve", async () => {
         await program.methods
-            .initialize(a, b)
+            .initialize()
             .accounts({
                 pool,
+                authority: authority.publicKey,
                 payer: payer.publicKey,
             })
-            .signers([payer])
+            .signers([payer, authority])
             .rpc();
 
         const config = await program.account.irmConfig.fetch(irmConfig);
-        expect(config.a.toNumber()).to.equal(1000);
-        expect(config.b.toNumber()).to.equal(500);
         expect(config.pool.toString()).to.equal(pool.toString());
+        const c0 = config.model.curves[0];
+        expect(c0.b.toNumber()).to.equal(100);
+        expect(c0.enabled).to.not.equal(0);
     });
 
-    it("calculates borrow rate correctly", async () => {
-        // a=1000, b=500, utilization=5000 => 1000*5000/10000 + 500 = 1000
+    it("calculates borrow rate from default flat curve", async () => {
+        // default: flat 100 bps regardless of utilization
         const result = await program.methods
-            .borrowRate(5000)
-            .accounts({ irmState: irmConfig, pool })
+            .borrowRate(new BN(5000))
+            .accounts({ pool })
             .simulate();
 
         const log = result.raw.find((l) => l.includes("irm::borrow_rate"));
         console.log("IRM log:", log);
-        expect(log).to.match(/irm::borrow_rate utilization=5000 rate=1000/);
+        expect(log).to.match(/irm::borrow_rate utilization=5000 rate=100/);
     });
 
     it("borrow rate via CPI from JBL borrow", async () => {
@@ -68,9 +70,9 @@ describe("irm initialize", () => {
         );
 
         await irmProgram.methods
-            .initialize(new BN(1000), new BN(500))
-            .accounts({ pool: poolKeypair.publicKey, payer: payer.publicKey })
-            .signers([payer])
+            .initialize()
+            .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
+            .signers([payer, authority])
             .rpc();
 
         const jblSetup: TestSetup = await setupTest(75, {
@@ -124,12 +126,13 @@ describe("irm initialize", () => {
         );
 
         await program.methods
-            .initialize(new BN(200), new BN(300))
+            .initialize()
             .accounts({
                 pool: pool2,
+                authority: authority.publicKey,
                 payer: payer.publicKey,
             })
-            .signers([payer])
+            .signers([payer, authority])
             .rpc();
 
         expect(irmConfig.toString()).to.not.equal(irmConfig2.toString());

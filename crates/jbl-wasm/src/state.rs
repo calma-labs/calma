@@ -9,6 +9,7 @@
 //! byte-swapping is required.
 
 use bytemuck::Pod;
+use jbl_irm::IrmConfig;
 use jbl_state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
 use wasm_bindgen::prelude::*;
 
@@ -17,10 +18,11 @@ const DISCRIMINATOR: usize = 8;
 // ── compile-time size assertions ──────────────────────────────────────────────
 
 const _: () = {
-    assert!(core::mem::size_of::<Pool>() == 41_328);
+    assert!(core::mem::size_of::<Pool>() == 41_232); 
     assert!(core::mem::size_of::<UserPosition>() == 88);
     assert!(core::mem::size_of::<RateHedgeOffer>() == 120);
     assert!(core::mem::size_of::<RateHedgeMatch>() == 112);
+    assert!(core::mem::size_of::<IrmConfig>() == 232);
 };
 
 // ── wrapper types ─────────────────────────────────────────────────────────────
@@ -31,6 +33,9 @@ pub struct PoolAccount(pub(crate) Pool);
 /// Wasm-exposed wrapper around a parsed `UserPosition` account.
 #[wasm_bindgen]
 pub struct UserPositionAccount(pub(crate) UserPosition);
+/// Wasm-exposed wrapper around a parsed `IrmConfig` account from the irm program.
+#[wasm_bindgen]
+pub struct IrmConfigAccount(IrmConfig);
 pub struct RateHedgeOfferAccount(pub RateHedgeOffer);
 pub struct RateHedgeMatchAccount(pub RateHedgeMatch);
 
@@ -138,26 +143,6 @@ impl PoolAccount {
         self.0.market.assets_in_queue
     }
 
-    /// Borrow rate in basis points for a given utilization (0..10_000).
-    pub fn fee_bps(&self, utilization_bps: u16) -> u32 {
-        self.0.fee_config.get_fee_bps(utilization_bps as u64)
-    }
-
-    /// Slope coefficient (a) for the given curve index (0–3).
-    pub fn fee_curve_a(&self, curve: u8) -> i64 {
-        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.a)
-    }
-
-    /// Base rate (b) for the given curve index (0–3).
-    pub fn fee_curve_b(&self, curve: u8) -> i64 {
-        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.b)
-    }
-
-    /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
-    pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
-        self.0.fee_config.curves.get(curve as usize).map_or(0, |c| c.enabled)
-    }
-
     /// Effective utilization in basis points (0..10_000), including pending withdrawals.
     pub fn utilization_bps(&self) -> u16 {
         let total_lend = self.0.market.total_supply_assets;
@@ -167,22 +152,6 @@ impl PoolAccount {
         let effective_borrowed =
             self.0.market.total_borrow_assets.saturating_add(self.pending_withdrawals());
         ((effective_borrowed as u128 * 10_000 / total_lend as u128).min(10_000)) as u16
-    }
-
-    /// Borrow APY in basis points at the current utilization.
-    pub fn borrow_apy_bps(&self) -> u32 {
-        self.0.fee_config.get_fee_bps(self.utilization_bps() as u64)
-    }
-
-    /// Supply APY in basis points: borrow_apy × (total_borrow_assets / total_supply_assets).
-    pub fn supply_apy_bps(&self) -> u32 {
-        let total_lend = self.0.market.total_supply_assets;
-        if total_lend == 0 {
-            return 0;
-        }
-        let borrow_apy = self.borrow_apy_bps() as u128;
-        let total_borrowed = self.0.market.total_borrow_assets as u128;
-        ((borrow_apy * total_borrowed) / total_lend as u128) as u32
     }
 
     /// Available liquidity in raw token units (lend deposited minus effective borrowed).
@@ -298,6 +267,50 @@ impl UserPositionAccount {
     }
 }
 
+#[wasm_bindgen]
+impl IrmConfigAccount {
+    /// Parse from raw Anchor account bytes (8-byte discriminator included).
+    pub fn from_bytes(account_data: &[u8]) -> Option<IrmConfigAccount> {
+        parse(account_data).map(Self)
+    }
+
+    /// Pool pubkey this IRM config is bound to, as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn pool(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.pool).to_vec()
+    }
+
+    /// Effective borrow rate in basis points for a given utilization (0..10_000).
+    pub fn fee_bps(&self, utilization_bps: u64) -> u32 {
+        self.0.model.get_fee_bps(utilization_bps)
+    }
+
+    /// Slope coefficient (a) for the given curve index (0–3).
+    pub fn fee_curve_a(&self, curve: u8) -> i64 {
+        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a)
+    }
+
+    /// Base rate (b) for the given curve index (0–3).
+    pub fn fee_curve_b(&self, curve: u8) -> i64 {
+        self.0.model.curves.get(curve as usize).map_or(0, |c| c.b)
+    }
+
+    /// Post-kink slope (a2) for the given curve index (0–3).
+    pub fn fee_curve_a2(&self, curve: u8) -> i64 {
+        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a2)
+    }
+
+    /// Kink point in utilization basis points (0..=10_000) for the given curve index (0–3).
+    pub fn fee_curve_kink(&self, curve: u8) -> u64 {
+        self.0.model.curves.get(curve as usize).map_or(0, |c| c.kink)
+    }
+
+    /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
+    pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
+        self.0.model.curves.get(curve as usize).map_or(0, |c| c.enabled)
+    }
+}
+
 impl RateHedgeOfferAccount {
     pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
         parse(account_data).map(Self)
@@ -354,7 +367,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_264);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_232);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);

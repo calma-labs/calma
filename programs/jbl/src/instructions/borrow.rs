@@ -66,7 +66,7 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
         crate::error::ErrorCode::InsufficientFunds
     );
 
-    // ── 1. Accrue interest on the pool ────────────────────────────────────────
+    // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
     let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;

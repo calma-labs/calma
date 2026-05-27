@@ -6,7 +6,7 @@ import {
     getMint,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, TestSetup, irmAccounts } from "./utils";
 
 const PARTICIPATE_AMOUNT = 1_000_000; // 1 token (6 decimals)
 
@@ -216,6 +216,7 @@ describe("participate and leave", () => {
                     lendMint: setup.lendMint,
                     authority: setup.authority.publicKey,
                 })
+                .remainingAccounts(irmAccounts(setup))
                 .signers([setup.authority])
                 .rpc();
         });

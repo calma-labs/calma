@@ -124,7 +124,7 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
     };
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
-    // ── 1. Accrue interest so shares reflect current state ────────────────────
+    // ── 1. Accrue interest so shares reflect current state (via IRM CPI) ─────
     let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 

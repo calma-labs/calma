@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
-
-use crate::state::IrmConfig;
+use jbl_irm::{IrmConfig, DEFAULT_POOL_FEE_BPS};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -14,16 +13,19 @@ pub struct Initialize<'info> {
     pub irm_config: AccountLoader<'info, IrmConfig>,
     /// CHECK: pool is used only as a seed for PDA derivation
     pub pool: UncheckedAccount<'info>,
+    /// The authority that will be allowed to update the fee curve.
+    pub authority: Signer<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Initialize>, a: u64, b: u64) -> Result<()> {
+pub fn handler(ctx: Context<Initialize>) -> Result<()> {
     let mut config = ctx.accounts.irm_config.load_init()?;
     config.pool = ctx.accounts.pool.key();
-    config.a = a;
-    config.b = b;
+    config.authority = ctx.accounts.authority.key();
+    config.model.curves[0].b = DEFAULT_POOL_FEE_BPS;
+    config.model.curves[0].enabled = 1;
     config.bump = ctx.bumps.irm_config;
     Ok(())
 }

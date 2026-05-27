@@ -18,7 +18,7 @@ pub struct CreateRateHedgeOffer<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 120, // RateHedgeOffer: 32+32+8+8+8+8+8+8+1+7 = 120
+        space = 8 + std::mem::size_of::<RateHedgeOffer>(),
         seeds = [
             b"rate_hedge_offer",
             pool.key().as_ref(),

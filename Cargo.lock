@@ -1895,7 +1895,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
- "jbl-state",
+ "jbl-irm",
 ]
 
 [[package]]
@@ -1982,6 +1982,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jbl-irm"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+]
+
+[[package]]
 name = "jbl-math"
 version = "0.1.0"
 
@@ -1991,6 +1999,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "jbl-irm",
  "jbl-math",
 ]
 
@@ -2000,6 +2009,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "jbl-irm",
  "jbl-math",
  "jbl-state",
  "wasm-bindgen",

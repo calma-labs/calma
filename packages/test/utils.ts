@@ -7,9 +7,12 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
+import { Irm } from "../../target/types/irm";
 
-/** Size of the Pool account on-chain: 8-byte discriminant + Pool struct (41 312 bytes). */
-export const POOL_SPACE = 8 + 41328;
+import JblIdl from "../../target/idl/jbl.json";
+export const POOL_SPACE: number = Number(
+  JblIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
+);
 
 export interface TestSetup {
   provider: AnchorProvider;
@@ -31,6 +34,8 @@ export interface TestSetup {
   userCollateralTokenAccount: PublicKey;
   /** Authority's lend token account. */
   userLendTokenAccount: PublicKey;
+  irmConfig: PublicKey;
+  irmProgramId: PublicKey;
 }
 
 /**
@@ -73,6 +78,14 @@ export async function setupTest(
   const poolKeypair = opts.poolKeypair ?? Keypair.generate();
   const pool = poolKeypair.publicKey;
 
+  const irmProgram = anchor.workspace.Irm as Program<Irm>;
+  const [irmConfigPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("irm_config"), pool.toBuffer()],
+    irmProgram.programId
+  );
+  const irmProgramId = opts.rateProgram ?? irmProgram.programId;
+  const irmConfig = opts.rateState ?? irmConfigPda;
+
   const [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
 
   const [collateralVaultPda] = PublicKey.findProgramAddressSync(
@@ -106,6 +119,15 @@ export async function setupTest(
   );
   await mintTo(connection, payer, lendMint, userLendTokenAccount, authority, 1_000_000_000);
 
+  // Initialize the IRM for this pool (unless the caller supplied an explicit rate program).
+  if (!opts.rateProgram) {
+    await irmProgram.methods
+      .initialize()
+      .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
+      .signers([payer, authority])
+      .rpc();
+  }
+
   // Pre-create the pool account via SystemProgram.createAccount (top-level instruction,
   // no CPI size limit).  Pool keypair signs this instruction.
   const poolRent = await connection.getMinimumBalanceForRentExemption(POOL_SPACE);
@@ -119,7 +141,7 @@ export async function setupTest(
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, opts.rateProgram ?? SystemProgram.programId, opts.rateState ?? SystemProgram.programId)
+    .create(ltvPercent, irmProgramId, irmConfig)
     .accounts({
       pool,
       collateralMint,
@@ -147,7 +169,16 @@ export async function setupTest(
     userPositionPda,
     userCollateralTokenAccount,
     userLendTokenAccount,
+    irmConfig,
+    irmProgramId,
   };
+}
+
+export function irmAccounts(setup: TestSetup) {
+  return [
+    { pubkey: setup.irmProgramId, isWritable: false, isSigner: false },
+    { pubkey: setup.irmConfig, isWritable: false, isSigner: false },
+  ];
 }
 
 export interface Lender {

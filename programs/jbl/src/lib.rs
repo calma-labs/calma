@@ -30,18 +30,6 @@ pub mod jbl {
         create_handler(ctx, ltv_percent, rate_program, rate_state)
     }
 
-    pub fn set_fee_curve(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
-        set_fee_curve_handler(ctx, index, curve)
-    }
-
-    pub fn enable_fee_curve(ctx: Context<EnableFeeCurve>, index: u8) -> Result<()> {
-        enable_fee_curve_handler(ctx, index)
-    }
-
-    pub fn disable_fee_curve(ctx: Context<DisableFeeCurve>, index: u8) -> Result<()> {
-        disable_fee_curve_handler(ctx, index)
-    }
-
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {
         deposit_collateral_handler(ctx, amount)
     }

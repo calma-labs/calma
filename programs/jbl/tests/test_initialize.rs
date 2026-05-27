@@ -149,19 +149,9 @@ fn test_create() {
 
 #[test]
 fn test_pool_size() {
-    // Pool layout (repr(C), no implicit padding):
-    //   4 × Pubkey (32)                        = 128
-    //   6 × u64/i64 (8)                        = 48
-    //   fee_config 4 curves × 24 bytes         = 96
-    //   ltv_percent, lp_mint_bump (1 each)     = 2
-    //   _pad [u8;6]                            = 6
-    //   WithdrawalQueue:
-    //     head (u16) + tail (u16) + _pad [u8;4] = 8
-    //     entries [WithdrawalQueueEntry; 1024], each 40 bytes = 40960
-    //                                                 total = 41248
     assert_eq!(
         std::mem::size_of::<Pool>(),
-        41264,
+        41_232,
         "Pool size changed — update POOL_SPACE in create.rs and the TS test helper if intentional",
     );
 }

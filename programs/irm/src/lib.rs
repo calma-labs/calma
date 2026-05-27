@@ -4,7 +4,9 @@ pub mod state;
 
 use anchor_lang::prelude::*;
 
+pub use error::ErrorCode;
 pub use instructions::*;
+pub use jbl_irm::*;
 
 declare_id!("3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC");
 
@@ -12,11 +14,15 @@ declare_id!("3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC");
 pub mod irm {
     use super::*;
 
-    pub fn borrow_rate(ctx: Context<BorrowRate>, utilization_bps: u32) -> Result<u32> {
+    pub fn borrow_rate(ctx: Context<BorrowRate>, utilization_bps: u64) -> Result<u32> {
         borrow_rate::handler(ctx, utilization_bps)
     }
 
-    pub fn initialize(ctx: Context<Initialize>, a: u64, b: u64) -> Result<()> {
-        initialize::handler(ctx, a, b)
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        initialize::handler(ctx)
+    }
+
+    pub fn set_fee_curve(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
+        set_fee_curve::handler(ctx, index, curve)
     }
 }
