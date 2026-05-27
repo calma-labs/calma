@@ -1,7 +1,7 @@
 use crate::state::Pool;
 use anchor_lang::prelude::*;
 
-pub fn fetch_irm_rate(pool: &Pool, remaining_accounts: &[AccountInfo]) -> Result<Option<u32>> {
+pub fn fetch_irm_rate<'a>(pool: &Pool, pool_account: AccountInfo<'a>, remaining_accounts: &[AccountInfo<'a>]) -> Result<Option<u32>> {
     if pool.rate_program == Pubkey::default() {
         return Ok(None);
     }
@@ -23,6 +23,7 @@ pub fn fetch_irm_rate(pool: &Pool, remaining_accounts: &[AccountInfo]) -> Result
         *remaining_accounts[0].key,
         irm::cpi::accounts::BorrowRate {
             irm_state: remaining_accounts[1].clone(),
+            pool: pool_account,
         },
     );
     Ok(Some(

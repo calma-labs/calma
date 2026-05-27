@@ -59,7 +59,7 @@ pub struct Borrow<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
+pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     require!(
         ctx.accounts.lend_vault.amount >= amount,
@@ -68,7 +68,7 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. LTV check and share calculation ───────────────────────────────────

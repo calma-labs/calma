@@ -110,7 +110,7 @@ pub struct SettleRateHedgeMatch<'info> {
 /// 5. Adjust the borrower's debt shares so their outstanding debt = `amount` (their cap).
 /// 6. Restore offer capacity and decrement `locked_tokens`.
 /// 7. Close the match account (rent returned to cranker).
-pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Result<()> {
+pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
     let current_ts = Clock::get()?.unix_timestamp;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
     // ── 1. Accrue interest so shares reflect current state ────────────────────
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. Snapshot match fields already done above ───────────────────────────
