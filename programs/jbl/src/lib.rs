@@ -58,10 +58,6 @@ pub mod jbl {
         withdraw_lent_handler(ctx, shares)
     }
 
-    pub fn process_vault_queue_entry(ctx: Context<ProcessVaultQueueEntry>) -> Result<()> {
-        process_vault_queue_entry_handler(ctx)
-    }
-
     pub fn borrow_with_hedge<'a>(
         ctx: Context<'a, BorrowWithHedge<'a>>,
         amount: u64,

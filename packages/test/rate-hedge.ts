@@ -3,7 +3,7 @@ import { BN } from "@anchor-lang/core";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getAccount, createMint, createAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, createLender, participateInPool, TestSetup, irmAccounts } from "./utils";
+import { setupTest, createLender, participateInPool, TestSetup } from "./utils";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -391,8 +391,9 @@ describe("rate-hedge", () => {
                         userPosition: borrower.userPositionPda,
                         rateHedgeOffer: offerPda,
                         rateHedgeMatch: matchPda,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
-                    .remainingAccounts(irmAccounts(setup))
                     .signers([borrower.authority])
                     .rpc();
 
@@ -513,8 +514,9 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
-                        .remainingAccounts(irmAccounts(setup))
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -543,8 +545,9 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
-                        .remainingAccounts(irmAccounts(setup))
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -640,8 +643,9 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
-                        .remainingAccounts(irmAccounts(setup))
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -750,8 +754,9 @@ describe("rate-hedge", () => {
                     userPosition: borrower.userPositionPda,
                     rateHedgeOffer: offerPda,
                     rateHedgeMatch: matchPda,
+                    rateProgram: setup.irmProgramId,
+                    irmState: setup.irmConfig,
                 })
-                .remainingAccounts(irmAccounts(setup))
                 .signers([borrower.authority])
                 .rpc();
         }
@@ -830,8 +835,9 @@ describe("rate-hedge", () => {
                         userPosition: borrower.userPositionPda,
                         rateHedgeOffer: offerPda,
                         rateHedgeMatch: matchPda,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
-                    .remainingAccounts(irmAccounts(setup))
                     .signers([borrower.authority])
                     .rpc();
             });
@@ -859,8 +865,9 @@ describe("rate-hedge", () => {
                             offerCollateralVault: offerVaultPda,
                             collateralVault: collateralVaultPda2,
                             cranker: setup.authority.publicKey,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
-                        .remainingAccounts(irmAccounts(setup))
                         .signers([setup.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -909,8 +916,9 @@ describe("rate-hedge", () => {
                         offerCollateralVault: offerVaultPda,
                         collateralVault: collateralVaultPda,
                         cranker: setup.authority.publicKey,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
-                    .remainingAccounts(irmAccounts(setup))
                     .signers([setup.authority])
                     .rpc();
 

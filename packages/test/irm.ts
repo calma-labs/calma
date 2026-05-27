@@ -100,11 +100,9 @@ describe("irm initialize", () => {
                 pool: jblSetup.pool,
                 lendMint: jblSetup.lendMint,
                 authority: jblSetup.authority.publicKey,
+                rateProgram: irmProgram.programId,
+                irmState: cpiIrmConfig,
             })
-            .remainingAccounts([
-                { pubkey: irmProgram.programId, isWritable: false, isSigner: false },
-                { pubkey: cpiIrmConfig, isWritable: false, isSigner: false },
-            ])
             .signers([jblSetup.authority])
             .rpc();
 

@@ -81,6 +81,14 @@ pub struct BorrowWithHedge<'info> {
     )]
     pub rate_hedge_match: AccountLoader<'info, RateHedgeMatch>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.rate_state
+    #[account(constraint = irm_state.key() == pool.load()?.rate_state @ ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -124,7 +132,7 @@ pub fn borrow_with_hedge_handler<'a>(
 
     // ── 2. Accrue interest via IRM CPI ───────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──

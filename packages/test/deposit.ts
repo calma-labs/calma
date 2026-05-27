@@ -1,7 +1,7 @@
 import * as anchor from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, createLender, TestSetup, irmAccounts } from "./utils";
+import { setupTest, createLender, TestSetup } from "./utils";
 
 async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypair, userTokenAccount: anchor.web3.PublicKey, amount: number) {
     await setup.program.methods
@@ -24,8 +24,9 @@ async function withdrawCollateral(setup: TestSetup, authority: anchor.web3.Keypa
             collateralMint: setup.collateralMint,
             authority: authority.publicKey,
             userTokenAccount,
+            rateProgram: setup.irmProgramId,
+            irmState: setup.irmConfig,
         })
-        .remainingAccounts(irmAccounts(setup))
         .signers([authority])
         .rpc();
 }
