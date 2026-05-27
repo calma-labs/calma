@@ -1,17 +1,16 @@
-name: Deploy
+name: Preview
 
 on:
-  push:
+  pull_request:
     branches:
       - dev
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  pull-requests: write
 
 concurrency:
-  group: pages
+  group: preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -21,18 +20,6 @@ env:
 jobs:
   build:
     uses: ./.github/workflows/_build.yml
-    with:
-      build_pages: true
-
-  deploy-pages:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/deploy-pages@v4
-        id: deployment
 
   deploy-vercel:
     needs: build
@@ -48,7 +35,7 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull Vercel project settings
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Assemble Vercel output
         run: |
@@ -57,4 +44,18 @@ jobs:
           echo '{"version":3}' > .vercel/output/config.json
 
       - name: Deploy prebuilt to Vercel
-        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        id: deploy
+        run: |
+          PREVIEW_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "preview-url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '**Preview deployment ready:** ${{ steps.deploy.outputs.preview-url }}'
+            })
