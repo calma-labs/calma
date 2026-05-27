@@ -96,8 +96,8 @@ pub struct BorrowWithHedge<'info> {
 ///
 /// The match account stores the initial debt shares so the crank can later compare
 /// actual variable growth against the borrower's fixed cap (`amount`).
-pub fn borrow_with_hedge_handler(
-    ctx: Context<BorrowWithHedge>,
+pub fn borrow_with_hedge_handler<'a>(
+    ctx: Context<'a, BorrowWithHedge<'a>>,
     amount: u64,
     duration: u64,
 ) -> Result<()> {
@@ -124,7 +124,7 @@ pub fn borrow_with_hedge_handler(
 
     // ── 2. Accrue interest ────────────────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.remaining_accounts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.remaining_accounts)?;
     ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──

@@ -43,7 +43,10 @@ export interface TestSetup {
  * @param ltvPercent - The LTV percentage for the pool (default: 75).
  * @returns A TestSetup object with all necessary accounts, PDAs, and program references.
  */
-export async function setupTest(ltvPercent: number = 75): Promise<TestSetup> {
+export async function setupTest(
+  ltvPercent: number = 75,
+  opts: { poolKeypair?: Keypair; rateProgram?: PublicKey; rateState?: PublicKey } = {}
+): Promise<TestSetup> {
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -67,7 +70,7 @@ export async function setupTest(ltvPercent: number = 75): Promise<TestSetup> {
   const lendMint = await createMint(connection, payer, authority.publicKey, null, 6);
 
   // Pool is a keypair account (too large for on-chain PDA allocation via CPI).
-  const poolKeypair = Keypair.generate();
+  const poolKeypair = opts.poolKeypair ?? Keypair.generate();
   const pool = poolKeypair.publicKey;
 
   const [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
@@ -116,7 +119,7 @@ export async function setupTest(ltvPercent: number = 75): Promise<TestSetup> {
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, SystemProgram.programId, SystemProgram.programId)
+    .create(ltvPercent, opts.rateProgram ?? SystemProgram.programId, opts.rateState ?? SystemProgram.programId)
     .accounts({
       pool,
       collateralMint,

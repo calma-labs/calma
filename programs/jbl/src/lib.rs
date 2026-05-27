@@ -46,15 +46,15 @@ pub mod jbl {
         deposit_collateral_handler(ctx, amount)
     }
 
-    pub fn borrow(ctx: Context<Borrow>, amount: u64) -> Result<()> {
+    pub fn borrow<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
         borrow_handler(ctx, amount)
     }
 
-    pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
+    pub fn repay<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
         repay_handler(ctx, amount)
     }
 
-    pub fn withdraw_collateral(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
+    pub fn withdraw_collateral<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
         withdraw_collateral_handler(ctx, amount)
     }
 
@@ -74,15 +74,15 @@ pub mod jbl {
         process_vault_queue_entry_handler(ctx)
     }
 
-    pub fn borrow_with_hedge(
-        ctx: Context<BorrowWithHedge>,
+    pub fn borrow_with_hedge<'a>(
+        ctx: Context<'a, BorrowWithHedge<'a>>,
         amount: u64,
         duration: u64,
     ) -> Result<()> {
         borrow_with_hedge_handler(ctx, amount, duration)
     }
 
-    pub fn settle_rate_hedge_match(ctx: Context<SettleRateHedgeMatch>) -> Result<()> {
+    pub fn settle_rate_hedge_match<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
         settle_rate_hedge_match_handler(ctx)
     }
 
