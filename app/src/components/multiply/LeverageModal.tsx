@@ -3,7 +3,7 @@ import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { MAX_MULTIPLY } from "@/hooks/useMultiply";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -22,7 +22,7 @@ import { useMemo, useState } from "react";
 
 interface LeverageModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 

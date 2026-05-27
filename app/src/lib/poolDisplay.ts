@@ -1,5 +1,5 @@
 import { getPoolMeta } from '@/config/poolRegistry'
-import { PoolAccount } from '@jbl/wasm-lib'
+import { PoolWithIrm } from '@jbl/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import type { Pool } from '@/types/pool'
 
@@ -13,7 +13,7 @@ const DECIMALS_FACTOR = 10 ** 6
  * `address` and `id` are both the pool's own PublicKey base-58 string so
  * routing with `/pool/:address` resolves back to the same account.
  */
-export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolAccount): Pool {
+export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolWithIrm): Pool {
     const addr = publicKey.toBase58()
     const meta = getPoolMeta(addr)
 

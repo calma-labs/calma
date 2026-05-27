@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::fees::PiecewiseLinearModel;
 
 #[account(zero_copy)]
-pub struct IrmConfig {
+pub struct IrmState {
     pub pool: Pubkey,
     pub model: PiecewiseLinearModel,
     pub authority: Pubkey,

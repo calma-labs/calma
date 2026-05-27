@@ -1,16 +1,16 @@
 use anchor_lang::prelude::*;
-use jbl_irm::{IrmConfig, DEFAULT_POOL_FEE_BPS};
+use jbl_irm::{IrmState, DEFAULT_POOL_FEE_BPS};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(
         init,
         payer = payer,
-        space = 8 + std::mem::size_of::<IrmConfig>(),
+        space = 8 + std::mem::size_of::<IrmState>(),
         seeds = [b"irm_config", pool.key().as_ref()],
         bump,
     )]
-    pub irm_config: AccountLoader<'info, IrmConfig>,
+    pub irm_config: AccountLoader<'info, IrmState>,
     /// CHECK: pool is used only as a seed for PDA derivation
     pub pool: UncheckedAccount<'info>,
     /// The authority that will be allowed to update the fee curve.

@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_irm::{IrmConfig, LinearSegment};
+use jbl_irm::{IrmState, LinearSegment};
 
 use crate::error::ErrorCode;
 
@@ -22,7 +22,7 @@ pub struct SetFeeCurve<'info> {
         bump = irm_state.load()?.bump,
         constraint = irm_state.load()?.authority == authority.key() @ ErrorCode::Unauthorized,
     )]
-    pub irm_state: AccountLoader<'info, IrmConfig>,
+    pub irm_state: AccountLoader<'info, IrmState>,
     pub authority: Signer<'info>,
 }
 

@@ -1,7 +1,7 @@
 import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolAccount, UserPositionAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -16,7 +16,7 @@ export type CloseMultiplyPosition = ManageMultiplyPosition;
 
 interface ClosePositionModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   userPosition: UserPositionAccount;
   /** Pre-computed display data (leverage, netAPY, etc.). */
   position: ManageMultiplyPosition;

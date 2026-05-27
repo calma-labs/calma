@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_irm::IrmConfig;
+use jbl_irm::IrmState;
 
 #[derive(Accounts)]
 pub struct BorrowRate<'info> {
@@ -8,7 +8,7 @@ pub struct BorrowRate<'info> {
         bump = irm_state.load()?.bump,
         has_one = pool,
     )]
-    pub irm_state: AccountLoader<'info, IrmConfig>,
+    pub irm_state: AccountLoader<'info, IrmState>,
     /// CHECK: verified via has_one constraint on irm_state
     pub pool: UncheckedAccount<'info>,
 }

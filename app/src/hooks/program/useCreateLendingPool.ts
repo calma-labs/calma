@@ -6,6 +6,8 @@ import {
     TOKEN_PROGRAM_ID,
 } from '@solana/spl-token'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
+
+const IRM_PROGRAM_ID = new PublicKey('3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC')
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { connection, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
@@ -84,8 +86,13 @@ async function createPool(
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
 
+    const [irmState] = PublicKey.findProgramAddressSync(
+        [Buffer.from('irm_config'), poolKeypair.publicKey.toBuffer()],
+        IRM_PROGRAM_ID,
+    )
+
     const createIx = await readonlyProgram.methods
-        .create(ltvPercent)
+        .create(ltvPercent, IRM_PROGRAM_ID, irmState)
         .accounts({
             pool: poolKeypair.publicKey,
             collateralMint: collateralMintKeypair.publicKey,

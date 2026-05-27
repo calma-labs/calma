@@ -74,7 +74,7 @@ pub fn create_handler(
     ctx: Context<Create>,
     ltv_percent: u8,
     rate_program: Pubkey,
-    rate_state: Pubkey,
+    irm_state: Pubkey,
 ) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_init()?;
 
@@ -92,7 +92,7 @@ pub fn create_handler(
     pool.market.assets_in_queue = 0;
     pool.ltv_percent = ltv_percent;
     pool.rate_program = rate_program;
-    pool.rate_state = rate_state;
+    pool.irm_state = irm_state;
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 

@@ -47,7 +47,7 @@ pub struct Pool {
     /// IRM program ID. All borrow-rate queries are made via CPI to this program.
     pub rate_program: Pubkey,
     /// IRM state account (PDA) passed to the rate program CPI.
-    pub rate_state: Pubkey,
+    pub irm_state: Pubkey,
     pub ltv_percent: u8,
     pub lp_mint_bump: u8,
     _pad: [u8; 6], // explicit padding — no implicit/uninitialised bytes

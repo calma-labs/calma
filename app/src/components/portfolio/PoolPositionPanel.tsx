@@ -1,4 +1,4 @@
-import { type PoolAccount } from "@/hooks/program/useLendingAccount";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
@@ -210,7 +210,7 @@ type ModalState =
 
 interface PoolPositionPanelProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   connected: boolean;
 }
 

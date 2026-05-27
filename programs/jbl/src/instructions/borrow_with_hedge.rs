@@ -85,8 +85,8 @@ pub struct BorrowWithHedge<'info> {
     #[account(constraint = rate_program.key() == pool.load()?.rate_program @ ErrorCode::MissingRateProgram)]
     pub rate_program: UncheckedAccount<'info>,
 
-    /// CHECK: validated as pool.rate_state
-    #[account(constraint = irm_state.key() == pool.load()?.rate_state @ ErrorCode::MissingRateState)]
+    /// CHECK: validated as pool.irm_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,

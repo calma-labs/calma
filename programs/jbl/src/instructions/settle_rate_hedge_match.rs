@@ -96,7 +96,7 @@ pub struct SettleRateHedgeMatch<'info> {
     pub rate_program: UncheckedAccount<'info>,
 
     /// CHECK: validated as pool.rate_state
-    #[account(constraint = irm_state.key() == pool.load()?.rate_state @ ErrorCode::MissingRateState)]
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,

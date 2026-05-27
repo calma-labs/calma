@@ -1,4 +1,4 @@
-import type { PoolAccount } from '@/hooks/program/useLendingAccounts'
+import type { PoolWithIrm } from '@jbl/wasm-lib'
 
 export type Category = "stablecoin" | "volatile" | "lsd";
 
@@ -16,7 +16,7 @@ export interface Pool {
   lendIcon: string;
   category: Category;
   binancePerp?: string;
-  account: PoolAccount;
+  account: PoolWithIrm;
   supplyAPY: number;
   borrowAPY: number;
   totalSupplied: number;
