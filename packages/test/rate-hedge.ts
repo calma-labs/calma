@@ -391,6 +391,8 @@ describe("rate-hedge", () => {
                         userPosition: borrower.userPositionPda,
                         rateHedgeOffer: offerPda,
                         rateHedgeMatch: matchPda,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
                     .signers([borrower.authority])
                     .rpc();
@@ -424,7 +426,7 @@ describe("rate-hedge", () => {
 
             it("pool totalBorrowed increased by amount + upfront fee", async () => {
                 const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-                expect(poolAccount.totalBorrowed.toNumber()).to.equal(BORROW_AMOUNT + EXPECTED_UPFRONT_FEE);
+                expect(poolAccount.market.totalBorrowShares.toNumber()).to.equal(BORROW_AMOUNT + EXPECTED_UPFRONT_FEE);
             });
         });
 
@@ -512,6 +514,8 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
                         .signers([borrower.authority])
                         .rpc();
@@ -541,6 +545,8 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
                         .signers([borrower.authority])
                         .rpc();
@@ -637,6 +643,8 @@ describe("rate-hedge", () => {
                             userPosition: borrower.userPositionPda,
                             rateHedgeOffer: offerPda,
                             rateHedgeMatch: matchPda,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
                         .signers([borrower.authority])
                         .rpc();
@@ -746,6 +754,8 @@ describe("rate-hedge", () => {
                     userPosition: borrower.userPositionPda,
                     rateHedgeOffer: offerPda,
                     rateHedgeMatch: matchPda,
+                    rateProgram: setup.irmProgramId,
+                    irmState: setup.irmConfig,
                 })
                 .signers([borrower.authority])
                 .rpc();
@@ -825,6 +835,8 @@ describe("rate-hedge", () => {
                         userPosition: borrower.userPositionPda,
                         rateHedgeOffer: offerPda,
                         rateHedgeMatch: matchPda,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
                     .signers([borrower.authority])
                     .rpc();
@@ -853,6 +865,8 @@ describe("rate-hedge", () => {
                             offerCollateralVault: offerVaultPda,
                             collateralVault: collateralVaultPda2,
                             cranker: setup.authority.publicKey,
+                            rateProgram: setup.irmProgramId,
+                            irmState: setup.irmConfig,
                         })
                         .signers([setup.authority])
                         .rpc();
@@ -902,6 +916,8 @@ describe("rate-hedge", () => {
                         offerCollateralVault: offerVaultPda,
                         collateralVault: collateralVaultPda,
                         cranker: setup.authority.publicKey,
+                        rateProgram: setup.irmProgramId,
+                        irmState: setup.irmConfig,
                     })
                     .signers([setup.authority])
                     .rpc();
@@ -932,7 +948,7 @@ describe("rate-hedge", () => {
 
                 const poolAccount = await setup.program.account.pool.fetch(setup.pool);
                 // Ensure pool accounting is consistent — totalBorrowed >= 0
-                expect(poolAccount.totalBorrowed.toNumber()).to.be.greaterThanOrEqual(0);
+                expect(poolAccount.market.totalBorrowShares.toNumber()).to.be.greaterThanOrEqual(0);
             });
         });
     });

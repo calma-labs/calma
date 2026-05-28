@@ -91,6 +91,14 @@ pub struct SettleRateHedgeMatch<'info> {
     #[account(mut)]
     pub cranker: Signer<'info>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.rate_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -110,7 +118,7 @@ pub struct SettleRateHedgeMatch<'info> {
 /// 5. Adjust the borrower's debt shares so their outstanding debt = `amount` (their cap).
 /// 6. Restore offer capacity and decrement `locked_tokens`.
 /// 7. Close the match account (rent returned to cranker).
-pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Result<()> {
+pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
     let current_ts = Clock::get()?.unix_timestamp;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
@@ -124,8 +132,9 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     };
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
-    // ── 1. Accrue interest so shares reflect current state ────────────────────
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    // ── 1. Accrue interest so shares reflect current state (via IRM CPI) ─────
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. Snapshot match fields already done above ───────────────────────────
     let fixed_total = borrow_amount
@@ -135,7 +144,7 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
     // ── 3. Compute current variable value of the initial debt shares ──────────
     let current_value = {
         let pool = ctx.accounts.pool.load()?;
-        shares_to_amount(initial_debt_shares, pool.total_borrowed, pool.total_debt_shares)
+        shares_to_amount(initial_debt_shares, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(ErrorCode::MathOverflow)?
     };
 
@@ -192,32 +201,36 @@ pub fn settle_rate_hedge_match_handler(ctx: Context<SettleRateHedgeMatch>) -> Re
         let mut pool = ctx.accounts.pool.load_mut()?;
 
         // Remove old shares from pool.
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_sub(initial_debt_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_sub(current_value)
             .ok_or(ErrorCode::MathOverflow)?;
 
         // Account for the upfront fee that just left the pool.
-        // total_lend_deposited tracks the lend vault balance.
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .saturating_sub(upfront_fee);
 
         // Re-issue shares for the borrower's capped amount.
         let new_shares =
-            amount_to_shares(borrow_amount, pool.total_borrowed, pool.total_debt_shares)
+            amount_to_shares(borrow_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
                 .ok_or(ErrorCode::MathOverflow)?;
 
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(borrow_amount)
             .ok_or(ErrorCode::MathOverflow)?;
 

@@ -75,11 +75,19 @@ pub struct BorrowWithHedge<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 112, // RateHedgeMatch: 32+32+8+8+8+8+8+1+7 = 112
+        space = 8 + std::mem::size_of::<RateHedgeMatch>(),
         seeds = [b"rate_hedge_match", user_position.key().as_ref()],
         bump,
     )]
     pub rate_hedge_match: AccountLoader<'info, RateHedgeMatch>,
+
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.irm_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
@@ -96,8 +104,8 @@ pub struct BorrowWithHedge<'info> {
 ///
 /// The match account stores the initial debt shares so the crank can later compare
 /// actual variable growth against the borrower's fixed cap (`amount`).
-pub fn borrow_with_hedge_handler(
-    ctx: Context<BorrowWithHedge>,
+pub fn borrow_with_hedge_handler<'a>(
+    ctx: Context<'a, BorrowWithHedge<'a>>,
     amount: u64,
     duration: u64,
 ) -> Result<()> {
@@ -122,9 +130,10 @@ pub fn borrow_with_hedge_handler(
         .checked_add(upfront_fee)
         .ok_or(ErrorCode::MathOverflow)?;
 
-    // ── 2. Accrue interest ────────────────────────────────────────────────────
+    // ── 2. Accrue interest via IRM CPI ───────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──
     let new_shares = {
@@ -141,11 +150,11 @@ pub fn borrow_with_hedge_handler(
             .checked_div(100)
             .ok_or(ErrorCode::MathOverflow)?;
 
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 ctx.accounts.user_position.load()?.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(ErrorCode::MathOverflow)?
         } else {
@@ -158,7 +167,7 @@ pub fn borrow_with_hedge_handler(
         // LTV check uses only `amount` (principal); fee is offer creator's risk.
         require!(amount <= available, ErrorCode::InsufficientFunds);
 
-        let shares = amount_to_shares(total_debt_amount, pool.total_borrowed, pool.total_debt_shares)
+        let shares = amount_to_shares(total_debt_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(ErrorCode::MathOverflow)?;
         require!(shares > 0, ErrorCode::InvalidAmount);
         shares
@@ -193,12 +202,14 @@ pub fn borrow_with_hedge_handler(
     // ── 6. Update pool state ──────────────────────────────────────────────────
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(total_debt_amount)
             .ok_or(ErrorCode::MathOverflow)?;
     }

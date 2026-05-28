@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 jbl-math = { path = "../jbl-math" }
 jbl-state = { path = "../jbl-state" }
+jbl-irm = { path = "../jbl-irm" }
 wasm-bindgen = "0.2"
 bytemuck = "1.14"
 

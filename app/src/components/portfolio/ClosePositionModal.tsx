@@ -1,7 +1,7 @@
 import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolAccount, UserPositionAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -16,7 +16,7 @@ export type CloseMultiplyPosition = ManageMultiplyPosition;
 
 interface ClosePositionModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   userPosition: UserPositionAccount;
   /** Pre-computed display data (leverage, netAPY, etc.). */
   position: ManageMultiplyPosition;
@@ -49,8 +49,8 @@ export function ClosePositionModal({
 
   // Raw debt derived from debt shares via WASM
   const debtRaw = useMemo(
-    () => userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares),
-    [userPosition, poolData.total_borrowed, poolData.total_debt_shares],
+    () => userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares),
+    [userPosition, poolData.total_borrow_assets, poolData.total_borrow_shares],
   );
 
   const collateralRaw = userPosition.collateral_deposited;
@@ -146,7 +146,7 @@ export function ClosePositionModal({
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="text-xs text-[#efe0f7]/40">Debt to repay</span>
               <span className="text-xs font-semibold tabular-nums text-[#d45677]">
-                {userPosition.format_debt(poolData.total_borrowed, poolData.total_debt_shares, lendDecimals ?? 6)}{" "}
+                {userPosition.format_debt(poolData.total_borrow_assets, poolData.total_borrow_shares, lendDecimals ?? 6)}{" "}
                 {pool.lendSymbol}
               </span>
             </div>

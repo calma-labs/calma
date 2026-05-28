@@ -1,6 +1,6 @@
 import { type GetProgramAccountsFilter, PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { PoolAccount } from '@jbl/wasm-lib'
+import { PoolAccount, PoolWithIrm } from '@jbl/wasm-lib'
 import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -11,10 +11,14 @@ function discriminatorFilter(): GetProgramAccountsFilter {
     return { memcmp: program.coder.accounts.memcmp('pool') }
 }
 
-async function fetchPool(address: PublicKey): Promise<PoolAccount | null> {
+async function fetchPool(address: PublicKey): Promise<PoolWithIrm | null> {
     const info = await connection.getAccountInfo(address)
     if (!info) return null
-    return PoolAccount.from_bytes(info.data) ?? null
+    const pool = PoolAccount.from_bytes(info.data)
+    if (!pool) return null
+    const irmInfo = await connection.getAccountInfo(new PublicKey(pool.irm_state))
+    if (!irmInfo) return null
+    return PoolWithIrm.from_bytes(info.data, irmInfo.data) ?? null
 }
 
 /** Fetch a single pool account by its public key. */

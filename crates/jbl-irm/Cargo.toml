@@ -1,0 +1,8 @@
+[package]
+name = "jbl-irm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anchor-lang = { version = "1.0.2", default-features = false }
+bytemuck = "1"

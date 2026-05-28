@@ -49,11 +49,19 @@ pub struct WithdrawCollateral<'info> {
     )]
     pub user_position: AccountLoader<'info, UserPosition>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ crate::error::ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.rate_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
+pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     {
         let position = ctx.accounts.user_position.load()?;
@@ -65,7 +73,8 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. LTV check: ensure remaining collateral still covers open debt ──────
     {
@@ -81,11 +90,11 @@ pub fn withdraw_collateral_handler(ctx: Context<WithdrawCollateral>, amount: u64
             .ok_or(crate::error::ErrorCode::MathOverflow)?
             .checked_div(100)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 position.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(crate::error::ErrorCode::MathOverflow)?
         } else {

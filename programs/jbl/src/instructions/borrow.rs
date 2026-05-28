@@ -54,21 +54,30 @@ pub struct Borrow<'info> {
     )]
     pub user_position: AccountLoader<'info, UserPosition>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ crate::error::ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.irm_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
+pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     require!(
         ctx.accounts.lend_vault.amount >= amount,
         crate::error::ErrorCode::InsufficientFunds
     );
 
-    // ── 1. Accrue interest on the pool ────────────────────────────────────────
+    // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let current_ts = Clock::get()?.unix_timestamp;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts)?;
+    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
 
     // ── 2. LTV check and share calculation ───────────────────────────────────
     let new_shares = {
@@ -81,11 +90,11 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
             .checked_div(100)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
 
-        let current_debt = if pool.total_debt_shares > 0 {
+        let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(
                 position.debt_shares,
-                pool.total_borrowed,
-                pool.total_debt_shares,
+                pool.market.total_borrow_assets,
+                pool.market.total_borrow_shares,
             )
             .ok_or(crate::error::ErrorCode::MathOverflow)?
         } else {
@@ -97,7 +106,7 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
             .ok_or(crate::error::ErrorCode::InsufficientFunds)?;
         require!(amount <= available, crate::error::ErrorCode::InsufficientFunds);
 
-        let new_shares = amount_to_shares(amount, pool.total_borrowed, pool.total_debt_shares)
+        let new_shares = amount_to_shares(amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         require!(new_shares > 0, crate::error::ErrorCode::InvalidAmount);
 
@@ -131,25 +140,27 @@ pub fn borrow_handler(ctx: Context<Borrow>, amount: u64) -> Result<()> {
     )?;
 
     // ── 5. Update pool state ──────────────────────────────────────────────────
-    let (total_borrowed, total_debt_shares) = {
+    let (total_borrow_assets, total_borrow_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_debt_shares = pool
-            .total_debt_shares
+        pool.market.total_borrow_shares = pool
+            .market
+            .total_borrow_shares
             .checked_add(new_shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.total_borrowed = pool
-            .total_borrowed
+        pool.market.total_borrow_assets = pool
+            .market
+            .total_borrow_assets
             .checked_add(amount)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        (pool.total_borrowed, pool.total_debt_shares)
+        (pool.market.total_borrow_assets, pool.market.total_borrow_shares)
     };
 
     msg!(
-        "Borrowed {} lend tokens → {} shares. Pool total_borrowed: {}, total_shares: {}",
+        "Borrowed {} lend tokens → {} shares. Pool total_borrow_assets: {}, total_shares: {}",
         amount,
         new_shares,
-        total_borrowed,
-        total_debt_shares,
+        total_borrow_assets,
+        total_borrow_shares,
     );
 
     Ok(())

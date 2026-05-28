@@ -2,7 +2,8 @@ use crate::state::Pool;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-pub const POOL_SPACE: usize = 8 + std::mem::size_of::<Pool>();
+#[constant]
+pub const POOL_SPACE: u64 = (8 + std::mem::size_of::<Pool>()) as u64;
 
 #[derive(Accounts)]
 pub struct Create<'info> {
@@ -69,7 +70,12 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, ltv_percent: u8) -> Result<()> {
+pub fn create_handler(
+    ctx: Context<Create>,
+    ltv_percent: u8,
+    rate_program: Pubkey,
+    irm_state: Pubkey,
+) -> Result<()> {
     let mut pool = ctx.accounts.pool.load_init()?;
 
     pool.authority = ctx.accounts.authority.key();
@@ -77,13 +83,16 @@ pub fn create_handler(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, 
     pool.lend_mint = ctx.accounts.lend_mint.key();
     pool.lp_mint = ctx.accounts.lp_mint.key();
     pool.total_collateral_deposited = 0;
-    pool.total_lend_deposited = 0;
-    pool.total_borrowed = 0;
-    pool.total_debt_shares = 0;
-    pool.last_accrual_ts = Clock::get()?.unix_timestamp;
-    pool.total_lp_issued = 0;
+    pool.market.total_supply_assets = 0;
+    pool.market.total_supply_shares = 0;
+    pool.market.total_borrow_assets = 0;
+    pool.market.total_borrow_shares = 0;
+    pool.market.last_update = Clock::get()?.unix_timestamp;
+    pool.market.fee = 0;
+    pool.market.assets_in_queue = 0;
     pool.ltv_percent = ltv_percent;
-    pool.fee_config = crate::fees::UtilizationFeeConfig { m1, c1, m2, c2 };
+    pool.rate_program = rate_program;
+    pool.irm_state = irm_state;
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 

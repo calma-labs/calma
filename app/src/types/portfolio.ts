@@ -23,9 +23,9 @@ export interface BorrowPosition {
   borrowedIcon: string;
   debtAmount: number;
   borrowAPY: number;
-  ltv: number;
-  liqPrice: number;
-  healthFactor: number;
+  ltv: number | null;
+  liqPrice: number | null;
+  healthFactor: number | null;
 }
 
 export interface MultiplyPosition {
@@ -40,7 +40,7 @@ export interface MultiplyPosition {
   positionSize: number;
   entryPrice: number;
   currentPrice: number;
-  liqPrice: number;
+  liqPrice: number | null;
   pnl: number;
   pnlPct: number;
 }

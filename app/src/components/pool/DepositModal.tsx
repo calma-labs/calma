@@ -2,7 +2,7 @@ import { useDeposit } from "@/hooks/program/useDeposit";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -13,7 +13,7 @@ import { useState } from "react";
 
 interface DepositModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 

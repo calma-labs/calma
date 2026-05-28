@@ -13,11 +13,12 @@
     "wasm": "cargo build --target wasm32-unknown-unknown && wasm-pack build crates/jbl-wasm --target bundler --out-dir $PWD/packages/wasm-lib && npm pkg set name='@jbl/wasm-lib' --prefix packages/wasm-lib",
     "build": "bun run wasm && bun run --filter @jbl/app build",
     "preview": "bun run --filter @jbl/app preview",
-    "test": "bun run --filter @jbl/test test",
+    "test": "npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 './packages/test/*.ts'",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
   "devDependencies": {
-    "prettier": "^3.8.3"
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3"
   }
 }

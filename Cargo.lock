@@ -1890,6 +1890,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "irm"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+ "jbl-irm",
+]
+
+[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1958,6 +1967,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "bytemuck",
+ "irm",
  "jbl-math",
  "jbl-state",
  "litesvm",
@@ -1972,6 +1982,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jbl-irm"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "bytemuck",
+]
+
+[[package]]
 name = "jbl-math"
 version = "0.1.0"
 
@@ -1981,6 +1999,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "jbl-irm",
  "jbl-math",
 ]
 
@@ -1990,6 +2009,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "jbl-irm",
  "jbl-math",
  "jbl-state",
  "wasm-bindgen",

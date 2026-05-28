@@ -148,7 +148,7 @@ export function MultiplyDetailPage() {
                     Compounded exposure
                   </p>
                   <p className="text-xs text-[#efe0f7]/35 leading-relaxed">
-                    One atomic transaction, up to {pool.ltv}% LTV. Net APY =
+                    One atomic transaction, up to {pool.account.ltv_percent}% LTV. Net APY =
                     supply yield × leverage − borrow cost.
                   </p>
                 </div>

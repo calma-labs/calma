@@ -2,17 +2,17 @@ import { useBorrow } from "@/hooks/program/useBorrow";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
-import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
 import { Info, Loader2, Lock, Wallet, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { BN } from "@anchor-lang/core";
 
 interface BorrowModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -46,7 +46,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   // Current debt (to subtract from borrow power)
   const currentDebtUi = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0;
-    return Number(userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares)) / 10 ** lendDecimals;
+    return Number(userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // Remaining borrow power, capped by pool available liquidity
@@ -61,13 +61,8 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   const projectedBorrowAPY = useMemo(() => {
     const decimals = lendDecimals ?? 6;
     const numAmount = parseFloat(amount);
-    const borrowRaw = numAmount > 0 ? numAmount * 10 ** decimals : 0;
-    const newTotalBorrowed = Number(poolData.total_borrowed) + borrowRaw;
-    const totalLend = Number(poolData.total_lend_deposited);
-    const newUtilBps =
-      totalLend > 0 ? Math.round((newTotalBorrowed / totalLend) * 10_000) : 0;
-    const feeBps = poolData.fee_bps(newUtilBps);
-    return feeBps / 100;
+    const borrowRaw = numAmount > 0 ? BigInt(Math.round(numAmount * 10 ** decimals)) : 0n;
+    return poolData.projected_borrow_apy_bps(borrowRaw) / 100;
   }, [amount, lendDecimals, poolData]);
 
   const projectedFixedAPY = projectedBorrowAPY * DURATION_PREMIUM[fixedDuration];

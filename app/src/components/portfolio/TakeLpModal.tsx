@@ -1,7 +1,7 @@
 // import { useTakeLp } from "@/hooks/program/useTakeLp";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -15,7 +15,7 @@ export interface TakeLpPosition {
 
 interface TakeLpModalProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   position: TakeLpPosition;
   onClose: () => void;
 }

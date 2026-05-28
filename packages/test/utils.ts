@@ -7,23 +7,12 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
+import { Irm } from "../../target/types/irm";
 
-/** Size of the Pool account on-chain: 8-byte discriminant + Pool struct (41 184 bytes). */
-export const POOL_SPACE = 8 + 41184;
-
-export interface FeeCurve {
-  m1: BN;
-  c1: BN;  // Can be negative (i64 on-chain)
-  m2: BN;
-  c2: BN;  // Can be negative (i64 on-chain)
-}
-
-export const DEFAULT_FEE_CURVE: FeeCurve = {
-  m1: new BN(0),
-  c1: new BN(50),
-  m2: new BN(0),
-  c2: new BN(0),
-};
+import JblIdl from "../../target/idl/jbl.json";
+export const POOL_SPACE: number = Number(
+  JblIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
+);
 
 export interface TestSetup {
   provider: AnchorProvider;
@@ -45,7 +34,8 @@ export interface TestSetup {
   userCollateralTokenAccount: PublicKey;
   /** Authority's lend token account. */
   userLendTokenAccount: PublicKey;
-  feeCurve: FeeCurve;
+  irmConfig: PublicKey;
+  irmProgramId: PublicKey;
 }
 
 /**
@@ -58,7 +48,10 @@ export interface TestSetup {
  * @param ltvPercent - The LTV percentage for the pool (default: 75).
  * @returns A TestSetup object with all necessary accounts, PDAs, and program references.
  */
-export async function setupTest(feeCurve: FeeCurve = DEFAULT_FEE_CURVE, ltvPercent: number = 75): Promise<TestSetup> {
+export async function setupTest(
+  ltvPercent: number = 75,
+  opts: { poolKeypair?: Keypair; rateProgram?: PublicKey; rateState?: PublicKey } = {}
+): Promise<TestSetup> {
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
@@ -82,8 +75,16 @@ export async function setupTest(feeCurve: FeeCurve = DEFAULT_FEE_CURVE, ltvPerce
   const lendMint = await createMint(connection, payer, authority.publicKey, null, 6);
 
   // Pool is a keypair account (too large for on-chain PDA allocation via CPI).
-  const poolKeypair = Keypair.generate();
+  const poolKeypair = opts.poolKeypair ?? Keypair.generate();
   const pool = poolKeypair.publicKey;
+
+  const irmProgram = anchor.workspace.Irm as Program<Irm>;
+  const [irmConfigPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("irm_config"), pool.toBuffer()],
+    irmProgram.programId
+  );
+  const irmProgramId = opts.rateProgram ?? irmProgram.programId;
+  const irmConfig = opts.rateState ?? irmConfigPda;
 
   const [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
 
@@ -118,6 +119,15 @@ export async function setupTest(feeCurve: FeeCurve = DEFAULT_FEE_CURVE, ltvPerce
   );
   await mintTo(connection, payer, lendMint, userLendTokenAccount, authority, 1_000_000_000);
 
+  // Initialize the IRM for this pool (unless the caller supplied an explicit rate program).
+  if (!opts.rateProgram) {
+    await irmProgram.methods
+      .initialize()
+      .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
+      .signers([payer, authority])
+      .rpc();
+  }
+
   // Pre-create the pool account via SystemProgram.createAccount (top-level instruction,
   // no CPI size limit).  Pool keypair signs this instruction.
   const poolRent = await connection.getMinimumBalanceForRentExemption(POOL_SPACE);
@@ -131,7 +141,7 @@ export async function setupTest(feeCurve: FeeCurve = DEFAULT_FEE_CURVE, ltvPerce
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(feeCurve.m1, feeCurve.c1, feeCurve.m2, feeCurve.c2, ltvPercent)
+    .create(ltvPercent, irmProgramId, irmConfig)
     .accounts({
       pool,
       collateralMint,
@@ -159,8 +169,16 @@ export async function setupTest(feeCurve: FeeCurve = DEFAULT_FEE_CURVE, ltvPerce
     userPositionPda,
     userCollateralTokenAccount,
     userLendTokenAccount,
-    feeCurve,
+    irmConfig,
+    irmProgramId,
   };
+}
+
+export function irmAccounts(setup: TestSetup) {
+  return [
+    { pubkey: setup.irmProgramId, isWritable: false, isSigner: false },
+    { pubkey: setup.irmConfig, isWritable: false, isSigner: false },
+  ];
 }
 
 export interface Lender {

@@ -75,7 +75,7 @@ async function openMultiply(
         .instruction(),
       program.methods
         .borrow(flashRepayAmt)
-        .accounts({ pool, lendMint, authority: authority.publicKey })
+        .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
         .signers([authority])
         .instruction(),
       program.methods
@@ -119,7 +119,7 @@ describe("multiply (leverage)", () => {
 
     before(async () => {
       // Create pool with 97% LTV - setupTest already mints 1000 tokens to authority
-      setup = await setupTest(undefined, HIGH_LTV);
+      setup = await setupTest(HIGH_LTV);
 
       // Add liquidity to the pool
       await participateInPool(setup, 500_000_000); // 500 tokens liquidity
@@ -162,8 +162,8 @@ describe("multiply (leverage)", () => {
       // Calculate actual leverage: Total Collateral / (Total Collateral - Debt)
       // Debt = debt_shares * total_borrowed / total_debt_shares
       const debtShares = BigInt(position.debtShares.toString());
-      const totalBorrowed = BigInt(poolAccount.totalBorrowed.toString());
-      const totalDebtShares = BigInt(poolAccount.totalDebtShares.toString());
+      const totalBorrowed = BigInt(poolAccount.market.totalBorrowShares.toString());
+      const totalDebtShares = BigInt(poolAccount.market.totalBorrowShares.toString());
 
       const debtAmount = Number((debtShares * totalBorrowed) / totalDebtShares);
       const collateralAmount = Number(position.collateralDeposited);
@@ -185,8 +185,8 @@ describe("multiply (leverage)", () => {
       // Calculate current LTV: Debt / Collateral Value
       // Assuming 1:1 collateral to lend price for this test
       const debtShares = BigInt(position.debtShares.toString());
-      const totalBorrowed = BigInt(poolAccount.totalBorrowed.toString());
-      const totalDebtShares = BigInt(poolAccount.totalDebtShares.toString());
+      const totalBorrowed = BigInt(poolAccount.market.totalBorrowShares.toString());
+      const totalDebtShares = BigInt(poolAccount.market.totalBorrowShares.toString());
 
       const debtAmount = Number((debtShares * totalBorrowed) / totalDebtShares);
       const collateralAmount = Number(position.collateralDeposited);
@@ -204,7 +204,7 @@ describe("multiply (leverage)", () => {
     it("lower LTV pools support less leverage", async () => {
       // At 75% LTV (default), max leverage = 1 / (1 - 0.75) = 4x
       // setupTest already mints 1000 tokens to authority
-      const setup75 = await setupTest(undefined, 75);
+      const setup75 = await setupTest(75);
       await participateInPool(setup75, 500_000_000);
 
       const { authority, program } = setup75;

@@ -11,7 +11,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
-import { setupTest, DEFAULT_FEE_CURVE, POOL_SPACE } from "./utils";
+import { POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
 // Hardcoded minter keypair for proof-of-concept faucet
@@ -224,7 +224,7 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(new BN(0), new BN(50), new BN(0), new BN(0), 75)
+        .create(75, SystemProgram.programId, SystemProgram.programId)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint

@@ -1,4 +1,4 @@
-import { type PoolAccount } from "@/hooks/program/useLendingAccount";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
@@ -210,7 +210,7 @@ type ModalState =
 
 interface PoolPositionPanelProps {
   pool: Pool;
-  poolData: PoolAccount;
+  poolData: PoolWithIrm;
   connected: boolean;
 }
 
@@ -252,7 +252,7 @@ export function PoolPositionPanel({
   // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    return Number(userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares)) / 10 ** lendDecimals;
+    return Number(userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
@@ -277,7 +277,7 @@ export function PoolPositionPanel({
       borrowedIcon: pool.lendIcon,
       debtAmount: debtUiAmount ?? 0,
       rawDebtAmount: userPosition && poolData && lendDecimals != null
-        ? userPosition.debt_amount(poolData.total_borrowed, poolData.total_debt_shares).toString()
+        ? userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares).toString()
         : undefined,
       borrowAPY: pool.borrowAPY,
       walletBalance: lendWalletBalance?.uiAmount ?? undefined,

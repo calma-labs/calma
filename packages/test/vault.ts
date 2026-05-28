@@ -4,7 +4,7 @@ import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
-import { POOL_SPACE, DEFAULT_FEE_CURVE } from "./utils";
+import { POOL_SPACE } from "./utils";
 
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
@@ -63,7 +63,7 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(DEFAULT_FEE_CURVE.m1, DEFAULT_FEE_CURVE.c1, DEFAULT_FEE_CURVE.m2, DEFAULT_FEE_CURVE.c2, 75)
+                .create(75, SystemProgram.programId, SystemProgram.programId)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -82,10 +82,10 @@ describe("pool creation (create)", () => {
             expect(pool.lendMint.toString()).to.equal(lendMint.toString());
             expect(pool.lpMint.toString()).to.equal(lpMintPda.toString());
             expect(pool.totalCollateralDeposited.toString()).to.equal("0");
-            expect(pool.totalLendDeposited.toString()).to.equal("0");
-            expect(pool.totalBorrowed.toString()).to.equal("0");
-            expect(pool.totalDebtShares.toString()).to.equal("0");
-            expect(pool.totalLpIssued.toString()).to.equal("0");
+            expect(pool.market.totalSupplyAssets.toString()).to.equal("0");
+            expect(pool.market.totalSupplyShares.toString()).to.equal("0");
+            expect(pool.market.totalBorrowAssets.toString()).to.equal("0");
+            expect(pool.market.totalBorrowShares.toString()).to.equal("0");
             expect(pool.ltvPercent).to.equal(75);
         });
 
@@ -115,7 +115,7 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(DEFAULT_FEE_CURVE.m1, DEFAULT_FEE_CURVE.c1, DEFAULT_FEE_CURVE.m2, DEFAULT_FEE_CURVE.c2, 75)
+                    .create(75, SystemProgram.programId, SystemProgram.programId)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,

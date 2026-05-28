@@ -109,7 +109,12 @@ fn test_create() {
     // ── Build create instruction ──────────────────────────────────────────────
     let instruction = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create { m1: 0, c1: 50, m2: 0, c2: 0, ltv_percent: 75 }.data(),
+        &jbl::instruction::Create {
+            ltv_percent: 75,
+            rate_program: Pubkey::default(),
+            rate_state: Pubkey::default(),
+        }
+        .data(),
         jbl::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
@@ -144,19 +149,9 @@ fn test_create() {
 
 #[test]
 fn test_pool_size() {
-    // Pool layout (repr(C), no implicit padding):
-    //   4 × Pubkey (32)       = 128
-    //   6 × u64/i64 (8)       = 48
-    //   fee_config 4×u64 (8)  = 32
-    //   ltv_percent, lp_mint_bump (1 each) = 2
-    //   _pad [u8;6]            = 6
-    //   WithdrawalQueue:
-    //     head (u16) + tail (u16) + _pad [u8;4] = 8
-    //     entries [WithdrawalQueueEntry; 1024], each 40 bytes = 40960
-    //                                                 total = 41184
     assert_eq!(
         std::mem::size_of::<Pool>(),
-        41184,
+        41_232,
         "Pool size changed — update POOL_SPACE in create.rs and the TS test helper if intentional",
     );
 }

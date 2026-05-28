@@ -116,8 +116,9 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     // The net effect vs the flash_borrow is +fee for depositors.
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .checked_add(amount)
             .ok_or(ErrorCode::MathOverflow)?;
     }

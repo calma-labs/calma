@@ -34,7 +34,7 @@ pub struct DepositCollateral<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + 88, // UserPosition: 32+32+8+8+1+7 = 88
+        space = 8 + std::mem::size_of::<UserPosition>(),
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
         bump,
     )]

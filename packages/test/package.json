@@ -3,9 +3,6 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "test": "cd ../.. && npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 './packages/test/*.ts'"
-  },
   "dependencies": {
     "@jbl/wasm-lib": "*",
     "@anchor-lang/core": "1.0.2",
