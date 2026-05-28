@@ -6,7 +6,7 @@ import {
     getMint,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
 
 const PARTICIPATE_AMOUNT = 1_000_000; // 1 token (6 decimals)
 
@@ -77,6 +77,7 @@ describe("participate and leave", () => {
                     lendMint,
                     authority: authority.publicKey,
                 })
+                .preInstructions([await feedIx(setup)])
                 .signers([authority])
                 .rpc();
 
@@ -206,6 +207,7 @@ describe("participate and leave", () => {
                     authority: setup.authority.publicKey,
                     userTokenAccount: setup.userCollateralTokenAccount,
                 })
+                .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])
                 .rpc();
 
@@ -218,6 +220,7 @@ describe("participate and leave", () => {
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
                 })
+                .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])
                 .rpc();
         });

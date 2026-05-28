@@ -1,3 +1,9 @@
+mod common;
+use common::{
+    create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_balance, send_ixs,
+    try_send_ixs,
+};
+
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
 use jbl::state::Pool;
@@ -6,9 +12,7 @@ use {
     anchor_spl::token::spl_token,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_message::{Message, VersionedMessage},
     solana_signer::Signer,
-    solana_transaction::versioned::VersionedTransaction,
 };
 
 // ── PDA helpers ───────────────────────────────────────────────────────────────
@@ -36,71 +40,6 @@ fn find_user_position_pda(pool: &Pubkey, authority: &Pubkey, program_id: &Pubkey
     )
 }
 
-// ── SPL helpers ───────────────────────────────────────────────────────────────
-
-fn create_mint_ixs(
-    payer: &Pubkey,
-    mint: &Pubkey,
-    mint_authority: &Pubkey,
-    rent: u64,
-) -> [Instruction; 2] {
-    let create_ix = anchor_lang::solana_program::system_instruction::create_account(
-        payer,
-        mint,
-        rent,
-        spl_token::state::Mint::LEN as u64,
-        &spl_token::id(),
-    );
-    let init_ix =
-        spl_token::instruction::initialize_mint(&spl_token::id(), mint, mint_authority, None, 6)
-            .unwrap();
-    [create_ix, init_ix]
-}
-
-fn create_token_account_ixs(
-    payer: &Pubkey,
-    account: &Pubkey,
-    mint: &Pubkey,
-    owner: &Pubkey,
-    rent: u64,
-) -> [Instruction; 2] {
-    let create_ix = anchor_lang::solana_program::system_instruction::create_account(
-        payer,
-        account,
-        rent,
-        spl_token::state::Account::LEN as u64,
-        &spl_token::id(),
-    );
-    let init_ix =
-        spl_token::instruction::initialize_account(&spl_token::id(), account, mint, owner).unwrap();
-    [create_ix, init_ix]
-}
-
-fn mint_to_ix(mint: &Pubkey, dest: &Pubkey, authority: &Pubkey, amount: u64) -> Instruction {
-    spl_token::instruction::mint_to(&spl_token::id(), mint, dest, authority, &[], amount).unwrap()
-}
-
-// ── Transaction helpers ───────────────────────────────────────────────────────
-
-fn send_ixs(svm: &mut LiteSVM, ixs: &[Instruction], payer: &Keypair, signers: &[&Keypair]) {
-    let bh = svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(ixs, Some(&payer.pubkey()), &bh);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), signers).unwrap();
-    svm.send_transaction(tx).unwrap();
-}
-
-fn try_send_ixs(
-    svm: &mut LiteSVM,
-    ixs: &[Instruction],
-    payer: &Keypair,
-    signers: &[&Keypair],
-) -> bool {
-    let bh = svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(ixs, Some(&payer.pubkey()), &bh);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), signers).unwrap();
-    svm.send_transaction(tx).is_ok()
-}
-
 // ── Account data helpers ──────────────────────────────────────────────────────
 
 /// Read pool.market.total_supply_assets from raw account data.
@@ -120,11 +59,6 @@ fn read_total_lend_deposited(svm: &LiteSVM, pool: &Pubkey) -> u64 {
 fn read_total_collateral_deposited(svm: &LiteSVM, pool: &Pubkey) -> u64 {
     let data = svm.get_account(pool).unwrap().data;
     u64::from_le_bytes(data[8 + 128..8 + 136].try_into().unwrap())
-}
-
-fn read_token_balance(svm: &LiteSVM, account: &Pubkey) -> u64 {
-    let data = svm.get_account(account).unwrap().data;
-    spl_token::state::Account::unpack(&data).unwrap().amount
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -155,14 +89,15 @@ struct Setup {
 ///  - creates empty user token accounts (collateral + lend)
 fn setup(seed_lend_amount: u64) -> Setup {
     let program_id = jbl::id();
+    let feed_id = feed::id();
     let payer = Keypair::new();
     let authority = Keypair::new();
     let collateral_mint_kp = Keypair::new();
     let lend_mint_kp = Keypair::new();
 
     let mut svm = LiteSVM::new();
-    let bytes = include_bytes!("../../../target/deploy/jbl.so");
-    svm.add_program(program_id, bytes).unwrap();
+    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so")).unwrap();
+    svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so")).unwrap();
     svm.airdrop(&payer.pubkey(), 100_000_000_000).unwrap();
     svm.airdrop(&authority.pubkey(), 10_000_000_000).unwrap();
 
@@ -202,6 +137,24 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let (lend_vault_pda, _) = find_lend_vault_pda(&pool_pubkey, &program_id);
     let (lp_mint_pda, _) = find_lp_mint_pda(&pool_pubkey, &program_id);
 
+    // ── Feed account (payer is authority so it can sign set_value) ────────────
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref()],
+        &feed_id,
+    );
+    let feed_create_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::Create {}.data(),
+        feed::accounts::Create {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+            payer: payer.pubkey(),
+            system_program: anchor_lang::solana_program::system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
+
     let pool_space = 8 + std::mem::size_of::<Pool>();
     let pool_rent = svm.minimum_balance_for_rent_exemption(pool_space);
     let alloc_pool_ix = anchor_lang::solana_program::system_instruction::create_account(
@@ -212,12 +165,25 @@ fn setup(seed_lend_amount: u64) -> Setup {
         &program_id,
     );
 
+    // set_value must precede jbl::create in the same transaction.
+    let set_value_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        feed::accounts::SetValue {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
             rate_program: Pubkey::default(),
             rate_state: Pubkey::default(),
+            feed_program: feed_id,
+            feed_state: feed_pda,
         }
         .data(),
         jbl::accounts::Create {
@@ -230,6 +196,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
             lend_mint: lend_mint_kp.pubkey(),
             authority: authority.pubkey(),
             payer: payer.pubkey(),
+            sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
             token_program: spl_token::id(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -238,7 +205,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
 
     send_ixs(
         &mut svm,
-        &[alloc_pool_ix, create_ix],
+        &[alloc_pool_ix, set_value_ix, create_ix],
         &payer,
         &[&payer, &pool_kp, &authority],
     );
@@ -365,12 +332,7 @@ fn test_flash_loan_borrow_repay_same_tx() {
     let repay_ix = flash_repay_ix(&s, REPAY);
 
     // Both instructions in the same transaction.
-    let payer_pk = s.payer.pubkey();
-    let bh = s.svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(&[borrow_ix, repay_ix], Some(&payer_pk), &bh);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[&s.payer]).unwrap();
-    let res = s.svm.send_transaction(tx);
-    assert!(res.is_ok(), "flash borrow+repay failed: {:?}", res.err());
+    send_ixs(&mut s.svm, &[borrow_ix, repay_ix], &s.payer, &[&s.payer]);
 
     // lend_vault balance should be SEED + FEE (net +45 tokens).
     let vault_balance = read_token_balance(&s.svm, &s.lend_vault_pda);
@@ -428,12 +390,8 @@ fn test_flash_loan_underpay_fails() {
     let borrow_ix = flash_borrow_ix(&s, BORROW);
     let repay_ix = flash_repay_ix(&s, REPAY);
 
-    let payer_pk = s.payer.pubkey();
-    let bh = s.svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(&[borrow_ix, repay_ix], Some(&payer_pk), &bh);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[&s.payer]).unwrap();
-    let res = s.svm.send_transaction(tx);
-    assert!(res.is_err(), "expected underpay to fail");
+    let succeeded = try_send_ixs(&mut s.svm, &[borrow_ix, repay_ix], &s.payer, &[&s.payer]);
+    assert!(!succeeded, "expected underpay to fail");
 }
 
 #[test]
@@ -541,15 +499,12 @@ fn test_flash_loan_leveraged_swap() {
 
     let repay_ix = flash_repay_ix(&s, REPAY);
 
-    let bh = s.svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(
+    send_ixs(
+        &mut s.svm,
         &[borrow_ix, swap_ix, deposit_leveraged_ix, repay_ix],
-        Some(&payer_pk),
-        &bh,
+        &s.payer,
+        &[&s.payer],
     );
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[&s.payer]).unwrap();
-    let res = s.svm.send_transaction(tx);
-    assert!(res.is_ok(), "leveraged swap failed: {:?}", res.err());
 
     // Pool collateral should have increased by BORROW (leveraged deposit).
     let total_col = read_total_collateral_deposited(&s.svm, &s.pool_pubkey);

@@ -15,7 +15,7 @@ mod size_tests {
     /// actual struct size (discriminator excluded — Anchor adds 8 bytes on top).
     #[test]
     fn pool_size() {
-        assert_eq!(size_of::<Pool>(), 41_232);
+        assert_eq!(size_of::<Pool>(), 41_296);
     }
 
     #[test]

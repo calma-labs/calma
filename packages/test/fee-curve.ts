@@ -50,7 +50,7 @@ describe("irm set_fee_curve", () => {
             .signers([authority])
             .rpc();
 
-        const config = await program.account.irmConfig.fetch(irmConfig);
+        const config = await program.account.irmState.fetch(irmConfig);
         const c0 = config.model.curves[0];
         expect(c0.a.toNumber()).to.equal(500);
         expect(c0.b.toNumber()).to.equal(200);
@@ -67,7 +67,7 @@ describe("irm set_fee_curve", () => {
             .signers([authority])
             .rpc();
 
-        const config = await program.account.irmConfig.fetch(irmConfig);
+        const config = await program.account.irmState.fetch(irmConfig);
         const c1 = config.model.curves[1];
         expect(c1.a.toNumber()).to.equal(200);
         expect(c1.a2.toNumber()).to.equal(2000);
@@ -85,7 +85,7 @@ describe("irm set_fee_curve", () => {
             .signers([authority])
             .rpc();
 
-        const config = await program.account.irmConfig.fetch(irmConfig);
+        const config = await program.account.irmState.fetch(irmConfig);
         expect(config.model.curves[1].enabled).to.equal(0);
     });
 

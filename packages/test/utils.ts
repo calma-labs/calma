@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { Program, AnchorProvider, BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, Connection, SystemProgram } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, Connection, SystemProgram, TransactionInstruction, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import {
   createMint,
   createAssociatedTokenAccount,
@@ -8,6 +8,7 @@ import {
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
 import { Irm } from "../../target/types/irm";
+import { Feed } from "../../target/types/feed";
 
 import JblIdl from "../../target/idl/jbl.json";
 export const POOL_SPACE: number = Number(
@@ -36,6 +37,9 @@ export interface TestSetup {
   userLendTokenAccount: PublicKey;
   irmConfig: PublicKey;
   irmProgramId: PublicKey;
+  feedProgram: Program<Feed>;
+  feedPda: PublicKey;
+  feedAuthority: PublicKey;
 }
 
 /**
@@ -77,6 +81,13 @@ export async function setupTest(
   // Pool is a keypair account (too large for on-chain PDA allocation via CPI).
   const poolKeypair = opts.poolKeypair ?? Keypair.generate();
   const pool = poolKeypair.publicKey;
+
+  const feedProgram = anchor.workspace.Feed as Program<Feed>;
+  const feedAuthority = provider.wallet.publicKey;
+  const [feedPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("feed"), feedAuthority.toBuffer()],
+    feedProgram.programId
+  );
 
   const irmProgram = anchor.workspace.Irm as Program<Irm>;
   const [irmConfigPda] = PublicKey.findProgramAddressSync(
@@ -139,17 +150,34 @@ export async function setupTest(
     programId: program.programId,
   });
 
+  // Create the feed account once; skip if already exists (shared provider wallet key).
+  if (!(await connection.getAccountInfo(feedPda))) {
+    await feedProgram.methods
+      .create()
+      .accounts({ authority: feedAuthority, payer: payer.publicKey })
+      .signers([payer])
+      .rpc();
+  }
+
+  // Build the set_value pre-instruction; it must precede create in the same transaction
+  // so that create's sysvar introspection can find it.
+  const setValueIx = await feedProgram.methods
+    .setValue(new BN(1_000_000))
+    .accounts({ authority: feedAuthority })
+    .instruction();
+
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, irmProgramId, irmConfig)
+    .create(ltvPercent, irmProgramId, irmConfig, feedProgram.programId, feedPda)
     .accounts({
       pool,
       collateralMint,
       lendMint,
       authority: authority.publicKey,
       payer: payer.publicKey,
+      sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
     })
-    .preInstructions([createPoolIx])
+    .preInstructions([createPoolIx, setValueIx])
     .signers([payer, authority, poolKeypair])
     .rpc();
 
@@ -171,7 +199,17 @@ export async function setupTest(
     userLendTokenAccount,
     irmConfig,
     irmProgramId,
+    feedProgram,
+    feedPda,
+    feedAuthority,
   };
+}
+
+export async function feedIx(setup: TestSetup): Promise<TransactionInstruction> {
+  return setup.feedProgram.methods
+    .setValue(new BN(1))
+    .accounts({ authority: setup.feedAuthority })
+    .instruction();
 }
 
 export function irmAccounts(setup: TestSetup) {
@@ -229,6 +267,7 @@ export async function participateInPool(setup: TestSetup, amount: number): Promi
       authority: setup.authority.publicKey,
       userLendTokenAccount: setup.userLendTokenAccount,
     })
+    .preInstructions([await feedIx(setup)])
     .signers([setup.authority])
     .rpc();
 }

@@ -13,7 +13,7 @@ pub struct BorrowRate<'info> {
     pub pool: UncheckedAccount<'info>,
 }
 
-pub fn handler(ctx: Context<BorrowRate>, utilization_bps: u64) -> Result<u32> {
+pub(crate) fn handler(ctx: Context<BorrowRate>, utilization_bps: u64) -> Result<u32> {
     let config = ctx.accounts.irm_state.load()?;
     let rate = config.model.get_fee_bps(utilization_bps);
     msg!("irm::borrow_rate utilization={} rate={}", utilization_bps, rate);

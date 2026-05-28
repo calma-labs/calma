@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { AnchorProvider, BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import {
   createMint,
   createAssociatedTokenAccount,
@@ -11,6 +11,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
+import { Feed } from "../../target/types/feed";
 import { POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
@@ -208,10 +209,25 @@ describe("hardcoded minter faucet", () => {
       // Create a lend mint (normal way - authority is mint auth)
       const lendMint = await createMint(connection, payer, authority.publicKey, null, 6);
 
-      const [statePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("state")],
-        program.programId
+      const feedProgram = anchor.workspace.Feed as anchor.Program<Feed>;
+      const feedAuthority = provider.wallet.publicKey;
+      const [feedPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("feed"), feedAuthority.toBuffer()],
+        feedProgram.programId
       );
+
+      if (!(await connection.getAccountInfo(feedPda))) {
+        await feedProgram.methods
+          .create()
+          .accounts({ authority: feedAuthority, payer: payer.publicKey })
+          .signers([payer])
+          .rpc();
+      }
+
+      const setValueIx = await feedProgram.methods
+        .setValue(new anchor.BN(1_000_000))
+        .accounts({ authority: feedAuthority })
+        .instruction();
 
       const poolRent = await connection.getMinimumBalanceForRentExemption(POOL_SPACE);
       const createPoolIx = SystemProgram.createAccount({
@@ -224,15 +240,16 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75, SystemProgram.programId, SystemProgram.programId)
+        .create(75, SystemProgram.programId, SystemProgram.programId, feedProgram.programId, feedPda)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint
           lendMint,
           authority: authority.publicKey,
           payer: payer.publicKey,
+          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
-        .preInstructions([createPoolIx])
+        .preInstructions([createPoolIx, setValueIx])
         .signers([payer, authority, poolKeypair])
         .rpc();
 

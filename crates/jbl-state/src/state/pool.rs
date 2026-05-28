@@ -23,15 +23,6 @@ pub struct Market {
 ///   - `lend_mint`:       tokens lenders deposit (earning LP) and borrowers receive
 ///   - `lp_mint`:         issued 1:1 to lend-side depositors; redeemable for lend tokens
 ///
-/// Field ordering eliminates implicit repr(C) padding:
-///   offsets 0-127   : four Pubkeys  (4 × 32 = 128 bytes, align 1)
-///   offsets 128-135 : total_collateral_deposited (u64)
-///   offsets 136-191 : market (Market, 7 × 8 = 56 bytes)
-///   offsets 192-223 : rate_program (Pubkey, 32 bytes)
-///   offsets 224-255 : rate_state   (Pubkey, 32 bytes)
-///   offsets 256-257 : ltv_percent, lp_mint_bump  (2 × u8)
-///   offsets 258-263 : _pad [u8; 6]  (align withdrawal_queue to 8)
-///   offsets 264-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
 #[account(zero_copy)]
 pub struct Pool {
     pub authority: Pubkey,
@@ -48,6 +39,10 @@ pub struct Pool {
     pub rate_program: Pubkey,
     /// IRM state account (PDA) passed to the rate program CPI.
     pub irm_state: Pubkey,
+    /// Feed program ID used for price oracle queries.
+    pub feed_program: Pubkey,
+    /// Feed state account (PDA) passed to the feed program.
+    pub feed_state: Pubkey,
     pub ltv_percent: u8,
     pub lp_mint_bump: u8,
     _pad: [u8; 6], // explicit padding — no implicit/uninitialised bytes

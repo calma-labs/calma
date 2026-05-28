@@ -26,7 +26,7 @@ pub struct SetFeeCurve<'info> {
     pub authority: Signer<'info>,
 }
 
-pub fn handler(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
     require!(index < 4, ErrorCode::InvalidCurveIndex);
     let mut state = ctx.accounts.irm_state.load_mut()?;
     state.model.curves[index as usize] = LinearSegment {

@@ -1,15 +1,19 @@
 import * as anchor from "@anchor-lang/core";
-import { Program, AnchorProvider } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
+import { Program, AnchorProvider, BN } from "@anchor-lang/core";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
+import { Feed } from "../../target/types/feed";
 import { POOL_SPACE } from "./utils";
 
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
         let provider: AnchorProvider;
         let program: Program<Jbl>;
+        let feedProgram: Program<Feed>;
+        let feedPda: PublicKey;
+        let feedAuthority: PublicKey;
         let payer: Keypair;
         let authority: Keypair;
         let collateralMint: PublicKey;
@@ -24,6 +28,12 @@ describe("pool creation (create)", () => {
             provider = AnchorProvider.env();
             anchor.setProvider(provider);
             program = anchor.workspace.Jbl as Program<Jbl>;
+            feedProgram = anchor.workspace.Feed as Program<Feed>;
+            feedAuthority = provider.wallet.publicKey;
+            [feedPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("feed"), feedAuthority.toBuffer()],
+                feedProgram.programId
+            );
 
             payer = Keypair.generate();
             authority = Keypair.generate();
@@ -50,6 +60,15 @@ describe("pool creation (create)", () => {
                 [Buffer.from("lp_mint"), poolKeypair.publicKey.toBuffer()],
                 program.programId
             );
+
+            // Create the feed account if it doesn't exist yet (shared provider wallet key).
+            if (!(await provider.connection.getAccountInfo(feedPda))) {
+                await feedProgram.methods
+                    .create()
+                    .accounts({ authority: feedAuthority, payer: payer.publicKey })
+                    .signers([payer])
+                    .rpc();
+            }
         });
 
         it("creates pool account with correct initial state", async () => {
@@ -62,16 +81,23 @@ describe("pool creation (create)", () => {
                 programId: program.programId,
             });
 
+            // set_value must precede create in the same transaction for introspection to pass.
+            const setValueIx = await feedProgram.methods
+                .setValue(new BN(1_000_000))
+                .accounts({ authority: feedAuthority })
+                .instruction();
+
             await program.methods
-                .create(75, SystemProgram.programId, SystemProgram.programId)
+                .create(75, feedProgram.programId, feedPda, feedProgram.programId, feedPda)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
                     lendMint,
                     authority: authority.publicKey,
                     payer: payer.publicKey,
+                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                 })
-                .preInstructions([createPoolAccountIx])
+                .preInstructions([createPoolAccountIx, setValueIx])
                 .signers([payer, authority, poolKeypair])
                 .rpc();
 
@@ -113,16 +139,23 @@ describe("pool creation (create)", () => {
         });
 
         it("fails when pool is already initialised (zero constraint violated)", async () => {
+            const setValueIx = await feedProgram.methods
+                .setValue(new BN(1_000_000))
+                .accounts({ authority: feedAuthority })
+                .instruction();
+
             try {
                 await program.methods
-                    .create(75, SystemProgram.programId, SystemProgram.programId)
+                    .create(75, feedProgram.programId, feedPda, feedProgram.programId, feedPda)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,
                         lendMint,
                         authority: authority.publicKey,
                         payer: payer.publicKey,
+                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
+                    .preInstructions([setValueIx])
                     .signers([payer, authority])
                     .rpc();
                 expect.fail("Expected second create to fail");

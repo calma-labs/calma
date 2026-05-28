@@ -1,7 +1,7 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
 import { expect } from "chai";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
 import { Keypair, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
@@ -92,6 +92,7 @@ async function openMultiply(
     ]);
 
   const tx = new Transaction().add(
+    await feedIx(setup),
     depositInitialIx,
     flashBorrowIx,
     swapIx,

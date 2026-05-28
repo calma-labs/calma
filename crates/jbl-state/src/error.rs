@@ -40,4 +40,6 @@ pub enum ErrorCode {
     MissingRateProgram,
     #[msg("Rate state account missing from remaining accounts")]
     MissingRateState,
+    #[msg("Create pool: no matching feed set_value instruction found before this transaction")]
+    FeedSetValueMissing,
 }

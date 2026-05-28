@@ -1,3 +1,6 @@
+mod common;
+use common::{create_mint_ixs, send_ixs};
+
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
 use jbl::state::Pool;
@@ -6,9 +9,7 @@ use {
     anchor_spl::token::spl_token,
     litesvm::LiteSVM,
     solana_keypair::Keypair,
-    solana_message::{Message, VersionedMessage},
     solana_signer::Signer,
-    solana_transaction::versioned::VersionedTransaction,
 };
 
 fn find_collateral_vault_pda(pool: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
@@ -23,68 +24,38 @@ fn find_lp_mint_pda(pool: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"lp_mint", pool.as_ref()], program_id)
 }
 
-fn create_mint_ixs(
-    payer: &Pubkey,
-    mint: &Pubkey,
-    mint_authority: &Pubkey,
-    rent: u64,
-) -> [anchor_lang::solana_program::instruction::Instruction; 2] {
-    use anchor_lang::solana_program::program_pack::Pack;
-    let create_ix = anchor_lang::solana_program::system_instruction::create_account(
-        payer,
-        mint,
-        rent,
-        spl_token::state::Mint::LEN as u64,
-        &spl_token::id(),
-    );
-    let init_ix = spl_token::instruction::initialize_mint(
-        &spl_token::id(),
-        mint,
-        mint_authority,
-        None,
-        6,
+/// Build a `feed::set_value` instruction that sets the price to `value`.
+fn feed_set_value_ix(feed_id: &Pubkey, feed_pda: &Pubkey, authority: &Pubkey, value: u64) -> Instruction {
+    Instruction::new_with_bytes(
+        *feed_id,
+        &feed::instruction::SetValue { value }.data(),
+        feed::accounts::SetValue {
+            feed: *feed_pda,
+            authority: *authority,
+        }
+        .to_account_metas(None),
     )
-    .unwrap();
-    [create_ix, init_ix]
 }
 
 #[test]
 fn test_create() {
     let program_id = jbl::id();
+    let feed_id = feed::id();
     let payer = Keypair::new();
     let authority = Keypair::new();
     let collateral_mint_keypair = Keypair::new();
     let lend_mint_keypair = Keypair::new();
 
     let mut svm = LiteSVM::new();
-    let bytes = include_bytes!("../../../target/deploy/jbl.so");
-    svm.add_program(program_id, bytes).unwrap();
+    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so")).unwrap();
+    svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so")).unwrap();
     svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
 
     // ── Create collateral and lend SPL mints ─────────────────────────────────
     let mint_rent = svm.minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN);
-    let collateral_mint_ixs =
-        create_mint_ixs(&payer.pubkey(), &collateral_mint_keypair.pubkey(), &payer.pubkey(), mint_rent);
-    let lend_mint_ixs =
-        create_mint_ixs(&payer.pubkey(), &lend_mint_keypair.pubkey(), &payer.pubkey(), mint_rent);
-
-    let bh = svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(
-        &[
-            collateral_mint_ixs[0].clone(),
-            collateral_mint_ixs[1].clone(),
-            lend_mint_ixs[0].clone(),
-            lend_mint_ixs[1].clone(),
-        ],
-        Some(&payer.pubkey()),
-        &bh,
-    );
-    let tx = VersionedTransaction::try_new(
-        VersionedMessage::Legacy(msg),
-        &[&payer, &collateral_mint_keypair, &lend_mint_keypair],
-    )
-    .unwrap();
-    svm.send_transaction(tx).unwrap();
+    let [cc, ci] = create_mint_ixs(&payer.pubkey(), &collateral_mint_keypair.pubkey(), &payer.pubkey(), mint_rent);
+    let [lc, li] = create_mint_ixs(&payer.pubkey(), &lend_mint_keypair.pubkey(), &payer.pubkey(), mint_rent);
+    send_ixs(&mut svm, &[cc, ci, lc, li], &payer, &[&payer, &collateral_mint_keypair, &lend_mint_keypair]);
 
     // ── Create pool keypair and pre-allocate account ──────────────────────────
     let pool_keypair = Keypair::new();
@@ -94,6 +65,26 @@ fn test_create() {
     let (collateral_vault_pda, _) = find_collateral_vault_pda(&pool_pubkey, &program_id);
     let (lend_vault_pda, _) = find_lend_vault_pda(&pool_pubkey, &program_id);
     let (lp_mint_pda, _) = find_lp_mint_pda(&pool_pubkey, &program_id);
+
+    // ── Create feed account ───────────────────────────────────────────────────
+    // The feed PDA is derived from [b"feed", authority.pubkey()].
+    // `payer` is used as the feed authority so it can sign set_value.
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref()],
+        &feed_id,
+    );
+    let feed_create_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::Create {}.data(),
+        feed::accounts::Create {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+            payer: payer.pubkey(),
+            system_program: anchor_lang::solana_program::system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
 
     // Pre-allocate pool account (too large for CPI creation)
     let pool_space = 8 + std::mem::size_of::<Pool>();
@@ -106,6 +97,9 @@ fn test_create() {
         &program_id,
     );
 
+    // ── set_value must precede create in the same transaction ─────────────────
+    let set_value_ix = feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000);
+
     // ── Build create instruction ──────────────────────────────────────────────
     let instruction = Instruction::new_with_bytes(
         program_id,
@@ -113,6 +107,8 @@ fn test_create() {
             ltv_percent: 75,
             rate_program: Pubkey::default(),
             rate_state: Pubkey::default(),
+            feed_program: feed_id,
+            feed_state: feed_pda,
         }
         .data(),
         jbl::accounts::Create {
@@ -125,33 +121,28 @@ fn test_create() {
             lend_mint: lend_mint_keypair.pubkey(),
             authority: authority.pubkey(),
             payer: payer.pubkey(),
+            sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
             token_program: spl_token::id(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
         .to_account_metas(None),
     );
 
-    let bh = svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(
-        &[create_pool_account_ix, instruction],
-        Some(&payer.pubkey()),
-        &bh,
-    );
-    let tx = VersionedTransaction::try_new(
-        VersionedMessage::Legacy(msg),
+    // Pre-allocate pool + set_value + create all in one transaction
+    // (create_pool_account_ix is at index 0, set_value at index 1, create at index 2)
+    send_ixs(
+        &mut svm,
+        &[create_pool_account_ix, set_value_ix, instruction],
+        &payer,
         &[&payer, &pool_keypair, &authority],
-    )
-    .unwrap();
-
-    let res = svm.send_transaction(tx);
-    assert!(res.is_ok(), "create failed: {:?}", res.err());
+    );
 }
 
 #[test]
 fn test_pool_size() {
     assert_eq!(
         std::mem::size_of::<Pool>(),
-        41_232,
+        41_296,
         "Pool size changed — update POOL_SPACE in create.rs and the TS test helper if intentional",
     );
 }

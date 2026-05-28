@@ -15,16 +15,6 @@ use wasm_bindgen::prelude::*;
 
 const DISCRIMINATOR: usize = 8;
 
-// ── compile-time size assertions ──────────────────────────────────────────────
-
-const _: () = {
-    assert!(core::mem::size_of::<Pool>() == 41_232); 
-    assert!(core::mem::size_of::<UserPosition>() == 88);
-    assert!(core::mem::size_of::<RateHedgeOffer>() == 120);
-    assert!(core::mem::size_of::<RateHedgeMatch>() == 112);
-    assert!(core::mem::size_of::<IrmState>() == 232);
-};
-
 // ── wrapper types ─────────────────────────────────────────────────────────────
 
 /// Wasm-exposed wrapper around a parsed `Pool` account.
@@ -490,7 +480,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_232);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_296);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);

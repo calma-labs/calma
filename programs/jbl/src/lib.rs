@@ -26,8 +26,10 @@ pub mod jbl {
         ltv_percent: u8,
         rate_program: Pubkey,
         rate_state: Pubkey,
+        feed_program: Pubkey,
+        feed_state: Pubkey,
     ) -> Result<()> {
-        create_handler(ctx, ltv_percent, rate_program, rate_state)
+        create_handler(ctx, ltv_percent, rate_program, rate_state, feed_program, feed_state)
     }
 
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {

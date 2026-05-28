@@ -6,6 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
+feed = "BP5cC1PQDrjX74QjXU8PMbDBje3oiaVJAh3hJS9AtyhU"
 irm = "3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC"
 jbl = "zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ"
 

@@ -20,7 +20,7 @@ pub struct Initialize<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<Initialize>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<Initialize>) -> Result<()> {
     let mut config = ctx.accounts.irm_config.load_init()?;
     config.pool = ctx.accounts.pool.key();
     config.authority = ctx.accounts.authority.key();
