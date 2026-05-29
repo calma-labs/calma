@@ -209,7 +209,7 @@ export async function setupTest(
 
 export async function feedIx(setup: TestSetup): Promise<TransactionInstruction> {
   return setup.feedProgram.methods
-    .setValue(new BN(1))
+    .setValue(new BN(1_000_000))
     .accounts({ authority: setup.feedAuthority })
     .instruction();
 }

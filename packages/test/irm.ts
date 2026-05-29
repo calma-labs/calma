@@ -103,6 +103,7 @@ describe("irm initialize", () => {
                 rateProgram: irmProgram.programId,
                 irmState: cpiIrmConfig,
                 sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                feedState: jblSetup.feedPda,
             })
             .preInstructions([await feedIx(jblSetup)])
             .signers([jblSetup.authority])

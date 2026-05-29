@@ -220,6 +220,7 @@ describe("participate and leave", () => {
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
                     sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    feedState: setup.feedPda,
                 })
                 .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])

@@ -95,6 +95,10 @@ pub struct BorrowWithHedge<'info> {
     #[account(address = Pubkey::new_from_array(SYSVAR_INSTRUCTIONS_ID.to_bytes()))]
     pub sysvar_instructions: UncheckedAccount<'info>,
 
+    /// CHECK: feed state — price is read from its `value` field; key validated against pool.feed_state.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ ErrorCode::InvalidAmount)]
+    pub feed_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -155,11 +159,18 @@ pub fn borrow_with_hedge_handler<'a>(
         );
 
         let collateral = ctx.accounts.user_position.load()?.collateral_deposited;
-        let max_borrowable = collateral
-            .checked_mul(pool.ltv_percent as u64)
+        let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
+        let max_borrowable_u128 = (collateral as u128)
+            .checked_mul(oracle_price as u128)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_div(crate::oracle::PRICE_SCALE)
+            .ok_or(ErrorCode::MathOverflow)?
+            .checked_mul(pool.ltv_percent as u128)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(100)
             .ok_or(ErrorCode::MathOverflow)?;
+        let max_borrowable = u64::try_from(max_borrowable_u128)
+            .map_err(|_| ErrorCode::MathOverflow)?;
 
         let current_debt = if pool.market.total_borrow_shares > 0 {
             shares_to_amount(

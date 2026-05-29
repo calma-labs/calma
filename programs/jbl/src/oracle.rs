@@ -5,6 +5,27 @@ use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at
 /// Pre-computed: python3 -c "import hashlib; print(list(hashlib.sha256(b'global:set_value').digest()[:8]))"
 pub const SET_VALUE_DISCRIMINATOR: [u8; 8] = [253, 214, 48, 201, 100, 201, 227, 219];
 
+/// Oracle price scale factor. A feed value of PRICE_SCALE represents a 1:1 exchange rate
+/// (1 collateral token = 1 lend token). Values above/below scale collateral proportionally.
+pub const PRICE_SCALE: u128 = 1_000_000;
+
+/// Read the `value` field from a Feed account.
+///
+/// Feed account layout (Anchor):
+///   [0..8]   discriminator
+///   [8..40]  authority (Pubkey, 32 bytes)
+///   [40..48] value (u64, little-endian)
+///   [48]     bump (u8)
+pub fn read_feed_price(feed_state_info: &AccountInfo) -> Result<u64> {
+    let data = feed_state_info.try_borrow_data()?;
+    require!(data.len() >= 48, crate::error::ErrorCode::InvalidAmount);
+    Ok(u64::from_le_bytes(
+        data[40..48]
+            .try_into()
+            .map_err(|_| crate::error::ErrorCode::MathOverflow)?,
+    ))
+}
+
 /// On-chain oracle verifier. Constructed by scanning the sysvar_instructions
 /// sysvar for a preceding `set_value` call; holding an instance guarantees the
 /// check passed. Converts into [`jbl_state::oracle::OracleState`] for use with

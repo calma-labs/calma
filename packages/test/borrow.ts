@@ -31,6 +31,7 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+            feedState: setup.feedPda,
         })
         .preInstructions([await feedIx(setup)])
         .signers([authority])
@@ -184,7 +185,7 @@ describe("borrow", () => {
             try {
                 await setup.program.methods
                     .borrow(new anchor.BN(50_000_000))
-                    .accounts({ pool: setup.pool, lendMint: setup.lendMint, authority: stranger.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig, sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY })
+                    .accounts({ pool: setup.pool, lendMint: setup.lendMint, authority: stranger.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig, sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY, feedState: setup.feedPda })
                     .preInstructions([await feedIx(setup)])
                     .signers([stranger])
                     .rpc();
@@ -452,6 +453,7 @@ describe("borrow", () => {
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
                         sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedState: setup.feedPda,
                     })
                     .preInstructions([await feedIx(setup)])
                     .signers([setup.authority])
