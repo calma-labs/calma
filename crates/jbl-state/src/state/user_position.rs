@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use jbl_math::Position;
 
 /// Tracks a user's collateral deposit and any open borrow position.
 /// Created on first collateral deposit; borrow fields populated when the user borrows.
@@ -23,4 +24,19 @@ pub struct UserPosition {
     pub debt_shares: u64,
     pub bump: u8,
     _pad: [u8; 7],
+}
+
+impl Position for UserPosition {
+    fn collateral_deposited(&self) -> u64 {
+        self.collateral_deposited
+    }
+    fn debt_shares(&self) -> u64 {
+        self.debt_shares
+    }
+    fn set_collateral_deposited(&mut self, value: u64) {
+        self.collateral_deposited = value;
+    }
+    fn set_debt_shares(&mut self, value: u64) {
+        self.debt_shares = value;
+    }
 }

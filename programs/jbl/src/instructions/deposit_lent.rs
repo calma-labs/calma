@@ -77,21 +77,12 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     }
 
     // ── 1. Calculate LP tokens to mint (proportional to existing deposits) ────
-    // Uses total_lend_deposited as the denominator so LP value is consistent
-    // with the deposit accounting in the pool.
     let lp_to_mint = {
-        let pool = ctx.accounts.pool.load()?;
-
-        if pool.market.total_supply_shares == 0 || pool.market.total_supply_assets == 0 {
-            // First lend deposit: 1 LP per token.
-            amount
-        } else {
-            (amount as u128)
-                .checked_mul(pool.market.total_supply_shares as u128)
-                .ok_or(crate::error::ErrorCode::MathOverflow)?
-                .checked_div(pool.market.total_supply_assets as u128)
-                .ok_or(crate::error::ErrorCode::MathOverflow)? as u64
-        }
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market);
+        let lp = core.deposit_lent(amount).ok_or(crate::error::ErrorCode::MathOverflow)?;
+        pool.market = core.market;
+        lp
     };
 
     require!(lp_to_mint > 0, crate::error::ErrorCode::InvalidAmount);
@@ -127,28 +118,14 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
         lp_to_mint,
     )?;
 
-    // ── 4. Update pool lend totals ────────────────────────────────────────────
-    {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_supply_assets = pool
-            .market
-            .total_supply_assets
-            .checked_add(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.market.total_supply_shares = pool
-            .market
-            .total_supply_shares
-            .checked_add(lp_to_mint)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-
-        msg!(
-            "DepositLent: deposited {} lend tokens, minted {} LP tokens. total_supply_assets: {}, total_supply_shares: {}",
-            amount,
-            lp_to_mint,
-            pool.market.total_supply_assets,
-            pool.market.total_supply_shares,
-        );
-    }
+    let pool = ctx.accounts.pool.load()?;
+    msg!(
+        "DepositLent: deposited {} lend tokens, minted {} LP tokens. total_supply_assets: {}, total_supply_shares: {}",
+        amount,
+        lp_to_mint,
+        pool.market.total_supply_assets,
+        pool.market.total_supply_shares,
+    );
 
     Ok(())
 }

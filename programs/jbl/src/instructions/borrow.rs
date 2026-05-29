@@ -1,4 +1,3 @@
-use crate::math::{amount_to_shares, shares_to_amount};
 use crate::oracle::OracleState;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
@@ -90,58 +89,21 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
         let oracle = OracleState::new(&ctx.accounts.sysvar_instructions.to_account_info(), pool.feed_program, pool.feed_state)?;
         (oracle, pool.calculate_utilization())
     };
+    let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle)?;
-
-    // ── 2. LTV check and share calculation ───────────────────────────────────
     let new_shares = {
-        let pool = ctx.accounts.pool.load()?;
-        let position = ctx.accounts.user_position.load()?;
-        let collateral = position.collateral_deposited;
-        let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
-        let max_borrowable_u128 = (collateral as u128)
-            .checked_mul(oracle_price as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(crate::oracle::PRICE_SCALE)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_mul(pool.market.ltv_percent as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(100)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let max_borrowable = u64::try_from(max_borrowable_u128)
-            .map_err(|_| crate::error::ErrorCode::MathOverflow)?;
-
-        let current_debt = if pool.market.total_borrow_shares > 0 {
-            shares_to_amount(
-                position.debt_shares,
-                pool.market.total_borrow_assets,
-                pool.market.total_borrow_shares,
-            )
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-        } else {
-            0
-        };
-
-        let available = max_borrowable
-            .checked_sub(current_debt)
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market)
+            .with_oracle(oracle)
+            .with_irm(irm)
+            .with_position(*ctx.accounts.user_position.load()?);
+        core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let new_shares = core.borrow(amount, oracle_price)
             .ok_or(crate::error::ErrorCode::InsufficientFunds)?;
-        require!(amount <= available, crate::error::ErrorCode::InsufficientFunds);
-
-        let new_shares = amount_to_shares(amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        require!(new_shares > 0, crate::error::ErrorCode::InvalidAmount);
-
+        pool.market = core.market;
+        ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         new_shares
     };
-
-    // ── 3. Update user position ───────────────────────────────────────────────
-    {
-        let mut position = ctx.accounts.user_position.load_mut()?;
-        position.debt_shares = position
-            .debt_shares
-            .checked_add(new_shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-    }
 
     // ── 4. Transfer lend tokens to the borrower ───────────────────────────────
     let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
@@ -160,28 +122,13 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
         amount,
     )?;
 
-    // ── 5. Update pool state ──────────────────────────────────────────────────
-    let (total_borrow_assets, total_borrow_shares) = {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_borrow_shares = pool
-            .market
-            .total_borrow_shares
-            .checked_add(new_shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.market.total_borrow_assets = pool
-            .market
-            .total_borrow_assets
-            .checked_add(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        (pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-    };
-
+    let pool = ctx.accounts.pool.load()?;
     msg!(
         "Borrowed {} lend tokens → {} shares. Pool total_borrow_assets: {}, total_shares: {}",
         amount,
         new_shares,
-        total_borrow_assets,
-        total_borrow_shares,
+        pool.market.total_borrow_assets,
+        pool.market.total_borrow_shares,
     );
 
     Ok(())

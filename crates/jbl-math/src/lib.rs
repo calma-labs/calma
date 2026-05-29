@@ -2,6 +2,188 @@ mod traits;
 pub use traits::*;
 
 const SECONDS_PER_YEAR: u64 = 31_557_600;
+pub const PRICE_SCALE: u128 = 1_000_000;
+
+pub fn flash_fee(amount: u64, fee_bps: u32) -> Option<u64> {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(fee_bps as u128)?
+            .checked_div(10_000)?,
+    )
+    .ok()
+}
+
+pub struct Core<M: Market, O = (), I = (), P = ()> {
+    pub market: M,
+    pub oracle: O,
+    pub irm: I,
+    pub position: P,
+}
+
+impl<M: Market> Core<M, (), (), ()> {
+    pub fn new(market: M) -> Self {
+        Core { market, oracle: (), irm: (), position: () }
+    }
+}
+
+impl<M: Market, O, I, P> Core<M, O, I, P> {
+    pub fn with_oracle<O2: Oracle>(self, oracle: O2) -> Core<M, O2, I, P> {
+        Core { market: self.market, oracle, irm: self.irm, position: self.position }
+    }
+    pub fn with_irm<I2: IrmRate>(self, irm: I2) -> Core<M, O, I2, P> {
+        Core { market: self.market, oracle: self.oracle, irm, position: self.position }
+    }
+    pub fn with_position<P2: Position>(self, position: P2) -> Core<M, O, I, P2> {
+        Core { market: self.market, oracle: self.oracle, irm: self.irm, position }
+    }
+
+    pub fn calc_lend_for_shares(&self, shares: u64) -> Option<u64> {
+        let total_shares = self.market.total_supply_shares();
+        if total_shares == 0 { return None; }
+        u64::try_from(
+            (shares as u128)
+                .checked_mul(self.market.total_supply_assets() as u128)?
+                .checked_div(total_shares as u128)?,
+        )
+        .ok()
+    }
+
+    pub fn deposit_lent(&mut self, amount: u64) -> Option<u64> {
+        let lp = if self.market.total_supply_shares() == 0 || self.market.total_supply_assets() == 0 {
+            amount
+        } else {
+            u64::try_from(
+                (amount as u128)
+                    .checked_mul(self.market.total_supply_shares() as u128)?
+                    .checked_div(self.market.total_supply_assets() as u128)?,
+            )
+            .ok()?
+        };
+        if lp == 0 { return None; }
+        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_add(amount)?);
+        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_add(lp)?);
+        Some(lp)
+    }
+
+    pub fn withdraw_lent_immediate(&mut self, shares: u64) -> Option<u64> {
+        let lend = self.calc_lend_for_shares(shares)?;
+        let clamped = lend.min(self.market.total_supply_assets());
+        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_sub(shares)?);
+        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_sub(clamped)?);
+        Some(lend)
+    }
+
+    pub fn withdraw_lent_queued(&mut self, shares: u64) -> Option<u64> {
+        let lend = self.calc_lend_for_shares(shares)?;
+        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_sub(shares)?);
+        self.market.set_assets_in_queue(self.market.assets_in_queue().checked_add(lend)?);
+        Some(lend)
+    }
+}
+
+impl<M: Market, O: Oracle, I: IrmRate, P> Core<M, O, I, P> {
+    pub fn accrue_interest(&mut self) -> Option<()> {
+        let elapsed = (self.oracle.current_ts().saturating_sub(self.market.last_update())).max(0) as u64;
+        if elapsed == 0 {
+            return Some(());
+        }
+        let interest = compute_interest(self.market.total_borrow_assets(), self.irm.rate_bps(), elapsed)?;
+        let new_borrow = self.market.total_borrow_assets().checked_add(interest)?;
+        self.market.set_total_borrow_assets(new_borrow);
+        self.market.set_last_update(self.oracle.current_ts());
+        Some(())
+    }
+}
+
+impl<M: Market, O, I, P: Position> Core<M, O, I, P> {
+    pub fn borrow(&mut self, amount: u64, oracle_price: u64) -> Option<u64> {
+        let max_borrowable = u64::try_from(
+            (self.position.collateral_deposited() as u128)
+                .checked_mul(oracle_price as u128)?
+                .checked_div(PRICE_SCALE)?
+                .checked_mul(self.market.ltv_percent() as u128)?
+                .checked_div(100)?,
+        )
+        .ok()?;
+        let current_debt = if self.market.total_borrow_shares() > 0 {
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
+        } else { 0 };
+        if amount > max_borrowable.checked_sub(current_debt)? { return None; }
+        let new_shares = amount_to_shares(amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        if new_shares == 0 { return None; }
+        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(amount)?);
+        Some(new_shares)
+    }
+
+    pub fn borrow_with_fee(&mut self, amount: u64, total_debt_amount: u64, oracle_price: u64) -> Option<u64> {
+        let max_borrowable = u64::try_from(
+            (self.position.collateral_deposited() as u128)
+                .checked_mul(oracle_price as u128)?
+                .checked_div(PRICE_SCALE)?
+                .checked_mul(self.market.ltv_percent() as u128)?
+                .checked_div(100)?,
+        )
+        .ok()?;
+        let current_debt = if self.market.total_borrow_shares() > 0 {
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
+        } else { 0 };
+        if amount > max_borrowable.checked_sub(current_debt)? { return None; }
+        let new_shares = amount_to_shares(total_debt_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        if new_shares == 0 { return None; }
+        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(total_debt_amount)?);
+        Some(new_shares)
+    }
+
+    pub fn repay(&mut self, amount: u64) -> Option<(u64, u64)> {
+        let debt_shares = self.position.debt_shares();
+        let total_due = shares_to_amount(debt_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        let repay_amount = amount.min(total_due);
+        let shares_to_burn = if repay_amount == total_due {
+            debt_shares
+        } else {
+            amount_to_shares_burned(repay_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares(), debt_shares)?
+        };
+        self.position.set_debt_shares(debt_shares.checked_sub(shares_to_burn)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(shares_to_burn)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(repay_amount)?);
+        Some((repay_amount, shares_to_burn))
+    }
+
+    pub fn withdraw_collateral(&mut self, amount: u64, oracle_price: u64) -> Option<u64> {
+        let remaining = self.position.collateral_deposited().checked_sub(amount)?;
+        let max_borrowable = u64::try_from(
+            (remaining as u128)
+                .checked_mul(oracle_price as u128)?
+                .checked_div(PRICE_SCALE)?
+                .checked_mul(self.market.ltv_percent() as u128)?
+                .checked_div(100)?,
+        )
+        .ok()?;
+        let current_debt = if self.market.total_borrow_shares() > 0 {
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
+        } else { 0 };
+        if current_debt > max_borrowable { return None; }
+        self.position.set_collateral_deposited(remaining);
+        Some(remaining)
+    }
+
+    pub fn settle_hedge(&mut self, initial_shares: u64, borrow_amount: u64, upfront_fee: u64) -> Option<(u64, u64)> {
+        let current_value = shares_to_amount(initial_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(initial_shares)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(current_value)?);
+        self.market.set_total_supply_assets(self.market.total_supply_assets().saturating_sub(upfront_fee));
+        let new_shares = amount_to_shares(borrow_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(borrow_amount)?);
+        let old_debt = self.position.debt_shares();
+        self.position.set_debt_shares(old_debt.checked_sub(initial_shares)?.checked_add(new_shares)?);
+        Some((current_value, new_shares))
+    }
+}
 
 /// Compute simple interest on a pool's total borrowed balance.
 ///

@@ -128,7 +128,11 @@ pub fn create_handler(
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
-    pool.accrue_interest(&irm, &oracle)?;
+    {
+        let mut core = jbl_math::Core::new(pool.market).with_oracle(oracle).with_irm(irm);
+        core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+        pool.market = core.market;
+    }
 
     msg!(
         "Created pool for authority: {} collateral_mint: {} lend_mint: {} lp_mint: {} at slot: {}",

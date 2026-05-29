@@ -97,37 +97,30 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         shares,
     )?;
 
-    // ── 2. Compute token amount for the burned shares ─────────────────────────
+    // ── 2. Compute token amount and update market ─────────────────────────────
     let vault_balance = ctx.accounts.lend_vault.amount;
-
     let (immediate, lend_for_shares) = {
-        let pool = ctx.accounts.pool.load()?;
+        let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
-        let lend_for_shares = (shares as u128)
-            .checked_mul(pool.market.total_supply_assets as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(pool.market.total_supply_shares as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)? as u64;
+        let mut core = jbl_math::Core::new(pool.market);
+        let lend_for_shares = core.calc_lend_for_shares(shares)
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
         let immediate = queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0;
+        if immediate {
+            core.withdraw_lent_immediate(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
+        } else {
+            core.withdraw_lent_queued(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
+            pool.withdrawal_queue.push(WithdrawalQueueEntry {
+                requester: ctx.accounts.authority.key(),
+                amount: lend_for_shares,
+            })?;
+        }
+        pool.market = core.market;
         (immediate, lend_for_shares)
     };
 
     if immediate {
-        // ── 3a. Immediate: transfer lend tokens and update totals ─────────────
-        {
-            let mut pool = ctx.accounts.pool.load_mut()?;
-            pool.market.total_supply_shares = pool
-                .market
-                .total_supply_shares
-                .checked_sub(shares)
-                .ok_or(crate::error::ErrorCode::MathOverflow)?;
-            pool.market.total_supply_assets = pool
-                .market
-                .total_supply_assets
-                .checked_sub(lend_for_shares.min(pool.market.total_supply_assets))
-                .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        }
-
+        // ── 3a. Immediate: transfer lend tokens ───────────────────────────────
         let state_bump = ctx.bumps.state;
         let seeds = &[b"state" as &[u8], &[state_bump]];
         let signer = &[&seeds[..]];
@@ -152,27 +145,11 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             ctx.accounts.pool.load()?.market.total_supply_shares,
         );
     } else {
-        // ── 3b. Queued: lock in token amount, decrement shares immediately ────
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_supply_shares = pool
-            .market
-            .total_supply_shares
-            .checked_sub(shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.withdrawal_queue.push(WithdrawalQueueEntry {
-            requester: ctx.accounts.authority.key(),
-            amount: lend_for_shares,
-        })?;
-        pool.market.assets_in_queue = pool
-            .market
-            .assets_in_queue
-            .checked_add(lend_for_shares)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
         msg!(
             "Leave: burned {} LP, enqueued {} lend tokens for later withdrawal. total_supply_shares: {}",
             shares,
             lend_for_shares,
-            pool.market.total_supply_shares,
+            ctx.accounts.pool.load()?.market.total_supply_shares,
         );
     }
 

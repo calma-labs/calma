@@ -1,6 +1,5 @@
 use crate::withdrawal_queue::WithdrawalQueue;
 use anchor_lang::prelude::*;
-use jbl_math::{ compute_interest};
 
 /// Per-market accounting: supply, borrow, and fee state.
 #[zero_copy]
@@ -42,6 +41,24 @@ impl jbl_math::Market for Market {
     }
     fn ltv_percent(&self) -> u8 {
         self.ltv_percent
+    }
+    fn set_total_supply_assets(&mut self, value: u64) {
+        self.total_supply_assets = value;
+    }
+    fn set_total_supply_shares(&mut self, value: u64) {
+        self.total_supply_shares = value;
+    }
+    fn set_assets_in_queue(&mut self, value: u64) {
+        self.assets_in_queue = value;
+    }
+    fn set_total_borrow_assets(&mut self, value: u64) {
+        self.total_borrow_assets = value;
+    }
+    fn set_total_borrow_shares(&mut self, value: u64) {
+        self.total_borrow_shares = value;
+    }
+    fn set_last_update(&mut self, value: i64) {
+        self.last_update = value;
     }
 }
 
@@ -93,26 +110,5 @@ impl Pool {
             .unwrap_or(0)
             .checked_div(total_supply as u128)
             .unwrap_or(0) as u64
-    }
-
-    /// Accrue interest into `total_borrow_assets` based on elapsed time since last
-    /// accrual, then update `market.last_update` to `oracle.current_ts`.
-    ///
-    /// Requires an [`OracleState`] proving a fresh price exists earlier in the
-    /// transaction. `rate_bps` is the current borrow rate fetched via IRM CPI.
-    pub fn accrue_interest(&mut self, irm: &impl jbl_math::IrmRate, oracle: &impl jbl_math::Oracle) -> Result<()> {
-        let elapsed = (oracle.current_ts().saturating_sub(self.market.last_update)).max(0) as u64;
-        if elapsed == 0 {
-            return Ok(());
-        }
-        let interest = compute_interest(self.market.total_borrow_assets, irm.rate_bps(), elapsed)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.total_borrow_assets = self
-            .market
-            .total_borrow_assets
-            .checked_add(interest)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.last_update = oracle.current_ts();
-        Ok(())
     }
 }
