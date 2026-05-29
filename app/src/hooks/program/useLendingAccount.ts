@@ -18,7 +18,9 @@ async function fetchPool(address: PublicKey): Promise<PoolWithIrm | null> {
     if (!pool) return null
     const irmInfo = await connection.getAccountInfo(new PublicKey(pool.irm_state))
     if (!irmInfo) return null
-    return PoolWithIrm.from_bytes(info.data, irmInfo.data) ?? null
+    const feedInfo = await connection.getAccountInfo(new PublicKey(pool.feed_state))
+    if (!feedInfo) return null
+    return PoolWithIrm.from_bytes(info.data, irmInfo.data, feedInfo.data) ?? null
 }
 
 /** Fetch a single pool account by its public key. */

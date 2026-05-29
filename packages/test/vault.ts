@@ -128,7 +128,7 @@ describe("pool creation (create)", () => {
             expect(pool.market.totalSupplyShares.toString()).to.equal("0");
             expect(pool.market.totalBorrowAssets.toString()).to.equal("0");
             expect(pool.market.totalBorrowShares.toString()).to.equal("0");
-            expect(pool.ltvPercent).to.equal(75);
+            expect(pool.market.ltvPercent).to.equal(75);
         });
 
         it("initialises collateral_vault under state PDA authority", async () => {

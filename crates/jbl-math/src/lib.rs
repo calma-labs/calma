@@ -1,3 +1,6 @@
+mod traits;
+pub use traits::*;
+
 const SECONDS_PER_YEAR: u64 = 31_557_600;
 
 /// Compute simple interest on a pool's total borrowed balance.

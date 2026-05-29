@@ -148,7 +148,7 @@ pub fn borrow_with_hedge_handler<'a>(
     };
     let current_ts = oracle.current_ts;
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle.into())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle)?;
 
     // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──
     let new_shares = {
@@ -165,7 +165,7 @@ pub fn borrow_with_hedge_handler<'a>(
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(crate::oracle::PRICE_SCALE)
             .ok_or(ErrorCode::MathOverflow)?
-            .checked_mul(pool.ltv_percent as u128)
+            .checked_mul(pool.market.ltv_percent as u128)
             .ok_or(ErrorCode::MathOverflow)?
             .checked_div(100)
             .ok_or(ErrorCode::MathOverflow)?;

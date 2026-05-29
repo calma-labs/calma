@@ -127,7 +127,7 @@ impl PoolAccount {
     /// LTV percent (e.g. 80 means 80%).
     #[wasm_bindgen(getter)]
     pub fn ltv_percent(&self) -> u8 {
-        self.0.ltv_percent
+        self.0.market.ltv_percent
     }
 
     /// LP mint PDA bump seed.
@@ -140,6 +140,12 @@ impl PoolAccount {
     #[wasm_bindgen(getter)]
     pub fn irm_state(&self) -> Vec<u8> {
         bytemuck::bytes_of(&self.0.irm_state).to_vec()
+    }
+
+    /// IRM state (IRM config) pubkey as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn feed_state(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.feed_state).to_vec()
     }
 
     /// Total lend tokens committed to pending withdrawals in the on-chain queue.
@@ -517,7 +523,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_296);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_304);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);
@@ -579,7 +585,7 @@ mod tests {
     // Pool field offsets (from pool.rs layout comment):
     //   0..127   : 4 Pubkeys (authority, collateral_mint, lend_mint, lp_mint)
     //   128..135 : total_collateral_deposited (u64)
-    //   136..191 : market (Market, 7 × u64 = 56 bytes)
+    //   136..199 : market (Market, 64 bytes — 7 × u64/i64 + ltv_percent + 7-byte pad)
     //     136..143 : total_supply_assets
     //     144..151 : total_supply_shares
     //     152..159 : total_borrow_assets
@@ -587,6 +593,8 @@ mod tests {
     //     168..175 : last_update
     //     176..183 : fee
     //     184..191 : assets_in_queue
+    //     192      : ltv_percent (u8)
+    //     193..199 : _pad [u8; 7]
     const POOL_MARKET_OFFSET: usize = 136;
 
     // IrmState field offsets:

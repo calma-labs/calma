@@ -98,7 +98,7 @@ pub fn process_queue_entry_handler(_ctx: Context<ProcessQueueEntry>) -> Result<(
     //             .checked_sub(amount)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?;
     //         let max_borrowable = remaining_deposit
-    //             .checked_mul(pool.ltv_percent as u64)
+    //             .checked_mul(pool.market.ltv_percent as u64)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?
     //             .checked_div(100)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?;

@@ -1,8 +1,6 @@
-use crate::irm::IrmRate;
-use crate::oracle::OracleState;
 use crate::withdrawal_queue::WithdrawalQueue;
 use anchor_lang::prelude::*;
-use jbl_math::compute_interest;
+use jbl_math::{ compute_interest};
 
 /// Per-market accounting: supply, borrow, and fee state.
 #[zero_copy]
@@ -16,6 +14,35 @@ pub struct Market {
     pub last_update: i64,
     pub fee: u64,
     pub assets_in_queue: u64,
+    pub ltv_percent: u8,
+    _pad: [u8; 7], 
+}
+
+impl jbl_math::Market for Market {
+    fn total_supply_assets(&self) -> u64 {
+        self.total_supply_assets
+    }
+    fn total_supply_shares(&self) -> u64 {
+        self.total_supply_shares
+    }
+    fn total_borrow_assets(&self) -> u64 {
+        self.total_borrow_assets
+    }
+    fn total_borrow_shares(&self) -> u64 {
+        self.total_borrow_shares
+    }
+    fn last_update(&self) -> i64 {
+        self.last_update
+    }
+    fn fee(&self) -> u64 {
+        self.fee
+    }
+    fn assets_in_queue(&self) -> u64 {
+        self.assets_in_queue
+    }
+    fn ltv_percent(&self) -> u8 {
+        self.ltv_percent
+    }
 }
 
 /// Unified lending pool account stored as zero-copy.
@@ -45,9 +72,8 @@ pub struct Pool {
     pub feed_program: Pubkey,
     /// Feed state account (PDA) passed to the feed program.
     pub feed_state: Pubkey,
-    pub ltv_percent: u8,
     pub lp_mint_bump: u8,
-    _pad: [u8; 6], // explicit padding — no implicit/uninitialised bytes
+    _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
 }
@@ -74,8 +100,8 @@ impl Pool {
     ///
     /// Requires an [`OracleState`] proving a fresh price exists earlier in the
     /// transaction. `rate_bps` is the current borrow rate fetched via IRM CPI.
-    pub fn accrue_interest(&mut self, irm: &impl IrmRate, oracle: &OracleState) -> Result<()> {
-        let elapsed = (oracle.current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
+    pub fn accrue_interest(&mut self, irm: &impl jbl_math::IrmRate, oracle: &impl jbl_math::Oracle) -> Result<()> {
+        let elapsed = (oracle.current_ts().saturating_sub(self.market.last_update)).max(0) as u64;
         if elapsed == 0 {
             return Ok(());
         }
@@ -86,7 +112,7 @@ impl Pool {
             .total_borrow_assets
             .checked_add(interest)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.last_update = oracle.current_ts;
+        self.market.last_update = oracle.current_ts();
         Ok(())
     }
 }

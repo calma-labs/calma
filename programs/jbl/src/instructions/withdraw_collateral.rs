@@ -88,7 +88,7 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
         (oracle, pool.calculate_utilization())
     };
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle.into())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle)?;
 
     // ── 2. LTV check: ensure remaining collateral still covers open debt ──────
     {
@@ -105,7 +105,7 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
             .ok_or(crate::error::ErrorCode::MathOverflow)?
             .checked_div(crate::oracle::PRICE_SCALE)
             .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_mul(pool.ltv_percent as u128)
+            .checked_mul(pool.market.ltv_percent as u128)
             .ok_or(crate::error::ErrorCode::MathOverflow)?
             .checked_div(100)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;

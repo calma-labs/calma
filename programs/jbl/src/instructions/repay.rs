@@ -72,7 +72,7 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
         (oracle, pool.calculate_utilization())
     };
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle.into())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle)?;
 
     // ── 2. Compute exact amount owed and shares to burn ───────────────────────
     let (repay_amount, shares_to_burn) = {

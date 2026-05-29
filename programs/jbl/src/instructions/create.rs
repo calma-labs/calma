@@ -106,8 +106,6 @@ pub fn create_handler(
         ctx.accounts.irm_state.to_account_info(),
     )?;
 
-    let oracle_state: jbl_state::oracle::OracleState = oracle.into();
-
     // ── Initialise pool fields and accrue interest ────────────────────────────
     let mut pool = ctx.accounts.pool.load_init()?;
 
@@ -122,7 +120,7 @@ pub fn create_handler(
     pool.market.total_borrow_shares = 0;
     pool.market.fee = 0;
     pool.market.assets_in_queue = 0;
-    pool.ltv_percent = ltv_percent;
+    pool.market.ltv_percent = ltv_percent;
     pool.rate_program = ctx.accounts.rate_program.key();
     pool.irm_state = ctx.accounts.irm_state.key();
     pool.feed_program = feed_program;
@@ -130,7 +128,7 @@ pub fn create_handler(
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
-    pool.accrue_interest(&irm, &oracle_state)?;
+    pool.accrue_interest(&irm, &oracle)?;
 
     msg!(
         "Created pool for authority: {} collateral_mint: {} lend_mint: {} lp_mint: {} at slot: {}",

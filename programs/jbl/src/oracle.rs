@@ -36,6 +36,12 @@ pub struct OracleState {
     pub current_ts: i64,
 }
 
+impl jbl_math::Oracle for OracleState {
+    fn current_ts(&self) -> i64 {
+        self.current_ts
+    }
+}
+
 impl OracleState {
     /// Scan the sysvar_instructions sysvar for a preceding `set_value` call that
     /// targets `feed_state` and originates from `feed_program`. Captures the
@@ -81,15 +87,6 @@ impl OracleState {
     }
 }
 
-impl From<OracleState> for jbl_state::oracle::OracleState {
-    fn from(s: OracleState) -> Self {
-        Self {
-            feed_program: s.feed_program,
-            feed_state: s.feed_state,
-            current_ts: s.current_ts,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

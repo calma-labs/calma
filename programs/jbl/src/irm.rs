@@ -26,7 +26,7 @@ impl IrmState {
     }
 }
 
-impl jbl_state::irm::IrmRate for IrmState {
+impl jbl_math::IrmRate for IrmState {
     fn rate_bps(&self) -> u32 {
         self.rate_bps
     }

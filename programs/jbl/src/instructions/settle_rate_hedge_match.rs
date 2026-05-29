@@ -145,7 +145,7 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
 
     // ── 1. Accrue interest so shares reflect current state (via IRM CPI) ─────
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle.into())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle)?;
 
     // ── 2. Snapshot match fields already done above ───────────────────────────
     let fixed_total = borrow_amount

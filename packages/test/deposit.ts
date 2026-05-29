@@ -63,7 +63,7 @@ describe("deposit and withdraw", () => {
             expect(poolAccount.market.totalSupplyAssets.toString()).to.equal("0"); // LP only issued via participate
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
-            expect(poolAccount.ltvPercent).to.equal(75);
+            expect(poolAccount.market.ltvPercent).to.equal(75);
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.authority.toString()).to.equal(authority.publicKey.toString());

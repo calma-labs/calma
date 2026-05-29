@@ -2000,6 +2000,9 @@ dependencies = [
 [[package]]
 name = "jbl-math"
 version = "0.1.0"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "jbl-state"

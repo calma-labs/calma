@@ -159,7 +159,7 @@ fn test_create() {
 fn test_pool_size() {
     assert_eq!(
         std::mem::size_of::<Pool>(),
-        41_296,
+        41_304,
         "Pool size changed — update POOL_SPACE in create.rs and the TS test helper if intentional",
     );
 }
