@@ -168,7 +168,7 @@ export async function setupTest(
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, irmProgramId, irmConfig, feedProgram.programId, feedPda)
+    .create(ltvPercent, feedProgram.programId, feedPda)
     .accounts({
       pool,
       collateralMint,
@@ -176,6 +176,8 @@ export async function setupTest(
       authority: authority.publicKey,
       payer: payer.publicKey,
       sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+      rateProgram: irmProgramId,
+      irmState: irmConfig,
     })
     .preInstructions([createPoolIx, setValueIx])
     .signers([payer, authority, poolKeypair])

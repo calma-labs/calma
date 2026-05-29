@@ -6,10 +6,13 @@ declare_id!("zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ");
 
 pub mod error;
 pub mod fees;
+pub mod irm;
+pub mod oracle;
 pub mod state;
 pub mod withdrawal_queue;
 
 pub use error::ErrorCode;
 pub use fees::*;
+pub use irm::*;
 pub use state::*;
 pub use withdrawal_queue::*;

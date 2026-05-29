@@ -2,11 +2,13 @@ use crate::{
     constants::SECONDS_PER_YEAR,
     error::ErrorCode,
     math::{amount_to_shares, shares_to_amount},
+    oracle::OracleState,
     state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition},
 };
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{Mint, Token, TokenAccount};
+use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
 #[derive(Accounts)]
 #[instruction(amount: u64, duration: u64)]
@@ -89,6 +91,10 @@ pub struct BorrowWithHedge<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
+    /// CHECK: fixed sysvar address — `address` constraint verified against SYSVAR_INSTRUCTIONS_ID.
+    #[account(address = Pubkey::new_from_array(SYSVAR_INSTRUCTIONS_ID.to_bytes()))]
+    pub sysvar_instructions: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -131,9 +137,14 @@ pub fn borrow_with_hedge_handler<'a>(
         .ok_or(ErrorCode::MathOverflow)?;
 
     // ── 2. Accrue interest via IRM CPI ───────────────────────────────────────
-    let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
+    let (oracle, utilization) = {
+        let pool = ctx.accounts.pool.load()?;
+        let oracle = OracleState::new(&ctx.accounts.sysvar_instructions.to_account_info(), pool.feed_program, pool.feed_state)?;
+        (oracle, pool.calculate_utilization())
+    };
+    let current_ts = oracle.current_ts;
+    let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    ctx.accounts.pool.load_mut()?.accrue_interest(&irm, &oracle.into())?;
 
     // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──
     let new_shares = {

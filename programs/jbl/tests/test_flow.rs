@@ -140,8 +140,6 @@ fn test_flow() {
                 jbl_id,
                 &jbl::instruction::Create {
                     ltv_percent: 75,
-                    rate_program: irm_id,
-                    rate_state: irm_config,
                     feed_program: feed_id,
                     feed_state: feed_pda,
                 }
@@ -157,6 +155,8 @@ fn test_flow() {
                     authority: payer.pubkey(),
                     payer: payer.pubkey(),
                     sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    rate_program: irm_id,
+                    irm_state: irm_config,
                     token_program: spl_token::id(),
                     system_program: anchor_lang::solana_program::system_program::id(),
                 }
@@ -243,25 +243,29 @@ fn test_flow() {
     // ── 3. Borrow ──────────────────────────────────────────────────────────────
     send_ixs(
         &mut svm,
-        &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::Borrow { amount: BORROW_AMOUNT }.data(),
-            jbl::accounts::Borrow {
-                pool: pool_pk,
-                state: state_pda,
-                lend_mint,
-                authority: payer.pubkey(),
-                user_token_account: user_lend_ata,
-                lend_vault,
-                user_position,
-                rate_program: irm_id,
-                irm_state: irm_config,
-                token_program: spl_token::id(),
-                associated_token_program: atp_id,
-                system_program: anchor_lang::solana_program::system_program::id(),
-            }
-            .to_account_metas(None),
-        )],
+        &[
+            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
+            Instruction::new_with_bytes(
+                jbl_id,
+                &jbl::instruction::Borrow { amount: BORROW_AMOUNT }.data(),
+                jbl::accounts::Borrow {
+                    pool: pool_pk,
+                    state: state_pda,
+                    lend_mint,
+                    authority: payer.pubkey(),
+                    user_token_account: user_lend_ata,
+                    lend_vault,
+                    user_position,
+                    rate_program: irm_id,
+                    irm_state: irm_config,
+                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    token_program: spl_token::id(),
+                    associated_token_program: atp_id,
+                    system_program: anchor_lang::solana_program::system_program::id(),
+                }
+                .to_account_metas(None),
+            ),
+        ],
         &payer,
         &[&payer],
     );
@@ -273,24 +277,28 @@ fn test_flow() {
     // u64::MAX lets the handler cap to total_due, covering any accrued interest.
     send_ixs(
         &mut svm,
-        &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::Repay { amount: u64::MAX }.data(),
-            jbl::accounts::Repay {
-                pool: pool_pk,
-                lend_mint,
-                authority: payer.pubkey(),
-                user_token_account: user_lend_ata,
-                lend_vault,
-                user_position,
-                rate_program: irm_id,
-                irm_state: irm_config,
-                token_program: spl_token::id(),
-                associated_token_program: atp_id,
-                system_program: anchor_lang::solana_program::system_program::id(),
-            }
-            .to_account_metas(None),
-        )],
+        &[
+            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
+            Instruction::new_with_bytes(
+                jbl_id,
+                &jbl::instruction::Repay { amount: u64::MAX }.data(),
+                jbl::accounts::Repay {
+                    pool: pool_pk,
+                    lend_mint,
+                    authority: payer.pubkey(),
+                    user_token_account: user_lend_ata,
+                    lend_vault,
+                    user_position,
+                    rate_program: irm_id,
+                    irm_state: irm_config,
+                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    token_program: spl_token::id(),
+                    associated_token_program: atp_id,
+                    system_program: anchor_lang::solana_program::system_program::id(),
+                }
+                .to_account_metas(None),
+            ),
+        ],
         &payer,
         &[&payer],
     );
@@ -301,24 +309,28 @@ fn test_flow() {
     // ── 5. Withdraw collateral ─────────────────────────────────────────────────
     send_ixs(
         &mut svm,
-        &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::WithdrawCollateral { amount: COL_DEPOSIT }.data(),
-            jbl::accounts::WithdrawCollateral {
-                pool: pool_pk,
-                state: state_pda,
-                collateral_mint: col_mint,
-                authority: payer.pubkey(),
-                user_token_account: user_col_account,
-                collateral_vault: col_vault,
-                user_position,
-                rate_program: irm_id,
-                irm_state: irm_config,
-                token_program: spl_token::id(),
-                system_program: anchor_lang::solana_program::system_program::id(),
-            }
-            .to_account_metas(None),
-        )],
+        &[
+            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
+            Instruction::new_with_bytes(
+                jbl_id,
+                &jbl::instruction::WithdrawCollateral { amount: COL_DEPOSIT }.data(),
+                jbl::accounts::WithdrawCollateral {
+                    pool: pool_pk,
+                    state: state_pda,
+                    collateral_mint: col_mint,
+                    authority: payer.pubkey(),
+                    user_token_account: user_col_account,
+                    collateral_vault: col_vault,
+                    user_position,
+                    rate_program: irm_id,
+                    irm_state: irm_config,
+                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    token_program: spl_token::id(),
+                    system_program: anchor_lang::solana_program::system_program::id(),
+                }
+                .to_account_metas(None),
+            ),
+        ],
         &payer,
         &[&payer],
     );

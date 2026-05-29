@@ -2009,6 +2009,7 @@ dependencies = [
  "bytemuck",
  "jbl-irm",
  "jbl-math",
+ "sha2 0.10.9",
 ]
 
 [[package]]

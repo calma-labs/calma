@@ -8,3 +8,6 @@ jbl-math = { path = "../jbl-math" }
 jbl-irm = { path = "../jbl-irm" }
 anchor-lang = { version = "1.0.2", default-features = false }
 bytemuck = "1"
+
+[dev-dependencies]
+sha2 = "0.10"

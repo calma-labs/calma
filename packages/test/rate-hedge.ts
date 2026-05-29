@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { getAccount, createMint, createAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
 import { setupTest, createLender, participateInPool, feedIx, TestSetup } from "./utils";
@@ -398,6 +398,7 @@ describe("rate-hedge", () => {
                         rateHedgeMatch: matchPda,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
+                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
                     .preInstructions([await feedIx(setup)])
                     .signers([borrower.authority])
@@ -524,6 +525,7 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
+                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .preInstructions([await feedIx(setup)])
                         .signers([borrower.authority])
@@ -556,6 +558,7 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
+                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .preInstructions([await feedIx(setup)])
                         .signers([borrower.authority])
@@ -657,6 +660,7 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
+                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .preInstructions([await feedIx(setup)])
                         .signers([borrower.authority])
@@ -771,6 +775,7 @@ describe("rate-hedge", () => {
                     rateHedgeMatch: matchPda,
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
+                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                 })
                 .preInstructions([await feedIx(setup)])
                 .signers([borrower.authority])
@@ -855,6 +860,7 @@ describe("rate-hedge", () => {
                         rateHedgeMatch: matchPda,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
+                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
                     .preInstructions([await feedIx(setup)])
                     .signers([borrower.authority])
@@ -886,6 +892,7 @@ describe("rate-hedge", () => {
                             cranker: setup.authority.publicKey,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
+                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .preInstructions([await feedIx(setup)])
                         .signers([setup.authority])
@@ -938,6 +945,7 @@ describe("rate-hedge", () => {
                         cranker: setup.authority.publicKey,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
+                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
                     .preInstructions([await feedIx(setup)])
                     .signers([setup.authority])

@@ -1,5 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
+import { SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { expect } from "chai";
 import { setupTest, createLender, feedIx, TestSetup } from "./utils";
 
@@ -27,6 +28,7 @@ async function withdrawCollateral(setup: TestSetup, authority: anchor.web3.Keypa
             userTokenAccount,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .preInstructions([await feedIx(setup)])
         .signers([authority])

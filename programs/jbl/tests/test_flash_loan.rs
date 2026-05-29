@@ -90,6 +90,7 @@ struct Setup {
 fn setup(seed_lend_amount: u64) -> Setup {
     let program_id = jbl::id();
     let feed_id = feed::id();
+    let irm_id = irm::id();
     let payer = Keypair::new();
     let authority = Keypair::new();
     let collateral_mint_kp = Keypair::new();
@@ -98,6 +99,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let mut svm = LiteSVM::new();
     svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so")).unwrap();
     svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so")).unwrap();
+    svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so")).unwrap();
     svm.airdrop(&payer.pubkey(), 100_000_000_000).unwrap();
     svm.airdrop(&authority.pubkey(), 10_000_000_000).unwrap();
 
@@ -155,6 +157,9 @@ fn setup(seed_lend_amount: u64) -> Setup {
     );
     send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
 
+    let (irm_config, _) =
+        Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
+
     let pool_space = 8 + std::mem::size_of::<Pool>();
     let pool_rent = svm.minimum_balance_for_rent_exemption(pool_space);
     let alloc_pool_ix = anchor_lang::solana_program::system_instruction::create_account(
@@ -164,6 +169,19 @@ fn setup(seed_lend_amount: u64) -> Setup {
         pool_space as u64,
         &program_id,
     );
+    let irm_init_ix = Instruction::new_with_bytes(
+        irm_id,
+        &irm::instruction::Initialize {}.data(),
+        irm::accounts::Initialize {
+            irm_config,
+            pool: pool_pubkey,
+            authority: payer.pubkey(),
+            payer: payer.pubkey(),
+            system_program: anchor_lang::solana_program::system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[alloc_pool_ix, irm_init_ix], &payer, &[&payer, &pool_kp]);
 
     // set_value must precede jbl::create in the same transaction.
     let set_value_ix = Instruction::new_with_bytes(
@@ -180,8 +198,6 @@ fn setup(seed_lend_amount: u64) -> Setup {
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
-            rate_program: Pubkey::default(),
-            rate_state: Pubkey::default(),
             feed_program: feed_id,
             feed_state: feed_pda,
         }
@@ -197,6 +213,8 @@ fn setup(seed_lend_amount: u64) -> Setup {
             authority: authority.pubkey(),
             payer: payer.pubkey(),
             sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+            rate_program: irm_id,
+            irm_state: irm_config,
             token_program: spl_token::id(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -205,9 +223,9 @@ fn setup(seed_lend_amount: u64) -> Setup {
 
     send_ixs(
         &mut svm,
-        &[alloc_pool_ix, set_value_ix, create_ix],
+        &[set_value_ix, create_ix],
         &payer,
-        &[&payer, &pool_kp, &authority],
+        &[&payer, &authority],
     );
 
     // ── Seed lend vault directly + patch pool state ───────────────────────────

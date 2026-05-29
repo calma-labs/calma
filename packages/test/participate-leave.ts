@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import {
     getAccount,
     getMint,
@@ -219,6 +219,7 @@ describe("participate and leave", () => {
                     authority: setup.authority.publicKey,
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
+                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                 })
                 .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])

@@ -1,3 +1,5 @@
+use crate::irm::IrmRate;
+use crate::oracle::OracleState;
 use crate::withdrawal_queue::WithdrawalQueue;
 use anchor_lang::prelude::*;
 use jbl_math::compute_interest;
@@ -68,23 +70,23 @@ impl Pool {
     }
 
     /// Accrue interest into `total_borrow_assets` based on elapsed time since last
-    /// accrual, then update `market.last_update` to `current_ts`.
+    /// accrual, then update `market.last_update` to `oracle.current_ts`.
     ///
-    /// `rate_bps` is the current borrow rate fetched via IRM CPI; it must be
-    /// provided by the caller — there is no on-chain fallback.
-    pub fn accrue_interest(&mut self, current_ts: i64, rate_bps: u32) -> Result<()> {
-        let elapsed = (current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
+    /// Requires an [`OracleState`] proving a fresh price exists earlier in the
+    /// transaction. `rate_bps` is the current borrow rate fetched via IRM CPI.
+    pub fn accrue_interest(&mut self, irm: &impl IrmRate, oracle: &OracleState) -> Result<()> {
+        let elapsed = (oracle.current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
         if elapsed == 0 {
             return Ok(());
         }
-        let interest = compute_interest(self.market.total_borrow_assets, rate_bps, elapsed)
+        let interest = compute_interest(self.market.total_borrow_assets, irm.rate_bps(), elapsed)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         self.market.total_borrow_assets = self
             .market
             .total_borrow_assets
             .checked_add(interest)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.last_update = current_ts;
+        self.market.last_update = oracle.current_ts;
         Ok(())
     }
 }

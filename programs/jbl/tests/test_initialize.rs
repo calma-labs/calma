@@ -46,9 +46,12 @@ fn test_create() {
     let collateral_mint_keypair = Keypair::new();
     let lend_mint_keypair = Keypair::new();
 
+    let irm_id = irm::id();
+
     let mut svm = LiteSVM::new();
     svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so")).unwrap();
     svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so")).unwrap();
+    svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so")).unwrap();
     svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
 
     // ── Create collateral and lend SPL mints ─────────────────────────────────
@@ -84,9 +87,12 @@ fn test_create() {
         }
         .to_account_metas(None),
     );
+    let (irm_config, _) =
+        Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
+
     send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
 
-    // Pre-allocate pool account (too large for CPI creation)
+    // Pre-allocate pool account and initialize IRM
     let pool_space = 8 + std::mem::size_of::<Pool>();
     let pool_rent = svm.minimum_balance_for_rent_exemption(pool_space);
     let create_pool_account_ix = anchor_lang::solana_program::system_instruction::create_account(
@@ -96,6 +102,19 @@ fn test_create() {
         pool_space as u64,
         &program_id,
     );
+    let irm_init_ix = Instruction::new_with_bytes(
+        irm_id,
+        &irm::instruction::Initialize {}.data(),
+        irm::accounts::Initialize {
+            irm_config,
+            pool: pool_pubkey,
+            authority: payer.pubkey(),
+            payer: payer.pubkey(),
+            system_program: anchor_lang::solana_program::system_program::id(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[create_pool_account_ix, irm_init_ix], &payer, &[&payer, &pool_keypair]);
 
     // ── set_value must precede create in the same transaction ─────────────────
     let set_value_ix = feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000);
@@ -105,8 +124,6 @@ fn test_create() {
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
-            rate_program: Pubkey::default(),
-            rate_state: Pubkey::default(),
             feed_program: feed_id,
             feed_state: feed_pda,
         }
@@ -122,19 +139,19 @@ fn test_create() {
             authority: authority.pubkey(),
             payer: payer.pubkey(),
             sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+            rate_program: irm_id,
+            irm_state: irm_config,
             token_program: spl_token::id(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
         .to_account_metas(None),
     );
 
-    // Pre-allocate pool + set_value + create all in one transaction
-    // (create_pool_account_ix is at index 0, set_value at index 1, create at index 2)
     send_ixs(
         &mut svm,
-        &[create_pool_account_ix, set_value_ix, instruction],
+        &[set_value_ix, instruction],
         &payer,
-        &[&payer, &pool_keypair, &authority],
+        &[&payer, &authority],
     );
 }
 

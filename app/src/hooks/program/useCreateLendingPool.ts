@@ -5,7 +5,7 @@ import {
     MINT_SIZE,
     TOKEN_PROGRAM_ID,
 } from '@solana/spl-token'
-import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
+import { Keypair, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, SystemProgram, Transaction } from '@solana/web3.js'
 
 const IRM_PROGRAM_ID = new PublicKey('3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC')
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -99,6 +99,9 @@ async function createPool(
             lendMint: lendMintKeypair.publicKey,
             authority: payer,
             payer,
+            rateProgram: IRM_PROGRAM_ID,
+            irmState,
+            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction()
 

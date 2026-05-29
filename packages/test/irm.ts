@@ -1,9 +1,9 @@
 import * as anchor from "@anchor-lang/core";
 import { Program, AnchorProvider, BN } from "@anchor-lang/core";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import { Keypair, LAMPORTS_PER_SOL, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
 
 describe("irm initialize", () => {
     const provider = AnchorProvider.env();
@@ -102,7 +102,9 @@ describe("irm initialize", () => {
                 authority: jblSetup.authority.publicKey,
                 rateProgram: irmProgram.programId,
                 irmState: cpiIrmConfig,
+                sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
             })
+            .preInstructions([await feedIx(jblSetup)])
             .signers([jblSetup.authority])
             .rpc();
 

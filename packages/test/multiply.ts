@@ -75,7 +75,7 @@ async function openMultiply(
         .instruction(),
       program.methods
         .borrow(flashRepayAmt)
-        .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
+        .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig, sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY })
         .signers([authority])
         .instruction(),
       program.methods

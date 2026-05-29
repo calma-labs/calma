@@ -1,15 +1,10 @@
-use crate::{error::ErrorCode, state::Pool};
+use crate::{oracle::OracleState, state::Pool};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
-use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at_checked};
 use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
 #[constant]
 pub const POOL_SPACE: u64 = (8 + std::mem::size_of::<Pool>()) as u64;
-
-/// Anchor discriminator for `set_value` = sha256("global:set_value")[0..8].
-/// Pre-computed: python3 -c "import hashlib; print(list(hashlib.sha256(b'global:set_value').digest()[:8]))"
-pub const SET_VALUE_DISCRIMINATOR: [u8; 8] = [253, 214, 48, 201, 100, 201, 227, 219];
 
 #[derive(Accounts)]
 pub struct Create<'info> {
@@ -76,6 +71,12 @@ pub struct Create<'info> {
     #[account(address = Pubkey::new_from_array(SYSVAR_INSTRUCTIONS_ID.to_bytes()))]
     pub sysvar_instructions: UncheckedAccount<'info>,
 
+    /// CHECK: IRM program — invoked via CPI to fetch the initial borrow rate.
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: IRM state account — passed to the rate_program CPI.
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -83,47 +84,31 @@ pub struct Create<'info> {
 pub fn create_handler(
     ctx: Context<Create>,
     ltv_percent: u8,
-    rate_program: Pubkey,
-    irm_state: Pubkey,
     feed_program: Pubkey,
     feed_state: Pubkey,
 ) -> Result<()> {
     // ── Verify a set_value call on the feed precedes this instruction ─────────
-    //
-    // We scan every instruction that comes *before* the current one in the
-    // transaction. We require at least one that:
-    //   a) targets the given feed_program
-    //   b) has the set_value Anchor discriminator
-    //   c) references feed_state as its first account (the feed PDA)
-    let sysvar_info = ctx.accounts.sysvar_instructions.to_account_info();
-    let current_index = load_current_index_checked(&sysvar_info)? as usize;
+    let oracle = OracleState::new(
+        &ctx.accounts.sysvar_instructions.to_account_info(),
+        feed_program,
+        feed_state,
+    )?;
 
-    let mut found = false;
-    for idx in 0..current_index {
-        let ix = match load_instruction_at_checked(idx, &sysvar_info) {
-            Ok(ix) => ix,
-            Err(_) => break,
-        };
+    // ── Fetch initial IRM rate before load_init ───────────────────────────────
+    // In Anchor 1.0, load_init() does NOT write the discriminator — that happens
+    // in AccountsExit::exit() after the handler returns. Calling load() after
+    // load_init() in the same instruction sees zeros and returns error 3002.
+    // Utilization is 0 because the pool is brand-new with no borrows.
+    let irm = crate::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        0,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
 
-        if ix.program_id == feed_program
-            && ix.data.len() >= 8
-            && ix.data[..8] == SET_VALUE_DISCRIMINATOR
-        {
-            let feed_matches = ix
-                .accounts
-                .first()
-                .map(|a| a.pubkey == feed_state)
-                .unwrap_or(false);
+    let oracle_state: jbl_state::oracle::OracleState = oracle.into();
 
-            if feed_matches {
-                found = true;
-                break;
-            }
-        }
-    }
-    require!(found, ErrorCode::FeedSetValueMissing);
-
-    // ── Initialise pool fields ────────────────────────────────────────────────
+    // ── Initialise pool fields and accrue interest ────────────────────────────
     let mut pool = ctx.accounts.pool.load_init()?;
 
     pool.authority = ctx.accounts.authority.key();
@@ -135,16 +120,17 @@ pub fn create_handler(
     pool.market.total_supply_shares = 0;
     pool.market.total_borrow_assets = 0;
     pool.market.total_borrow_shares = 0;
-    pool.market.last_update = Clock::get()?.unix_timestamp;
     pool.market.fee = 0;
     pool.market.assets_in_queue = 0;
     pool.ltv_percent = ltv_percent;
-    pool.rate_program = rate_program;
-    pool.irm_state = irm_state;
+    pool.rate_program = ctx.accounts.rate_program.key();
+    pool.irm_state = ctx.accounts.irm_state.key();
     pool.feed_program = feed_program;
     pool.feed_state = feed_state;
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
+
+    pool.accrue_interest(&irm, &oracle_state)?;
 
     msg!(
         "Created pool for authority: {} collateral_mint: {} lend_mint: {} lp_mint: {} at slot: {}",
@@ -156,24 +142,4 @@ pub fn create_handler(
     );
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::SET_VALUE_DISCRIMINATOR;
-    use sha2::{Digest, Sha256};
-
-    fn anchor_discriminator(ix_name: &str) -> [u8; 8] {
-        let preimage = format!("global:{ix_name}");
-        let hash = Sha256::digest(preimage.as_bytes());
-        hash[..8].try_into().unwrap()
-    }
-
-    #[test]
-    fn set_value_discriminator_is_correct() {
-        assert_eq!(
-            SET_VALUE_DISCRIMINATOR,
-            anchor_discriminator("set_value"),
-        );
-    }
 }

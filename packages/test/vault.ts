@@ -5,6 +5,7 @@ import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
 import { Feed } from "../../target/types/feed";
+import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
 
 describe("pool creation (create)", () => {
@@ -12,8 +13,10 @@ describe("pool creation (create)", () => {
         let provider: AnchorProvider;
         let program: Program<Jbl>;
         let feedProgram: Program<Feed>;
+        let irmProgram: Program<Irm>;
         let feedPda: PublicKey;
         let feedAuthority: PublicKey;
+        let irmConfigPda: PublicKey;
         let payer: Keypair;
         let authority: Keypair;
         let collateralMint: PublicKey;
@@ -29,6 +32,7 @@ describe("pool creation (create)", () => {
             anchor.setProvider(provider);
             program = anchor.workspace.Jbl as Program<Jbl>;
             feedProgram = anchor.workspace.Feed as Program<Feed>;
+            irmProgram = anchor.workspace.Irm as Program<Irm>;
             feedAuthority = provider.wallet.publicKey;
             [feedPda] = PublicKey.findProgramAddressSync(
                 [Buffer.from("feed"), feedAuthority.toBuffer()],
@@ -46,6 +50,16 @@ describe("pool creation (create)", () => {
 
             collateralMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
             lendMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
+
+            [irmConfigPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("irm_config"), poolKeypair.publicKey.toBuffer()],
+                irmProgram.programId
+            );
+            await irmProgram.methods
+                .initialize()
+                .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
+                .signers([payer, authority])
+                .rpc();
 
             [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
             [collateralVaultPda] = PublicKey.findProgramAddressSync(
@@ -88,7 +102,7 @@ describe("pool creation (create)", () => {
                 .instruction();
 
             await program.methods
-                .create(75, feedProgram.programId, feedPda, feedProgram.programId, feedPda)
+                .create(75, feedProgram.programId, feedPda)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -96,6 +110,8 @@ describe("pool creation (create)", () => {
                     authority: authority.publicKey,
                     payer: payer.publicKey,
                     sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    rateProgram: irmProgram.programId,
+                    irmState: irmConfigPda,
                 })
                 .preInstructions([createPoolAccountIx, setValueIx])
                 .signers([payer, authority, poolKeypair])

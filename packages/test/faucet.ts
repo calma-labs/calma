@@ -12,6 +12,7 @@ import {
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
 import { Feed } from "../../target/types/feed";
+import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
@@ -210,10 +211,15 @@ describe("hardcoded minter faucet", () => {
       const lendMint = await createMint(connection, payer, authority.publicKey, null, 6);
 
       const feedProgram = anchor.workspace.Feed as anchor.Program<Feed>;
+      const irmProgram = anchor.workspace.Irm as anchor.Program<Irm>;
       const feedAuthority = provider.wallet.publicKey;
       const [feedPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("feed"), feedAuthority.toBuffer()],
         feedProgram.programId
+      );
+      const [irmConfigPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("irm_config"), pool.toBuffer()],
+        irmProgram.programId
       );
 
       if (!(await connection.getAccountInfo(feedPda))) {
@@ -223,6 +229,12 @@ describe("hardcoded minter faucet", () => {
           .signers([payer])
           .rpc();
       }
+
+      await irmProgram.methods
+        .initialize()
+        .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
+        .signers([payer, authority])
+        .rpc();
 
       const setValueIx = await feedProgram.methods
         .setValue(new anchor.BN(1_000_000))
@@ -240,7 +252,7 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75, SystemProgram.programId, SystemProgram.programId, feedProgram.programId, feedPda)
+        .create(75, feedProgram.programId, feedPda)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint
@@ -248,6 +260,8 @@ describe("hardcoded minter faucet", () => {
           authority: authority.publicKey,
           payer: payer.publicKey,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+          rateProgram: irmProgram.programId,
+          irmState: irmConfigPda,
         })
         .preInstructions([createPoolIx, setValueIx])
         .signers([payer, authority, poolKeypair])
