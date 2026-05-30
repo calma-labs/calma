@@ -64,6 +64,39 @@ pub struct WithdrawLent<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> WithdrawLent<'info> {
+    pub fn burn_lp(&self, shares: u64) -> Result<()> {
+        anchor_spl::token::burn(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                Burn {
+                    mint: self.lp_mint.to_account_info(),
+                    from: self.user_lp_token_account.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            shares,
+        )
+    }
+
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_lend_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<()> {
     require!(shares > 0, crate::error::ErrorCode::InvalidAmount);
     require!(
@@ -85,20 +118,11 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     }
 
     // ── 1. Burn LP tokens from user (always) ─────────────────────────────────
-    anchor_spl::token::burn(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            Burn {
-                mint: ctx.accounts.lp_mint.to_account_info(),
-                from: ctx.accounts.user_lp_token_account.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        shares,
-    )?;
+    ctx.accounts.burn_lp(shares)?;
 
     // ── 2. Compute token amount and update market ─────────────────────────────
     let vault_balance = ctx.accounts.lend_vault.amount;
+    let state_bump = ctx.bumps.state;
     let (immediate, lend_for_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
@@ -107,7 +131,10 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         let immediate = queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0;
         if immediate {
-            core.withdraw_lent_immediate(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
+            core.withdraw_lent_immediate(
+                shares,
+                |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump),
+            ).map_err(crate::error::ErrorCode::from)?;
         } else {
             core.withdraw_lent_queued(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
             pool.withdrawal_queue.push(WithdrawalQueueEntry {
@@ -120,23 +147,6 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     };
 
     if immediate {
-        // ── 3a. Immediate: transfer lend tokens ───────────────────────────────
-        let state_bump = ctx.bumps.state;
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *ctx.accounts.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: ctx.accounts.lend_vault.to_account_info(),
-                    to: ctx.accounts.user_lend_token_account.to_account_info(),
-                    authority: ctx.accounts.state.to_account_info(),
-                },
-                signer,
-            ),
-            lend_for_shares,
-        )?;
 
         msg!(
             "Leave: burned {} LP, withdrew {} lend tokens immediately. total_supply_shares: {}",

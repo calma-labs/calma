@@ -64,6 +64,39 @@ pub struct DepositLent<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> DepositLent<'info> {
+    pub fn transfer_lend_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_lend_token_account.to_account_info(),
+                    to: self.lend_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+
+    pub fn mint_lp_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::mint_to(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                MintTo {
+                    mint: self.lp_mint.to_account_info(),
+                    to: self.user_lp_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
 
@@ -76,47 +109,21 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
         );
     }
 
-    // ── 1. Calculate LP tokens to mint (proportional to existing deposits) ────
+    // ── 1. Calculate LP tokens to mint, transfer lend tokens, mint LP ─────────
+    let state_bump = ctx.bumps.state;
     let lp_to_mint = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market);
-        let lp = core.deposit_lent(amount).ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let lp = core.deposit_lent(
+            amount,
+            |amt| ctx.accounts.transfer_lend_to_vault(amt),
+            |lp| ctx.accounts.mint_lp_to_user(lp, state_bump),
+        ).map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         lp
     };
 
     require!(lp_to_mint > 0, crate::error::ErrorCode::InvalidAmount);
-
-    // ── 2. Transfer lend tokens from user to the pool's lend vault ────────────
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_lend_token_account.to_account_info(),
-                to: ctx.accounts.lend_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // ── 3. Mint LP tokens directly to the user's wallet ──────────────────────
-    let state_bump = ctx.bumps.state;
-    let seeds = &[b"state" as &[u8], &[state_bump]];
-    let signer = &[&seeds[..]];
-
-    anchor_spl::token::mint_to(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            MintTo {
-                mint: ctx.accounts.lp_mint.to_account_info(),
-                to: ctx.accounts.user_lp_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        lp_to_mint,
-    )?;
 
     let pool = ctx.accounts.pool.load()?;
     msg!(

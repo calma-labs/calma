@@ -113,7 +113,6 @@ pub fn create_handler(
     pool.collateral_mint = ctx.accounts.collateral_mint.key();
     pool.lend_mint = ctx.accounts.lend_mint.key();
     pool.lp_mint = ctx.accounts.lp_mint.key();
-    pool.total_collateral_deposited = 0;
     pool.market.total_supply_assets = 0;
     pool.market.total_supply_shares = 0;
     pool.market.total_borrow_assets = 0;

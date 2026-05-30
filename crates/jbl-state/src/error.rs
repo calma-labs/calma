@@ -1,5 +1,19 @@
 use anchor_lang::prelude::*;
 
+/// `From<foreign> for local` is orphan-legal because `ErrorCode` is defined here.
+/// `Overflow` → `MathOverflow`; `Transfer` errors preserve the inner `ErrorCode`
+/// when possible (the variant carries an `anchor_lang::Error` from the callback).
+/// Use an explicit `match` at the call site when a different overflow code is
+/// needed (e.g. `InsufficientFunds` for LTV violations in `borrow`).
+impl From<jbl_math::MathError<Error>> for ErrorCode {
+    fn from(e: jbl_math::MathError<Error>) -> Self {
+        match e {
+            jbl_math::MathError::Overflow => ErrorCode::MathOverflow,
+            jbl_math::MathError::Transfer(_) => ErrorCode::MathOverflow,
+        }
+    }
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Custom error message")]

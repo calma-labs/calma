@@ -4,6 +4,23 @@ pub use traits::*;
 const SECONDS_PER_YEAR: u64 = 31_557_600;
 pub const PRICE_SCALE: u128 = 1_000_000;
 
+pub enum MathError<E> {
+    Overflow,
+    Transfer(E),
+}
+
+pub fn utilization_bps(total_supply_assets: u64, total_borrow_assets: u64, assets_in_queue: u64) -> u64 {
+    if total_supply_assets == 0 {
+        return 0;
+    }
+    let effective_borrowed = total_borrow_assets.saturating_add(assets_in_queue);
+    (effective_borrowed as u128)
+        .checked_mul(10_000)
+        .unwrap_or(0)
+        .checked_div(total_supply_assets as u128)
+        .unwrap_or(0) as u64
+}
+
 pub fn flash_fee(amount: u64, fee_bps: u32) -> Option<u64> {
     u64::try_from(
         (amount as u128)
@@ -48,29 +65,41 @@ impl<M: Market, O, I, P> Core<M, O, I, P> {
         .ok()
     }
 
-    pub fn deposit_lent(&mut self, amount: u64) -> Option<u64> {
+    pub fn deposit_lent<E, F1, F2>(&mut self, amount: u64, transfer: F1, mint: F2) -> Result<u64, MathError<E>>
+    where
+        F1: FnOnce(u64) -> Result<(), E>,
+        F2: FnOnce(u64) -> Result<(), E>,
+    {
         let lp = if self.market.total_supply_shares() == 0 || self.market.total_supply_assets() == 0 {
             amount
         } else {
             u64::try_from(
                 (amount as u128)
-                    .checked_mul(self.market.total_supply_shares() as u128)?
-                    .checked_div(self.market.total_supply_assets() as u128)?,
+                    .checked_mul(self.market.total_supply_shares() as u128)
+                    .ok_or(MathError::Overflow)?
+                    .checked_div(self.market.total_supply_assets() as u128)
+                    .ok_or(MathError::Overflow)?,
             )
-            .ok()?
+            .map_err(|_| MathError::Overflow)?
         };
-        if lp == 0 { return None; }
-        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_add(amount)?);
-        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_add(lp)?);
-        Some(lp)
+        if lp == 0 { return Err(MathError::Overflow); }
+        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_add(amount).ok_or(MathError::Overflow)?);
+        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_add(lp).ok_or(MathError::Overflow)?);
+        transfer(amount).map_err(MathError::Transfer)?;
+        mint(lp).map_err(MathError::Transfer)?;
+        Ok(lp)
     }
 
-    pub fn withdraw_lent_immediate(&mut self, shares: u64) -> Option<u64> {
-        let lend = self.calc_lend_for_shares(shares)?;
+    pub fn withdraw_lent_immediate<E, F>(&mut self, shares: u64, transfer: F) -> Result<u64, MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        let lend = self.calc_lend_for_shares(shares).ok_or(MathError::Overflow)?;
         let clamped = lend.min(self.market.total_supply_assets());
-        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_sub(shares)?);
-        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_sub(clamped)?);
-        Some(lend)
+        self.market.set_total_supply_shares(self.market.total_supply_shares().checked_sub(shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_supply_assets(self.market.total_supply_assets().checked_sub(clamped).ok_or(MathError::Overflow)?);
+        transfer(lend).map_err(MathError::Transfer)?;
+        Ok(lend)
     }
 
     pub fn withdraw_lent_queued(&mut self, shares: u64) -> Option<u64> {
@@ -96,92 +125,125 @@ impl<M: Market, O: Oracle, I: IrmRate, P> Core<M, O, I, P> {
 }
 
 impl<M: Market, O, I, P: Position> Core<M, O, I, P> {
-    pub fn borrow(&mut self, amount: u64, oracle_price: u64) -> Option<u64> {
-        let max_borrowable = u64::try_from(
-            (self.position.collateral_deposited() as u128)
-                .checked_mul(oracle_price as u128)?
-                .checked_div(PRICE_SCALE)?
-                .checked_mul(self.market.ltv_percent() as u128)?
-                .checked_div(100)?,
-        )
-        .ok()?;
-        let current_debt = if self.market.total_borrow_shares() > 0 {
-            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
-        } else { 0 };
-        if amount > max_borrowable.checked_sub(current_debt)? { return None; }
-        let new_shares = amount_to_shares(amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
-        if new_shares == 0 { return None; }
-        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares)?);
-        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
-        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(amount)?);
-        Some(new_shares)
+    pub fn deposit_collateral<E, F>(&mut self, amount: u64, transfer: F) -> Result<(), MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        let new_position = self.position.collateral_deposited().checked_add(amount).ok_or(MathError::Overflow)?;
+        self.position.set_collateral_deposited(new_position);
+        transfer(amount).map_err(MathError::Transfer)
     }
 
-    pub fn borrow_with_fee(&mut self, amount: u64, total_debt_amount: u64, oracle_price: u64) -> Option<u64> {
+    pub fn borrow<E, F>(&mut self, amount: u64, oracle_price: u64, transfer: F) -> Result<u64, MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
         let max_borrowable = u64::try_from(
             (self.position.collateral_deposited() as u128)
-                .checked_mul(oracle_price as u128)?
-                .checked_div(PRICE_SCALE)?
-                .checked_mul(self.market.ltv_percent() as u128)?
-                .checked_div(100)?,
+                .checked_mul(oracle_price as u128).ok_or(MathError::Overflow)?
+                .checked_div(PRICE_SCALE).ok_or(MathError::Overflow)?
+                .checked_mul(self.market.ltv_percent() as u128).ok_or(MathError::Overflow)?
+                .checked_div(100).ok_or(MathError::Overflow)?,
         )
-        .ok()?;
+        .map_err(|_| MathError::Overflow)?;
         let current_debt = if self.market.total_borrow_shares() > 0 {
-            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?
         } else { 0 };
-        if amount > max_borrowable.checked_sub(current_debt)? { return None; }
-        let new_shares = amount_to_shares(total_debt_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
-        if new_shares == 0 { return None; }
-        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares)?);
-        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
-        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(total_debt_amount)?);
-        Some(new_shares)
+        if amount > max_borrowable.checked_sub(current_debt).ok_or(MathError::Overflow)? { return Err(MathError::Overflow); }
+        let new_shares = amount_to_shares(amount, self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?;
+        if new_shares == 0 { return Err(MathError::Overflow); }
+        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(amount).ok_or(MathError::Overflow)?);
+        transfer(amount).map_err(MathError::Transfer)?;
+        Ok(new_shares)
     }
 
-    pub fn repay(&mut self, amount: u64) -> Option<(u64, u64)> {
+    pub fn borrow_with_fee<E, F>(&mut self, amount: u64, total_debt_amount: u64, oracle_price: u64, transfer: F) -> Result<u64, MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        let max_borrowable = u64::try_from(
+            (self.position.collateral_deposited() as u128)
+                .checked_mul(oracle_price as u128).ok_or(MathError::Overflow)?
+                .checked_div(PRICE_SCALE).ok_or(MathError::Overflow)?
+                .checked_mul(self.market.ltv_percent() as u128).ok_or(MathError::Overflow)?
+                .checked_div(100).ok_or(MathError::Overflow)?,
+        )
+        .map_err(|_| MathError::Overflow)?;
+        let current_debt = if self.market.total_borrow_shares() > 0 {
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?
+        } else { 0 };
+        if amount > max_borrowable.checked_sub(current_debt).ok_or(MathError::Overflow)? { return Err(MathError::Overflow); }
+        let new_shares = amount_to_shares(total_debt_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?;
+        if new_shares == 0 { return Err(MathError::Overflow); }
+        self.position.set_debt_shares(self.position.debt_shares().checked_add(new_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(total_debt_amount).ok_or(MathError::Overflow)?);
+        transfer(amount).map_err(MathError::Transfer)?;
+        Ok(new_shares)
+    }
+
+    pub fn repay<E, F>(&mut self, amount: u64, transfer: F) -> Result<(u64, u64), MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
         let debt_shares = self.position.debt_shares();
-        let total_due = shares_to_amount(debt_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
+        let total_due = shares_to_amount(debt_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?;
         let repay_amount = amount.min(total_due);
         let shares_to_burn = if repay_amount == total_due {
             debt_shares
         } else {
-            amount_to_shares_burned(repay_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares(), debt_shares)?
+            amount_to_shares_burned(repay_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares(), debt_shares).ok_or(MathError::Overflow)?
         };
-        self.position.set_debt_shares(debt_shares.checked_sub(shares_to_burn)?);
-        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(shares_to_burn)?);
-        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(repay_amount)?);
-        Some((repay_amount, shares_to_burn))
+        self.position.set_debt_shares(debt_shares.checked_sub(shares_to_burn).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(shares_to_burn).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(repay_amount).ok_or(MathError::Overflow)?);
+        transfer(repay_amount).map_err(MathError::Transfer)?;
+        Ok((repay_amount, shares_to_burn))
     }
 
-    pub fn withdraw_collateral(&mut self, amount: u64, oracle_price: u64) -> Option<u64> {
-        let remaining = self.position.collateral_deposited().checked_sub(amount)?;
+    pub fn withdraw_collateral<E, F>(&mut self, amount: u64, oracle_price: u64, transfer: F) -> Result<u64, MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        let remaining = self.position.collateral_deposited().checked_sub(amount).ok_or(MathError::Overflow)?;
         let max_borrowable = u64::try_from(
             (remaining as u128)
-                .checked_mul(oracle_price as u128)?
-                .checked_div(PRICE_SCALE)?
-                .checked_mul(self.market.ltv_percent() as u128)?
-                .checked_div(100)?,
+                .checked_mul(oracle_price as u128).ok_or(MathError::Overflow)?
+                .checked_div(PRICE_SCALE).ok_or(MathError::Overflow)?
+                .checked_mul(self.market.ltv_percent() as u128).ok_or(MathError::Overflow)?
+                .checked_div(100).ok_or(MathError::Overflow)?,
         )
-        .ok()?;
+        .map_err(|_| MathError::Overflow)?;
         let current_debt = if self.market.total_borrow_shares() > 0 {
-            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares())?
+            shares_to_amount(self.position.debt_shares(), self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?
         } else { 0 };
-        if current_debt > max_borrowable { return None; }
+        if current_debt > max_borrowable { return Err(MathError::Overflow); }
         self.position.set_collateral_deposited(remaining);
-        Some(remaining)
+        transfer(amount).map_err(MathError::Transfer)?;
+        Ok(remaining)
     }
 
-    pub fn settle_hedge(&mut self, initial_shares: u64, borrow_amount: u64, upfront_fee: u64) -> Option<(u64, u64)> {
-        let current_value = shares_to_amount(initial_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
-        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(initial_shares)?);
-        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(current_value)?);
+    pub fn settle_hedge<E, F1, F2>(&mut self, initial_shares: u64, borrow_amount: u64, upfront_fee: u64, excess_fn: F1, fee_fn: F2) -> Result<(u64, u64), MathError<E>>
+    where
+        F1: FnOnce(u64) -> Result<(), E>,
+        F2: FnOnce(u64) -> Result<(), E>,
+    {
+        let current_value = shares_to_amount(initial_shares, self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?;
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_sub(initial_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_sub(current_value).ok_or(MathError::Overflow)?);
         self.market.set_total_supply_assets(self.market.total_supply_assets().saturating_sub(upfront_fee));
-        let new_shares = amount_to_shares(borrow_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares())?;
-        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares)?);
-        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(borrow_amount)?);
+        let new_shares = amount_to_shares(borrow_amount, self.market.total_borrow_assets(), self.market.total_borrow_shares()).ok_or(MathError::Overflow)?;
+        self.market.set_total_borrow_shares(self.market.total_borrow_shares().checked_add(new_shares).ok_or(MathError::Overflow)?);
+        self.market.set_total_borrow_assets(self.market.total_borrow_assets().checked_add(borrow_amount).ok_or(MathError::Overflow)?);
         let old_debt = self.position.debt_shares();
-        self.position.set_debt_shares(old_debt.checked_sub(initial_shares)?.checked_add(new_shares)?);
-        Some((current_value, new_shares))
+        self.position.set_debt_shares(old_debt.checked_sub(initial_shares).ok_or(MathError::Overflow)?.checked_add(new_shares).ok_or(MathError::Overflow)?);
+        let fixed_total = borrow_amount.checked_add(upfront_fee).ok_or(MathError::Overflow)?;
+        let excess = current_value.saturating_sub(fixed_total);
+        excess_fn(excess).map_err(MathError::Transfer)?;
+        fee_fn(upfront_fee).map_err(MathError::Transfer)?;
+        Ok((current_value, new_shares))
     }
 }
 

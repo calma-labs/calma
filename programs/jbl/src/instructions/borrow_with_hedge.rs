@@ -112,6 +112,25 @@ pub struct BorrowWithHedge<'info> {
 ///
 /// The match account stores the initial debt shares so the crank can later compare
 /// actual variable growth against the borrower's fixed cap (`amount`).
+impl<'info> BorrowWithHedge<'info> {
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn borrow_with_hedge_handler<'a>(
     ctx: Context<'a, BorrowWithHedge<'a>>,
     amount: u64,
@@ -140,6 +159,7 @@ pub fn borrow_with_hedge_handler<'a>(
     require!(ctx.accounts.pool.load()?.lend_mint == ctx.accounts.lend_mint.key(), ErrorCode::InvalidMint);
     let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let state_bump = ctx.bumps.state;
     let new_shares = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
@@ -147,29 +167,15 @@ pub fn borrow_with_hedge_handler<'a>(
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?);
         core.accrue_interest().ok_or(ErrorCode::MathOverflow)?;
-        let shares = core.borrow_with_fee(amount, total_debt_amount, oracle_price)
-            .ok_or(ErrorCode::InsufficientFunds)?;
+        let shares = core.borrow_with_fee(amount, total_debt_amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .map_err(|e| match e {
+                jbl_math::MathError::Overflow => ErrorCode::InsufficientFunds.into(),
+                jbl_math::MathError::Transfer(e) => e,
+            })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         shares
     };
-
-    // ── 3. Transfer `amount` lend tokens to the borrower (fee stays in pool) ──
-    let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
-    let signer = &[&seeds[..]];
-
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
 
     // ── 6. Update offer: reduce available capacity, credit locked tokens ──────
     {

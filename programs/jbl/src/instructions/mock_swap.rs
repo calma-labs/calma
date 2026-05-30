@@ -49,34 +49,44 @@ pub struct MockSwap<'info> {
 ///
 /// This instruction exists solely for testing and local-validator faucet scenarios.
 /// It must never be deployed to mainnet.
+impl<'info> MockSwap<'info> {
+    pub fn burn_token_in(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::burn(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Burn {
+                    mint: self.mint_in.to_account_info(),
+                    from: self.user_token_in.to_account_info(),
+                    authority: self.token_owner.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+
+    pub fn mint_token_out(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::mint_to(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::MintTo {
+                    mint: self.mint_out.to_account_info(),
+                    to: self.user_token_out.to_account_info(),
+                    authority: self.mint_authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn mock_swap_handler(ctx: Context<MockSwap>, amount: u64) -> Result<()> {
     require!(amount > 0, ErrorCode::InvalidAmount);
 
     // Burn `amount` of mint_in from the caller's account.
-    anchor_spl::token::burn(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Burn {
-                mint: ctx.accounts.mint_in.to_account_info(),
-                from: ctx.accounts.user_token_in.to_account_info(),
-                authority: ctx.accounts.token_owner.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
+    ctx.accounts.burn_token_in(amount)?;
 
     // Mint `amount` of mint_out to the caller's account.
-    anchor_spl::token::mint_to(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::MintTo {
-                mint: ctx.accounts.mint_out.to_account_info(),
-                to: ctx.accounts.user_token_out.to_account_info(),
-                authority: ctx.accounts.mint_authority.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
+    ctx.accounts.mint_token_out(amount)?;
 
     msg!(
         "MockSwap: burned {} of {}, minted {} of {}",

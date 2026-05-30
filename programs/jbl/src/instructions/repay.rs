@@ -63,6 +63,22 @@ pub struct Repay<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> Repay<'info> {
+    pub fn transfer_lend_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_token_account.to_account_info(),
+                    to: self.lend_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let (oracle, utilization) = {
@@ -78,25 +94,14 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?);
         core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let result = core.repay(amount).ok_or(crate::error::ErrorCode::MathOverflow)?;
-        require!(ctx.accounts.user_token_account.amount >= result.0, crate::error::ErrorCode::InsufficientFunds);
+        let result = core.repay(amount, |amt| {
+            require!(ctx.accounts.user_token_account.amount >= amt, crate::error::ErrorCode::InsufficientFunds);
+            ctx.accounts.transfer_lend_to_vault(amt)
+        }).map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         result
     };
-
-    // ── 3. Transfer lend tokens back to the lend vault ─────────────────────────
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_token_account.to_account_info(),
-                to: ctx.accounts.lend_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        repay_amount,
-    )?;
 
     let pool = ctx.accounts.pool.load()?;
     msg!(

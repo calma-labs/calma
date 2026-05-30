@@ -42,21 +42,7 @@ fn find_user_position_pda(pool: &Pubkey, authority: &Pubkey, program_id: &Pubkey
 
 // ── Account data helpers ──────────────────────────────────────────────────────
 
-/// Read pool.market.total_supply_assets from raw account data.
-///
-/// Layout (after 8-byte discriminator):
-///   0..32   authority
-///   32..64  collateral_mint
-///   64..96  lend_mint
-///   96..128 lp_mint
-///   128..136 total_collateral_deposited
-///   136..144 market.total_supply_assets
 fn read_total_lend_deposited(svm: &LiteSVM, pool: &Pubkey) -> u64 {
-    let data = svm.get_account(pool).unwrap().data;
-    u64::from_le_bytes(data[8 + 136..8 + 144].try_into().unwrap())
-}
-
-fn read_total_collateral_deposited(svm: &LiteSVM, pool: &Pubkey) -> u64 {
     let data = svm.get_account(pool).unwrap().data;
     u64::from_le_bytes(data[8 + 128..8 + 136].try_into().unwrap())
 }
@@ -238,11 +224,11 @@ fn setup(seed_lend_amount: u64) -> Setup {
         );
         send_ixs(&mut svm, &[seed_ix], &payer, &[&payer]);
 
-        // Patch pool.total_lend_deposited so flash_borrow accounting doesn't
-        // underflow.  Layout: 8-byte disc + 4×32-byte Pubkeys + 8-byte
-        // total_collateral_deposited = offset 144 for total_lend_deposited.
+        // Patch pool.market.total_supply_assets so flash_borrow accounting doesn't
+        // underflow.  Layout: 8-byte disc + 4×32-byte Pubkeys + market at 128;
+        // total_supply_assets is the first field of market (offset 128).
         let mut acct = svm.get_account(&pool_pubkey).unwrap();
-        acct.data[144..152].copy_from_slice(&seed_lend_amount.to_le_bytes());
+        acct.data[8 + 128..8 + 136].copy_from_slice(&seed_lend_amount.to_le_bytes());
         svm.set_account(pool_pubkey, acct).unwrap();
     }
 
@@ -467,9 +453,6 @@ fn test_flash_loan_leveraged_swap() {
     );
     send_ixs(&mut s.svm, &[deposit_initial_ix], &s.payer, &[&s.payer]);
 
-    let col_after_initial = read_total_collateral_deposited(&s.svm, &s.pool_pubkey);
-    assert_eq!(col_after_initial, INITIAL_COLLATERAL);
-
     // ── Leveraged swap transaction ─────────────────────────────────────────────
     // 1. flash_borrow(BORROW)  — receive BORROW lend tokens into user_lend_account
     // 2. mock_swap(BORROW)     — burn BORROW lend, mint BORROW collateral
@@ -524,11 +507,4 @@ fn test_flash_loan_leveraged_swap() {
         &[&s.payer],
     );
 
-    // Pool collateral should have increased by BORROW (leveraged deposit).
-    let total_col = read_total_collateral_deposited(&s.svm, &s.pool_pubkey);
-    assert_eq!(
-        total_col,
-        INITIAL_COLLATERAL + BORROW,
-        "pool.total_collateral_deposited mismatch"
-    );
 }

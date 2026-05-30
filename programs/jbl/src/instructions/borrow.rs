@@ -76,6 +76,25 @@ pub struct Borrow<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> Borrow<'info> {
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     require!(
@@ -91,6 +110,7 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     };
     let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let state_bump = ctx.bumps.state;
     let new_shares = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
@@ -98,29 +118,15 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?);
         core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let new_shares = core.borrow(amount, oracle_price)
-            .ok_or(crate::error::ErrorCode::InsufficientFunds)?;
+        let new_shares = core.borrow(amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .map_err(|e| match e {
+                jbl_math::MathError::Overflow => crate::error::ErrorCode::InsufficientFunds.into(),
+                jbl_math::MathError::Transfer(e) => e,
+            })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         new_shares
     };
-
-    // ── 4. Transfer lend tokens to the borrower ───────────────────────────────
-    let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
-    let signer = &[&seeds[..]];
-
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
 
     let pool = ctx.accounts.pool.load()?;
     msg!(

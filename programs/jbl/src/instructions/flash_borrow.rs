@@ -53,6 +53,25 @@ pub struct FlashBorrow<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+impl<'info> FlashBorrow<'info> {
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
+        let signer = &[state_seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_destination.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()> {
     require!(amount > 0, ErrorCode::InvalidAmount);
     require!(
@@ -105,22 +124,7 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     require!(found, ErrorCode::FlashRepayMissing);
 
     // ── 2. Transfer tokens from lend vault to user ────────────────────────────
-    let state_bump = ctx.bumps.state;
-    let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
-    let signer = &[state_seeds];
-
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.user_destination.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
+    ctx.accounts.transfer_lend_to_user(amount, ctx.bumps.state)?;
 
     // ── 3. Update pool accounting ─────────────────────────────────────────────
     {

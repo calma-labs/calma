@@ -81,6 +81,22 @@ pub struct CreateRateHedgeOffer<'info> {
 /// - `max_duration`     – Maximum acceptable match duration in seconds.
 /// - `amount`           – Notional lend-token amount this offer covers.
 /// - `collateral_amount`– Collateral tokens locked on creation.
+impl<'info> CreateRateHedgeOffer<'info> {
+    pub fn transfer_collateral_to_offer_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_collateral_token_account.to_account_info(),
+                    to: self.offer_collateral_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn create_rate_hedge_offer_handler(
     ctx: Context<CreateRateHedgeOffer>,
     fixed_rate_bps: u64,
@@ -98,17 +114,7 @@ pub fn create_rate_hedge_offer_handler(
     );
 
     // Transfer collateral from the user into the offer vault.
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_collateral_token_account.to_account_info(),
-                to: ctx.accounts.offer_collateral_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        collateral_amount,
-    )?;
+    ctx.accounts.transfer_collateral_to_offer_vault(collateral_amount)?;
 
     // Initialise the offer account.
     {

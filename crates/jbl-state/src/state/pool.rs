@@ -14,7 +14,7 @@ pub struct Market {
     pub fee: u64,
     pub assets_in_queue: u64,
     pub ltv_percent: u8,
-    _pad: [u8; 7], 
+    _pad: [u8; 7],
 }
 
 impl jbl_math::Market for Market {
@@ -78,8 +78,6 @@ pub struct Pool {
     pub lend_mint: Pubkey,
     /// LP token mint issued to lend-side depositors.
     pub lp_mint: Pubkey,
-    /// Raw sum of collateral tokens deposited across all positions.
-    pub total_collateral_deposited: u64,
     pub market: Market,
     /// IRM program ID. All borrow-rate queries are made via CPI to this program.
     pub rate_program: Pubkey,
@@ -97,18 +95,10 @@ pub struct Pool {
 
 impl Pool {
     pub fn calculate_utilization(&self) -> u64 {
-        let total_supply = self.market.total_supply_assets;
-        if total_supply == 0 {
-            return 0;
-        }
-        let effective_borrowed = self
-            .market
-            .total_borrow_assets
-            .saturating_add(self.market.assets_in_queue);
-        (effective_borrowed as u128)
-            .checked_mul(10_000)
-            .unwrap_or(0)
-            .checked_div(total_supply as u128)
-            .unwrap_or(0) as u64
+        jbl_math::utilization_bps(
+            self.market.total_supply_assets,
+            self.market.total_borrow_assets,
+            self.market.assets_in_queue,
+        )
     }
 }

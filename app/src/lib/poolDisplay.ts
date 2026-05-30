@@ -28,7 +28,6 @@ export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolWithIrm): Po
         borrowAPY: pd.borrow_apy_bps() / 100,
         totalSupplied: Number(pd.total_supply_assets) / DECIMALS_FACTOR,
         totalBorrowed: Number(pd.total_borrow_assets) / DECIMALS_FACTOR,
-        totalCollateral: Number(pd.total_collateral_deposited) / DECIMALS_FACTOR,
         utilization: pd.utilization_bps() / 100,
         availableLiquidity: Number(pd.available_liquidity()) / DECIMALS_FACTOR,
     }

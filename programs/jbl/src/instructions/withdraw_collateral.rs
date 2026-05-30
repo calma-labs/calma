@@ -70,6 +70,25 @@ pub struct WithdrawCollateral<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> WithdrawCollateral<'info> {
+    pub fn transfer_collateral_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        token::transfer(
+            CpiContext::new_with_signer(
+                self.token_program.to_account_info().key.clone(),
+                Transfer {
+                    from: self.collateral_vault.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     {
@@ -88,6 +107,12 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
     };
     let oracle_price = crate::oracle::read_feed_price(&ctx.accounts.feed_state.to_account_info())?;
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    require!(
+        ctx.accounts.collateral_vault.amount >= amount,
+        crate::error::ErrorCode::InsufficientFunds
+    );
+
+    let state_bump = ctx.bumps.state;
     let remaining = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
@@ -95,44 +120,15 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?);
         core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let remaining = core.withdraw_collateral(amount, oracle_price)
-            .ok_or(crate::error::ErrorCode::InsufficientFunds)?;
+        let remaining = core.withdraw_collateral(amount, oracle_price, |amt| ctx.accounts.transfer_collateral_to_user(amt, state_bump))
+            .map_err(|e| match e {
+                jbl_math::MathError::Overflow => crate::error::ErrorCode::InsufficientFunds.into(),
+                jbl_math::MathError::Transfer(e) => e,
+            })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.collateral_deposited = core.position.collateral_deposited;
         remaining
     };
-
-    // ── 2. Check collateral vault liquidity ───────────────────────────────────
-    require!(
-        ctx.accounts.collateral_vault.amount >= amount,
-        crate::error::ErrorCode::InsufficientFunds
-    );
-
-    // ── 3. Transfer collateral tokens back to user ────────────────────────────
-    let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
-    let signer = &[&seeds[..]];
-
-    token::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info().key.clone(),
-            Transfer {
-                from: ctx.accounts.collateral_vault.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    // ── 4. Update pool total collateral ──────────────────────────────────────
-    {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_collateral_deposited = pool
-            .total_collateral_deposited
-            .checked_sub(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-    }
 
     msg!(
         "Withdrew {} collateral tokens. Remaining collateral deposit: {}",

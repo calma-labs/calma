@@ -117,7 +117,6 @@ describe("flash-loan", () => {
         const FEE = flashFee(BORROW_AMOUNT);
 
         let setup: TestSetup;
-        let collateralDepositedBefore: BN;
         let vaultBalanceBefore: bigint;
 
         before(async () => {
@@ -136,9 +135,6 @@ describe("flash-loan", () => {
                 connection,
             } = setup;
 
-            const poolAccount = await program.account.pool.fetch(pool);
-            collateralDepositedBefore = poolAccount.totalCollateralDeposited;
-            expect(collateralDepositedBefore.toNumber()).to.equal(0);
             vaultBalanceBefore = (await getAccount(connection, lendVaultPda)).amount;
 
             // flash_borrow → mock_swap (lend→collateral) → deposit → flash_repay
@@ -185,16 +181,6 @@ describe("flash-loan", () => {
             const { program, userPositionPda } = setup;
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.collateralDeposited.toNumber()).to.equal(BORROW_AMOUNT);
-        });
-
-        it("pool.total_collateral_deposited increases by the borrowed amount", async () => {
-            const { program, pool } = setup;
-            const poolAccount = await program.account.pool.fetch(pool);
-            expect(
-                poolAccount.totalCollateralDeposited
-                    .sub(collateralDepositedBefore)
-                    .toNumber()
-            ).to.equal(BORROW_AMOUNT);
         });
 
         it("lend vault balance increases by the fee", async () => {

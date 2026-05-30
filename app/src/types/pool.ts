@@ -21,7 +21,6 @@ export interface Pool {
   borrowAPY: number;
   totalSupplied: number;
   totalBorrowed: number;
-  totalCollateral: number;
   utilization: number;
   availableLiquidity: number;
 }

@@ -45,6 +45,22 @@ pub struct FlashRepay<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+impl<'info> FlashRepay<'info> {
+    pub fn transfer_repayment_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_source.to_account_info(),
+                    to: self.lend_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> {
     require!(amount > 0, ErrorCode::InvalidAmount);
 
@@ -99,17 +115,7 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     );
 
     // ── 3. Transfer repayment from user to lend vault ─────────────────────────
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_source.to_account_info(),
-                to: ctx.accounts.lend_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
+    ctx.accounts.transfer_repayment_to_vault(amount)?;
 
     // ── 4. Update pool accounting ─────────────────────────────────────────────
     //

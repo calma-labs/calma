@@ -123,6 +123,42 @@ pub struct SettleRateHedgeMatch<'info> {
 /// 5. Adjust the borrower's debt shares so their outstanding debt = `amount` (their cap).
 /// 6. Restore offer capacity and decrement `locked_tokens`.
 /// 7. Close the match account (rent returned to cranker).
+impl<'info> SettleRateHedgeMatch<'info> {
+    pub fn transfer_excess_collateral_to_pool(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
+        let signer = &[state_seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.offer_collateral_vault.to_account_info(),
+                    to: self.collateral_vault.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+
+    pub fn transfer_upfront_fee_to_offer_creator(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
+        let signer = &[state_seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.offer_creator_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
     let (oracle, utilization) = {
         let pool = ctx.accounts.pool.load()?;
@@ -144,6 +180,7 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
 
     // ── 1. Accrue interest, settle shares, update pool + position ────────────
     let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let state_bump = ctx.bumps.state;
     let current_value = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
@@ -152,8 +189,22 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
             .with_position(*ctx.accounts.user_position.load()?);
         core.accrue_interest().ok_or(ErrorCode::MathOverflow)?;
         let (current_value, _new_shares) = core
-            .settle_hedge(initial_debt_shares, borrow_amount, upfront_fee)
-            .ok_or(ErrorCode::MathOverflow)?;
+            .settle_hedge(
+                initial_debt_shares,
+                borrow_amount,
+                upfront_fee,
+                |excess| {
+                    let available = ctx.accounts.offer_collateral_vault.amount;
+                    let transfer_amount = excess.min(available);
+                    if transfer_amount > 0 {
+                        ctx.accounts.transfer_excess_collateral_to_pool(transfer_amount, state_bump)
+                    } else {
+                        Ok(())
+                    }
+                },
+                |fee| ctx.accounts.transfer_upfront_fee_to_offer_creator(fee, state_bump),
+            )
+            .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         current_value
@@ -163,44 +214,6 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
         .checked_add(upfront_fee)
         .ok_or(ErrorCode::MathOverflow)?;
     let excess = current_value.saturating_sub(fixed_total);
-
-    let state_bump = ctx.bumps.state;
-    let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
-    let signer = &[state_seeds];
-
-    // ── 2. If excess > 0 — transfer collateral from offer vault to pool vault ─
-    if excess > 0 {
-        let available = ctx.accounts.offer_collateral_vault.amount;
-        let transfer_amount = excess.min(available);
-        if transfer_amount > 0 {
-            anchor_spl::token::transfer(
-                CpiContext::new_with_signer(
-                    *ctx.accounts.token_program.to_account_info().key,
-                    anchor_spl::token::Transfer {
-                        from: ctx.accounts.offer_collateral_vault.to_account_info(),
-                        to: ctx.accounts.collateral_vault.to_account_info(),
-                        authority: ctx.accounts.state.to_account_info(),
-                    },
-                    signer,
-                ),
-                transfer_amount,
-            )?;
-        }
-    }
-
-    // ── 3. Transfer upfront fee from lend vault to offer creator ─────────────
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.offer_creator_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        upfront_fee,
-    )?;
 
     // ── 4. Update offer ───────────────────────────────────────────────────────
     {

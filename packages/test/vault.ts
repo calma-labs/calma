@@ -123,7 +123,7 @@ describe("pool creation (create)", () => {
             expect(pool.collateralMint.toString()).to.equal(collateralMint.toString());
             expect(pool.lendMint.toString()).to.equal(lendMint.toString());
             expect(pool.lpMint.toString()).to.equal(lpMintPda.toString());
-            expect(pool.totalCollateralDeposited.toString()).to.equal("0");
+            expect(pool.market.totalCollateralDeposited.toString()).to.equal("0");
             expect(pool.market.totalSupplyAssets.toString()).to.equal("0");
             expect(pool.market.totalSupplyShares.toString()).to.equal("0");
             expect(pool.market.totalBorrowAssets.toString()).to.equal("0");

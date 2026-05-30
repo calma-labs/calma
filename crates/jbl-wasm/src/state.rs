@@ -78,12 +78,6 @@ impl PoolAccount {
         bytemuck::bytes_of(&self.0.lp_mint).to_vec()
     }
 
-    /// Raw sum of collateral tokens deposited across all positions.
-    #[wasm_bindgen(getter)]
-    pub fn total_collateral_deposited(&self) -> u64 {
-        self.0.total_collateral_deposited
-    }
-
     /// Sum of lend tokens currently deposited.
     #[wasm_bindgen(getter)]
     pub fn total_supply_assets(&self) -> u64 {
@@ -431,9 +425,6 @@ impl PoolWithIrm {
     pub fn irm_state(&self) -> Vec<u8> { self.pool.irm_state() }
 
     #[wasm_bindgen(getter)]
-    pub fn total_collateral_deposited(&self) -> u64 { self.pool.total_collateral_deposited() }
-
-    #[wasm_bindgen(getter)]
     pub fn total_supply_assets(&self) -> u64 { self.pool.total_supply_assets() }
 
     #[wasm_bindgen(getter)]
@@ -584,18 +575,17 @@ mod tests {
 
     // Pool field offsets (from pool.rs layout comment):
     //   0..127   : 4 Pubkeys (authority, collateral_mint, lend_mint, lp_mint)
-    //   128..135 : total_collateral_deposited (u64)
-    //   136..199 : market (Market, 64 bytes — 7 × u64/i64 + ltv_percent + 7-byte pad)
-    //     136..143 : total_supply_assets
-    //     144..151 : total_supply_shares
-    //     152..159 : total_borrow_assets
-    //     160..167 : total_borrow_shares
-    //     168..175 : last_update
-    //     176..183 : fee
-    //     184..191 : assets_in_queue
-    //     192      : ltv_percent (u8)
-    //     193..199 : _pad [u8; 7]
-    const POOL_MARKET_OFFSET: usize = 136;
+    //   128..199 : market (Market, 72 bytes)
+    //     128..135 : total_supply_assets
+    //     136..143 : total_supply_shares
+    //     144..151 : total_borrow_assets
+    //     152..159 : total_borrow_shares
+    //     160..167 : last_update
+    //     168..175 : fee
+    //     176..183 : assets_in_queue
+    //     184      : ltv_percent (u8)
+    //     185..191 : _pad [u8; 7]
+    const POOL_MARKET_OFFSET: usize = 128;
 
     // IrmState field offsets:
     //   0..31   : pool Pubkey
