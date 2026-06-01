@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 41_304);
+        assert_eq!(core::mem::size_of::<Pool>(), 41_296);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
         assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 120);
         assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);

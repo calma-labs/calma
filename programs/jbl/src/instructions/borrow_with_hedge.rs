@@ -169,8 +169,8 @@ pub fn borrow_with_hedge_handler<'a>(
         core.accrue_interest().ok_or(ErrorCode::MathOverflow)?;
         let shares = core.borrow_with_fee(amount, total_debt_amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
             .map_err(|e| match e {
-                jbl_math::MathError::Overflow => ErrorCode::InsufficientFunds.into(),
                 jbl_math::MathError::Transfer(e) => e,
+                e => ErrorCode::from(e).into(),
             })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;

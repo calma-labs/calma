@@ -42,23 +42,23 @@ impl jbl_math::Market for Market {
     fn ltv_percent(&self) -> u8 {
         self.ltv_percent
     }
-    fn set_total_supply_assets(&mut self, value: u64) {
-        self.total_supply_assets = value;
+    fn total_supply_assets_mut(&mut self) -> &mut u64 {
+        &mut self.total_supply_assets
     }
-    fn set_total_supply_shares(&mut self, value: u64) {
-        self.total_supply_shares = value;
+    fn total_supply_shares_mut(&mut self) -> &mut u64 {
+        &mut self.total_supply_shares
     }
-    fn set_assets_in_queue(&mut self, value: u64) {
-        self.assets_in_queue = value;
+    fn assets_in_queue_mut(&mut self) -> &mut u64 {
+        &mut self.assets_in_queue
     }
-    fn set_total_borrow_assets(&mut self, value: u64) {
-        self.total_borrow_assets = value;
+    fn total_borrow_assets_mut(&mut self) -> &mut u64 {
+        &mut self.total_borrow_assets
     }
-    fn set_total_borrow_shares(&mut self, value: u64) {
-        self.total_borrow_shares = value;
+    fn total_borrow_shares_mut(&mut self) -> &mut u64 {
+        &mut self.total_borrow_shares
     }
-    fn set_last_update(&mut self, value: i64) {
-        self.last_update = value;
+    fn last_update_mut(&mut self) -> &mut i64 {
+        &mut self.last_update
     }
 }
 

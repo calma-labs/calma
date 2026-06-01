@@ -139,7 +139,7 @@ describe("borrow", () => {
                 await borrow(setup, setup.authority, OVER_LTV);
                 expect.fail("expected borrow to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });
@@ -261,7 +261,7 @@ describe("borrow", () => {
                 await borrow(setup, setup.authority, SECOND_BORROW);
                 expect.fail("expected second borrow to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });
@@ -460,7 +460,7 @@ describe("borrow", () => {
                     .rpc();
                 expect.fail("expected withdraw to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });

@@ -120,8 +120,8 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
         core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
         let new_shares = core.borrow(amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
             .map_err(|e| match e {
-                jbl_math::MathError::Overflow => crate::error::ErrorCode::InsufficientFunds.into(),
                 jbl_math::MathError::Transfer(e) => e,
+                e => crate::error::ErrorCode::from(e).into(),
             })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;

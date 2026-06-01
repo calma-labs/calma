@@ -33,10 +33,10 @@ impl Position for UserPosition {
     fn debt_shares(&self) -> u64 {
         self.debt_shares
     }
-    fn set_collateral_deposited(&mut self, value: u64) {
-        self.collateral_deposited = value;
+    fn collateral_deposited_mut(&mut self) -> &mut u64 {
+        &mut self.collateral_deposited
     }
-    fn set_debt_shares(&mut self, value: u64) {
-        self.debt_shares = value;
+    fn debt_shares_mut(&mut self) -> &mut u64 {
+        &mut self.debt_shares
     }
 }
