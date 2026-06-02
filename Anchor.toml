@@ -6,9 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-feed = "EApGqVemyo71RVeYSwJpGh8w5YMG6zDk41pLonnHuuSK"
-irm = "3o6qREQVSmDwiny77YaTWdDhVKC9YRkQEX7eydid9pFt"
-jbl = "kG6m2LuBypnLDKcxu1TTXC9BrWYy4o3V71kVuHv73mg"
+feed = "6BKcCM11A3dRkaf21Lnhqrj1XGMSifd7VA3oCfwNe5bX"
+guard = "FyJvcrTMrMbzSmqTkwY7h8AkVR4BYq2pQrfgXmN1jh5M"
+irm = "8gnZd9Hsx9YZZwNXgAXR8odRstSdKH2cETNfrg661oKE"
+jbl = "D33b3Lb42BGyUQZyftS52idrwsjMy8jYqjb6V4ow1RxD"
 
 [provider]
 cluster = "localnet"

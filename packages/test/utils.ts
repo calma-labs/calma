@@ -178,6 +178,8 @@ export async function setupTest(
       sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
       rateProgram: irmProgramId,
       irmState: irmConfig,
+      guardProgram: null,
+      guardState: null,
     })
     .preInstructions([createPoolIx, setValueIx])
     .signers([payer, authority, poolKeypair])

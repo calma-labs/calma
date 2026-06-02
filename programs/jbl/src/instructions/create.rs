@@ -77,6 +77,13 @@ pub struct Create<'info> {
     /// CHECK: IRM state account — passed to the rate_program CPI.
     pub irm_state: UncheckedAccount<'info>,
 
+    /// CHECK: optional guard program — if provided alongside guard_state, CPIs into it to verify
+    /// the authority is whitelisted before the pool is created.
+    pub guard_program: Option<UncheckedAccount<'info>>,
+
+    /// CHECK: optional guard state — passed to the guard program CPI.
+    pub guard_state: Option<UncheckedAccount<'info>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -87,6 +94,21 @@ pub fn create_handler(
     feed_program: Pubkey,
     feed_state: Pubkey,
 ) -> Result<()> {
+    // ── Guard whitelist check ─────────────────────────────────────────────────
+    if let (Some(guard_program), Some(guard_state)) =
+        (&ctx.accounts.guard_program, &ctx.accounts.guard_state)
+    {
+        guard::cpi::check(
+            CpiContext::new(
+                guard_program.key(),
+                guard::cpi::accounts::Check {
+                    guard_state: guard_state.to_account_info(),
+                },
+            ),
+            ctx.accounts.authority.key(),
+        )?;
+    }
+
     // ── Verify a set_value call on the feed precedes this instruction ─────────
     let oracle = OracleState::new(
         &ctx.accounts.sysvar_instructions.to_account_info(),

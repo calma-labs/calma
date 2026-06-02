@@ -102,6 +102,8 @@ async function createPool(
             rateProgram: IRM_PROGRAM_ID,
             irmState,
             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+            guardProgram: null,
+            guardState: null,
         })
         .instruction()
 

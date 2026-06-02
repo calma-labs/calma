@@ -262,6 +262,8 @@ describe("hardcoded minter faucet", () => {
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
           rateProgram: irmProgram.programId,
           irmState: irmConfigPda,
+          guardProgram: null,
+          guardState: null,
         })
         .preInstructions([createPoolIx, setValueIx])
         .signers([payer, authority, poolKeypair])

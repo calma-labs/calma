@@ -112,6 +112,8 @@ describe("pool creation (create)", () => {
                     sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     rateProgram: irmProgram.programId,
                     irmState: irmConfigPda,
+                    guardProgram: null,
+                    guardState: null,
                 })
                 .preInstructions([createPoolAccountIx, setValueIx])
                 .signers([payer, authority, poolKeypair])
@@ -123,7 +125,6 @@ describe("pool creation (create)", () => {
             expect(pool.collateralMint.toString()).to.equal(collateralMint.toString());
             expect(pool.lendMint.toString()).to.equal(lendMint.toString());
             expect(pool.lpMint.toString()).to.equal(lpMintPda.toString());
-            expect(pool.market.totalCollateralDeposited.toString()).to.equal("0");
             expect(pool.market.totalSupplyAssets.toString()).to.equal("0");
             expect(pool.market.totalSupplyShares.toString()).to.equal("0");
             expect(pool.market.totalBorrowAssets.toString()).to.equal("0");

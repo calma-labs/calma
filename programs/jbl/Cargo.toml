@@ -23,6 +23,7 @@ custom-panic = []
 [dependencies]
 jbl-math = { path = "../../crates/jbl-math" }
 jbl-state = { path = "../../crates/jbl-state" }
+guard = { path = "../guard", features = ["cpi"] }
 irm = { path = "../irm", features = ["cpi"] }
 anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
 anchor-spl = "1.0.2"
@@ -38,6 +39,7 @@ solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 spl-token = { version = "7", features = ["no-entrypoint"] }
 sha2 = "0.10"
+guard = { path = "../guard", features = ["no-entrypoint"] }
 irm = { path = "../irm", features = ["no-entrypoint"] }
 feed = { path = "../feed", features = ["no-entrypoint"] }
 

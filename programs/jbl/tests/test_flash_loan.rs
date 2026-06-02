@@ -201,6 +201,8 @@ fn setup(seed_lend_amount: u64) -> Setup {
             sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
             rate_program: irm_id,
             irm_state: irm_config,
+            guard_program: None,
+            guard_state: None,
             token_program: spl_token::id(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
