@@ -24,8 +24,9 @@ pub trait Position {
 
 pub trait IrmRate {
     fn rate_bps(&self) -> u32;
+    fn current_ts(&self) -> i64;
 }
 
 pub trait Oracle {
-    fn current_ts(&self) -> i64;
+    fn price(&self) -> u64;
 }

@@ -1,4 +1,3 @@
-use crate::hooks::oracle::OracleState;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
@@ -53,14 +52,6 @@ pub struct Repay<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
-    /// CHECK: feed program — invoked via CPI to read the oracle price.
-    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ crate::error::ErrorCode::InvalidAmount)]
-    pub feed_program: UncheckedAccount<'info>,
-
-    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
-    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidAmount)]
-    pub feed_state: UncheckedAccount<'info>,
-
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -85,15 +76,13 @@ impl<'info> Repay<'info> {
 pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
     let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     let (repay_amount, shares_to_burn) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
-            .with_oracle(oracle)
             .with_irm(irm)
-            .with_position(*ctx.accounts.user_position.load()?);
-        core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
         let result = core.repay(amount, |amt| {
             require!(ctx.accounts.user_token_account.amount >= amt, crate::error::ErrorCode::InsufficientFunds);
             ctx.accounts.transfer_lend_to_vault(amt)

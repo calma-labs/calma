@@ -151,19 +151,18 @@ pub fn borrow_with_hedge_handler<'a>(
     // ── 2. Accrue interest + LTV check + share calculation ───────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
     let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
-    let current_ts = oracle.current_ts;
-    let oracle_price = oracle.price;
     require!(ctx.accounts.pool.load()?.lend_mint == ctx.accounts.lend_mint.key(), ErrorCode::InvalidMint);
     let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let current_ts = irm.current_ts;
     let state_bump = ctx.bumps.state;
     let new_shares = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
-            .with_position(*ctx.accounts.user_position.load()?);
-        core.accrue_interest().ok_or(ErrorCode::MathOverflow)?;
-        let shares = core.borrow_with_fee(amount, total_debt_amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
+        let shares = core.borrow_with_fee(amount, total_debt_amount, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
             .map_err(|e| match e {
                 jbl_math::MathError::Transfer(e) => e,
                 e => ErrorCode::from(e).into(),

@@ -104,7 +104,6 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
     let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
-    let oracle_price = oracle.price;
     let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     let state_bump = ctx.bumps.state;
     let new_shares = {
@@ -112,9 +111,9 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
         let mut core = jbl_math::Core::new(pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
-            .with_position(*ctx.accounts.user_position.load()?);
-        core.accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let new_shares = core.borrow(amount, oracle_price, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let new_shares = core.borrow(amount, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
             .map_err(|e| match e {
                 jbl_math::MathError::Transfer(e) => e,
                 e => crate::error::ErrorCode::from(e).into(),

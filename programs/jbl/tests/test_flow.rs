@@ -283,8 +283,6 @@ fn test_flow() {
                     user_position,
                     rate_program: irm_id,
                     irm_state: irm_config,
-                    feed_program: feed_id,
-                    feed_state: feed_pda,
                     token_program: spl_token::id(),
                     associated_token_program: atp_id,
                     system_program: anchor_lang::solana_program::system_program::id(),

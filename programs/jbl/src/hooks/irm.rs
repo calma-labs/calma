@@ -5,6 +5,7 @@ use anchor_lang::prelude::*;
 /// and `rate_bps` is the verified current borrow rate.
 pub struct IrmState {
     pub rate_bps: u32,
+    pub current_ts: i64,
 }
 
 impl IrmState {
@@ -22,12 +23,16 @@ impl IrmState {
             },
         );
         let rate_bps = irm::cpi::borrow_rate(cpi_ctx, utilization)?.get();
-        Ok(Self { rate_bps })
+        let current_ts = Clock::get()?.unix_timestamp;
+        Ok(Self { rate_bps, current_ts })
     }
 }
 
 impl jbl_math::IrmRate for IrmState {
     fn rate_bps(&self) -> u32 {
         self.rate_bps
+    }
+    fn current_ts(&self) -> i64 {
+        self.current_ts
     }
 }

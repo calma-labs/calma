@@ -1,6 +1,5 @@
 use crate::{
     error::ErrorCode,
-    hooks::oracle::OracleState,
     state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition},
 };
 use anchor_lang::prelude::*;
@@ -164,8 +163,8 @@ impl<'info> SettleRateHedgeMatch<'info> {
 
 pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
-    let current_ts = oracle.current_ts;
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let current_ts = irm.current_ts;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
     let (settlement_ts, initial_debt_shares, borrow_amount, upfront_fee) = {
@@ -179,15 +178,13 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
     // ── 1. Accrue interest, settle shares, update pool + position ────────────
-    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     let state_bump = ctx.bumps.state;
     let current_value = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
-            .with_oracle(oracle)
             .with_irm(irm)
-            .with_position(*ctx.accounts.user_position.load()?);
-        core.accrue_interest().ok_or(ErrorCode::MathOverflow)?;
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
         let (current_value, _new_shares) = core
             .settle_hedge(
                 initial_debt_shares,

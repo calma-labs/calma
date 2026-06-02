@@ -89,10 +89,7 @@ mod tests {
     fn make_entry(seed: u8, amount: u64) -> WithdrawalQueueEntry {
         let mut bytes = [0u8; 32];
         bytes[0] = seed;
-        WithdrawalQueueEntry {
-            requester: Pubkey::new_from_array(bytes),
-            amount,
-        }
+        WithdrawalQueueEntry::new(Pubkey::new_from_array(bytes), amount)
     }
 
     // ── basic state ───────────────────────────────────────────────────────────

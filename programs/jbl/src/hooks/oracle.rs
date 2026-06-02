@@ -6,8 +6,8 @@ pub struct OracleState {
 }
 
 impl jbl_math::Oracle for OracleState {
-    fn current_ts(&self) -> i64 {
-        self.current_ts
+    fn price(&self) -> u64 {
+        self.price
     }
 }
 
