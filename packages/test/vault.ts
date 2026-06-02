@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { Program, AnchorProvider, BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
@@ -95,27 +95,22 @@ describe("pool creation (create)", () => {
                 programId: program.programId,
             });
 
-            // set_value must precede create in the same transaction for introspection to pass.
-            const setValueIx = await feedProgram.methods
-                .setValue(new BN(1_000_000))
-                .accounts({ authority: feedAuthority })
-                .instruction();
-
             await program.methods
-                .create(75, feedProgram.programId, feedPda)
+                .create(75)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
                     lendMint,
                     authority: authority.publicKey,
                     payer: payer.publicKey,
-                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    feedProgram: feedProgram.programId,
+                    feedState: feedPda,
                     rateProgram: irmProgram.programId,
                     irmState: irmConfigPda,
                     guardProgram: null,
                     guardState: null,
                 })
-                .preInstructions([createPoolAccountIx, setValueIx])
+                .preInstructions([createPoolAccountIx])
                 .signers([payer, authority, poolKeypair])
                 .rpc();
 
@@ -156,23 +151,18 @@ describe("pool creation (create)", () => {
         });
 
         it("fails when pool is already initialised (zero constraint violated)", async () => {
-            const setValueIx = await feedProgram.methods
-                .setValue(new BN(1_000_000))
-                .accounts({ authority: feedAuthority })
-                .instruction();
-
             try {
                 await program.methods
-                    .create(75, feedProgram.programId, feedPda, feedProgram.programId, feedPda)
+                    .create(75)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,
                         lendMint,
                         authority: authority.publicKey,
                         payer: payer.publicKey,
-                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedProgram: feedProgram.programId,
+                        feedState: feedPda,
                     })
-                    .preInstructions([setValueIx])
                     .signers([payer, authority])
                     .rpc();
                 expect.fail("Expected second create to fail");

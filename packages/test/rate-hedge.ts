@@ -1,9 +1,9 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getAccount, createMint, createAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, createLender, participateInPool, feedIx, TestSetup } from "./utils";
+import { setupTest, createLender, participateInPool, TestSetup } from "./utils";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -131,7 +131,7 @@ describe("rate-hedge", () => {
                         userCollateralTokenAccount,
                         authority: authority.publicKey,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([authority])
                     .rpc();
 
@@ -200,7 +200,7 @@ describe("rate-hedge", () => {
                             userCollateralTokenAccount,
                             authority: authority.publicKey,
                         })
-                        .preInstructions([await feedIx(setup)])
+                        
                         .signers([authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -281,7 +281,7 @@ describe("rate-hedge", () => {
                             userCollateralTokenAccount: wrongTokenAccount,
                             authority: authority.publicKey,
                         })
-                        .preInstructions([await feedIx(setup)])
+                        
                         .signers([authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -351,7 +351,7 @@ describe("rate-hedge", () => {
                         userCollateralTokenAccount: setup.userCollateralTokenAccount,
                         authority: setup.authority.publicKey,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([setup.authority])
                     .rpc();
 
@@ -366,7 +366,7 @@ describe("rate-hedge", () => {
                         authority: borrower.authority.publicKey,
                         userTokenAccount: borrower.userTokenAccount,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([borrower.authority])
                     .rpc();
 
@@ -398,10 +398,10 @@ describe("rate-hedge", () => {
                         rateHedgeMatch: matchPda,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
-                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedProgram: setup.feedProgram.programId,
                         feedState: setup.feedPda,
                     })
-                    .preInstructions([await feedIx(setup)])
+
                     .signers([borrower.authority])
                     .rpc();
 
@@ -484,7 +484,7 @@ describe("rate-hedge", () => {
                         userCollateralTokenAccount: setup.userCollateralTokenAccount,
                         authority: setup.authority.publicKey,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([setup.authority])
                     .rpc();
 
@@ -497,7 +497,7 @@ describe("rate-hedge", () => {
                         authority: borrower.authority.publicKey,
                         userTokenAccount: borrower.userTokenAccount,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([borrower.authority])
                     .rpc();
 
@@ -526,10 +526,10 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
-                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                            feedProgram: setup.feedProgram.programId,
                             feedState: setup.feedPda,
                         })
-                        .preInstructions([await feedIx(setup)])
+
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -560,10 +560,10 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
-                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                            feedProgram: setup.feedProgram.programId,
                             feedState: setup.feedPda,
                         })
-                        .preInstructions([await feedIx(setup)])
+
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -619,7 +619,7 @@ describe("rate-hedge", () => {
                         userCollateralTokenAccount: setup.userCollateralTokenAccount,
                         authority: setup.authority.publicKey,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([setup.authority])
                     .rpc();
 
@@ -632,7 +632,7 @@ describe("rate-hedge", () => {
                         authority: borrower.authority.publicKey,
                         userTokenAccount: borrower.userTokenAccount,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([borrower.authority])
                     .rpc();
 
@@ -663,10 +663,10 @@ describe("rate-hedge", () => {
                             rateHedgeMatch: matchPda,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
-                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                            feedProgram: setup.feedProgram.programId,
                             feedState: setup.feedPda,
                         })
-                        .preInstructions([await feedIx(setup)])
+
                         .signers([borrower.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -739,7 +739,7 @@ describe("rate-hedge", () => {
                     userCollateralTokenAccount: offerCreator.userTokenAccount,
                     authority: offerCreator.authority.publicKey,
                 })
-                .preInstructions([await feedIx(setup)])
+                
                 .signers([offerCreator.authority])
                 .rpc();
 
@@ -754,7 +754,7 @@ describe("rate-hedge", () => {
                     authority: borrower.authority.publicKey,
                     userTokenAccount: borrower.userTokenAccount,
                 })
-                .preInstructions([await feedIx(setup)])
+                
                 .signers([borrower.authority])
                 .rpc();
 
@@ -779,10 +779,10 @@ describe("rate-hedge", () => {
                     rateHedgeMatch: matchPda,
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
-                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    feedProgram: setup.feedProgram.programId,
                     feedState: setup.feedPda,
                 })
-                .preInstructions([await feedIx(setup)])
+
                 .signers([borrower.authority])
                 .rpc();
         }
@@ -824,7 +824,7 @@ describe("rate-hedge", () => {
                         userCollateralTokenAccount: offerCreator.userTokenAccount,
                         authority: offerCreator.authority.publicKey,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([offerCreator.authority])
                     .rpc();
 
@@ -838,7 +838,7 @@ describe("rate-hedge", () => {
                         authority: borrower.authority.publicKey,
                         userTokenAccount: borrower.userTokenAccount,
                     })
-                    .preInstructions([await feedIx(setup)])
+                    
                     .signers([borrower.authority])
                     .rpc();
 
@@ -865,10 +865,10 @@ describe("rate-hedge", () => {
                         rateHedgeMatch: matchPda,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
-                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedProgram: setup.feedProgram.programId,
                         feedState: setup.feedPda,
                     })
-                    .preInstructions([await feedIx(setup)])
+
                     .signers([borrower.authority])
                     .rpc();
             });
@@ -898,9 +898,10 @@ describe("rate-hedge", () => {
                             cranker: setup.authority.publicKey,
                             rateProgram: setup.irmProgramId,
                             irmState: setup.irmConfig,
-                            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                            feedProgram: setup.feedProgram.programId,
+                            feedState: setup.feedPda,
                         })
-                        .preInstructions([await feedIx(setup)])
+
                         .signers([setup.authority])
                         .rpc();
                     expect.fail("expected rejection");
@@ -951,9 +952,10 @@ describe("rate-hedge", () => {
                         cranker: setup.authority.publicKey,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
-                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedProgram: setup.feedProgram.programId,
+                        feedState: setup.feedPda,
                     })
-                    .preInstructions([await feedIx(setup)])
+
                     .signers([setup.authority])
                     .rpc();
 

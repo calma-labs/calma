@@ -7,7 +7,7 @@ import {
 } from "@solana/web3.js";
 import { getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
+import { setupTest, participateInPool, TestSetup } from "./utils";
 
 const LEND_LIQUIDITY = 500_000_000;
 
@@ -85,7 +85,7 @@ describe("flash-loan", () => {
                 setup.authority
             );
 
-            const tx = new Transaction().add(await feedIx(setup), borrowIx, repayIx);
+            const tx = new Transaction().add(borrowIx, repayIx);
             await setup.provider.sendAndConfirm(tx, [setup.authority]);
         });
 
@@ -173,7 +173,7 @@ describe("flash-loan", () => {
                 authority
             );
 
-            const tx = new Transaction().add(await feedIx(setup), borrowIx, swapIx, depositIx, repayIx);
+            const tx = new Transaction().add(borrowIx, swapIx, depositIx, repayIx);
             await setup.provider.sendAndConfirm(tx, [authority]);
         });
 
@@ -210,7 +210,6 @@ describe("flash-loan", () => {
                         authority: authority.publicKey,
                         sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
-                    .preInstructions([await feedIx(setup)])
                     .signers([authority])
                     .rpc();
                 expect.fail("should have thrown");
@@ -239,7 +238,6 @@ describe("flash-loan", () => {
                         userDestination: userLendTokenAccount,
                         sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
-                    .preInstructions([await feedIx(setup)])
                     .rpc();
                 expect.fail("should have thrown");
             } catch (e: any) {
@@ -274,7 +272,7 @@ describe("flash-loan", () => {
             );
 
             try {
-                const tx = new Transaction().add(await feedIx(setup), borrowIx, repayIx);
+                const tx = new Transaction().add(borrowIx, repayIx);
                 await setup.provider.sendAndConfirm(tx, [authority]);
                 expect.fail("should have thrown");
             } catch (e: any) {

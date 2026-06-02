@@ -1,6 +1,6 @@
 import * as anchor from "@anchor-lang/core";
 import { AnchorProvider, BN } from "@anchor-lang/core";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction } from "@solana/web3.js";
 import {
   createMint,
   createAssociatedTokenAccount,
@@ -236,11 +236,6 @@ describe("hardcoded minter faucet", () => {
         .signers([payer, authority])
         .rpc();
 
-      const setValueIx = await feedProgram.methods
-        .setValue(new anchor.BN(1_000_000))
-        .accounts({ authority: feedAuthority })
-        .instruction();
-
       const poolRent = await connection.getMinimumBalanceForRentExemption(POOL_SPACE);
       const createPoolIx = SystemProgram.createAccount({
         fromPubkey: payer.publicKey,
@@ -252,20 +247,21 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75, feedProgram.programId, feedPda)
+        .create(75)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint
           lendMint,
           authority: authority.publicKey,
           payer: payer.publicKey,
-          sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+          feedProgram: feedProgram.programId,
+          feedState: feedPda,
           rateProgram: irmProgram.programId,
           irmState: irmConfigPda,
           guardProgram: null,
           guardState: null,
         })
-        .preInstructions([createPoolIx, setValueIx])
+        .preInstructions([createPoolIx])
         .signers([payer, authority, poolKeypair])
         .rpc();
 

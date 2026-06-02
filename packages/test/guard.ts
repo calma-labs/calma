@@ -5,7 +5,6 @@ import {
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
-  SYSVAR_INSTRUCTIONS_PUBKEY,
 } from "@solana/web3.js";
 import { createMint } from "@solana/spl-token";
 import { expect } from "chai";
@@ -208,26 +207,22 @@ describe("jbl create with guard", () => {
       programId: jblProgram.programId,
     });
 
-    const setValueIx = await feedProgram.methods
-      .setValue(new BN(1_000_000))
-      .accounts({ authority: payer.publicKey })
-      .instruction();
-
     await jblProgram.methods
-      .create(75, feedProgram.programId, feedPda)
+      .create(75)
       .accounts({
         pool,
         collateralMint,
         lendMint,
         authority: poolAuthority.publicKey,
         payer: payer.publicKey,
-        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+        feedProgram: feedProgram.programId,
+        feedState: feedPda,
         rateProgram: irmProgram.programId,
         irmState: irmConfig,
         guardProgram: guard?.program ?? null,
         guardState: guard?.state ?? null,
       })
-      .preInstructions([createPoolAccountIx, setValueIx])
+      .preInstructions([createPoolAccountIx])
       .signers([payer, poolAuthority, poolKeypair])
       .rpc();
 

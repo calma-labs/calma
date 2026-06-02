@@ -1,12 +1,12 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
-import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import {
     getAccount,
     getMint,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
+import { setupTest, participateInPool, TestSetup } from "./utils";
 
 const PARTICIPATE_AMOUNT = 1_000_000; // 1 token (6 decimals)
 
@@ -77,7 +77,6 @@ describe("participate and leave", () => {
                     lendMint,
                     authority: authority.publicKey,
                 })
-                .preInstructions([await feedIx(setup)])
                 .signers([authority])
                 .rpc();
 
@@ -207,7 +206,6 @@ describe("participate and leave", () => {
                     authority: setup.authority.publicKey,
                     userTokenAccount: setup.userCollateralTokenAccount,
                 })
-                .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])
                 .rpc();
 
@@ -219,10 +217,9 @@ describe("participate and leave", () => {
                     authority: setup.authority.publicKey,
                     rateProgram: setup.irmProgramId,
                     irmState: setup.irmConfig,
-                    sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                    feedProgram: setup.feedProgram.programId,
                     feedState: setup.feedPda,
                 })
-                .preInstructions([await feedIx(setup)])
                 .signers([setup.authority])
                 .rpc();
         });

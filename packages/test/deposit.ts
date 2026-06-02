@@ -1,8 +1,7 @@
 import * as anchor from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
-import { SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
 import { expect } from "chai";
-import { setupTest, createLender, feedIx, TestSetup } from "./utils";
+import { setupTest, createLender, TestSetup } from "./utils";
 
 async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypair, userTokenAccount: anchor.web3.PublicKey, amount: number) {
     await setup.program.methods
@@ -13,7 +12,6 @@ async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypai
             authority: authority.publicKey,
             userTokenAccount,
         })
-        .preInstructions([await feedIx(setup)])
         .signers([authority])
         .rpc();
 }
@@ -28,10 +26,9 @@ async function withdrawCollateral(setup: TestSetup, authority: anchor.web3.Keypa
             userTokenAccount,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+            feedProgram: setup.feedProgram.programId,
             feedState: setup.feedPda,
         })
-        .preInstructions([await feedIx(setup)])
         .signers([authority])
         .rpc();
 }

@@ -1,7 +1,7 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
 import { expect } from "chai";
-import { setupTest, participateInPool, feedIx, TestSetup } from "./utils";
+import { setupTest, participateInPool, TestSetup } from "./utils";
 import { Keypair, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
@@ -75,7 +75,15 @@ async function openMultiply(
         .instruction(),
       program.methods
         .borrow(flashRepayAmt)
-        .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig, sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY, feedState: setup.feedPda })
+        .accounts({
+          pool,
+          lendMint,
+          authority: authority.publicKey,
+          rateProgram: setup.irmProgramId,
+          irmState: setup.irmConfig,
+          feedProgram: setup.feedProgram.programId,
+          feedState: setup.feedPda,
+        })
         .signers([authority])
         .instruction(),
       program.methods
@@ -92,7 +100,6 @@ async function openMultiply(
     ]);
 
   const tx = new Transaction().add(
-    await feedIx(setup),
     depositInitialIx,
     flashBorrowIx,
     swapIx,

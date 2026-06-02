@@ -21,4 +21,8 @@ pub mod feed {
     pub fn set_value(ctx: Context<SetValue>, value: u64) -> Result<()> {
         set_value::set_value_handler(ctx, value)
     }
+
+    pub fn get_value(ctx: Context<GetValue>) -> Result<u64> {
+        get_value::get_value_handler(ctx)
+    }
 }

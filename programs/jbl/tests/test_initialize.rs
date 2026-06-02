@@ -24,19 +24,6 @@ fn find_lp_mint_pda(pool: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[b"lp_mint", pool.as_ref()], program_id)
 }
 
-/// Build a `feed::set_value` instruction that sets the price to `value`.
-fn feed_set_value_ix(feed_id: &Pubkey, feed_pda: &Pubkey, authority: &Pubkey, value: u64) -> Instruction {
-    Instruction::new_with_bytes(
-        *feed_id,
-        &feed::instruction::SetValue { value }.data(),
-        feed::accounts::SetValue {
-            feed: *feed_pda,
-            authority: *authority,
-        }
-        .to_account_metas(None),
-    )
-}
-
 #[test]
 fn test_create() {
     let program_id = jbl::id();
@@ -90,7 +77,16 @@ fn test_create() {
     let (irm_config, _) =
         Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
 
-    send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
+    let feed_set_value_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        feed::accounts::SetValue {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[feed_create_ix, feed_set_value_ix], &payer, &[&payer]);
 
     // Pre-allocate pool account and initialize IRM
     let pool_space = 8 + std::mem::size_of::<Pool>();
@@ -116,16 +112,11 @@ fn test_create() {
     );
     send_ixs(&mut svm, &[create_pool_account_ix, irm_init_ix], &payer, &[&payer, &pool_keypair]);
 
-    // ── set_value must precede create in the same transaction ─────────────────
-    let set_value_ix = feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000);
-
     // ── Build create instruction ──────────────────────────────────────────────
     let instruction = Instruction::new_with_bytes(
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
-            feed_program: feed_id,
-            feed_state: feed_pda,
         }
         .data(),
         jbl::accounts::Create {
@@ -138,7 +129,8 @@ fn test_create() {
             lend_mint: lend_mint_keypair.pubkey(),
             authority: authority.pubkey(),
             payer: payer.pubkey(),
-            sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+            feed_program: feed_id,
+            feed_state: feed_pda,
             rate_program: irm_id,
             irm_state: irm_config,
             guard_program: None,
@@ -151,9 +143,8 @@ fn test_create() {
 
     send_ixs(
         &mut svm,
-        &[set_value_ix, instruction],
+        &[instruction],
         &payer,
         &[&payer, &authority],
     );
 }
-

@@ -99,8 +99,6 @@ fn create_pool_ix(
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
-            feed_program: feed_id,
-            feed_state: feed_pda,
         }
         .data(),
         jbl::accounts::Create {
@@ -113,7 +111,8 @@ fn create_pool_ix(
             lend_mint,
             authority,
             payer,
-            sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+            feed_program: feed_id,
+            feed_state: feed_pda,
             rate_program: irm_id,
             irm_state: irm_config,
             guard_program,
@@ -133,7 +132,6 @@ struct PoolSetup {
     lp_mint: Pubkey,
     feed_pda: Pubkey,
     irm_config: Pubkey,
-    set_value_ix: Instruction,
 }
 
 fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
@@ -168,7 +166,16 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
         }
         .to_account_metas(None),
     );
-    send_ixs(svm, &[feed_create_ix], payer, &[payer]);
+    let feed_set_value_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        feed::accounts::SetValue {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(svm, &[feed_create_ix, feed_set_value_ix], payer, &[payer]);
 
     // Pre-allocate pool account and initialize IRM
     let pool_space = 8 + std::mem::size_of::<Pool>();
@@ -194,17 +201,7 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
     );
     send_ixs(svm, &[create_pool_account_ix, irm_init_ix], payer, &[payer, &pool_keypair]);
 
-    let set_value_ix = Instruction::new_with_bytes(
-        feed_id,
-        &feed::instruction::SetValue { value: 1_000_000 }.data(),
-        feed::accounts::SetValue {
-            feed: feed_pda,
-            authority: payer.pubkey(),
-        }
-        .to_account_metas(None),
-    );
-
-    PoolSetup { pool_keypair, state_pda, collateral_vault, lend_vault, lp_mint, feed_pda, irm_config, set_value_ix }
+    PoolSetup { pool_keypair, state_pda, collateral_vault, lend_vault, lp_mint, feed_pda, irm_config }
 }
 
 #[test]
@@ -236,7 +233,7 @@ fn test_create_with_guard_whitelisted() {
         Some((guard::id(), guard_pda)),
     );
 
-    send_ixs(&mut svm, &[setup.set_value_ix, ix], &payer, &[&payer, &authority]);
+    send_ixs(&mut svm, &[ix], &payer, &[&payer, &authority]);
 }
 
 #[test]
@@ -268,7 +265,7 @@ fn test_create_with_guard_not_whitelisted() {
     );
 
     assert!(
-        !try_send_ixs(&mut svm, &[setup.set_value_ix, ix], &payer, &[&payer, &authority]),
+        !try_send_ixs(&mut svm, &[ix], &payer, &[&payer, &authority]),
         "expected pool creation to fail for non-whitelisted authority"
     );
 }

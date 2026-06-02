@@ -1,10 +1,9 @@
 pub mod constants;
 pub mod error;
 pub mod fees;
+pub mod hooks;
 pub mod instructions;
-pub mod irm;
 pub mod math;
-pub mod oracle;
 pub mod state;
 pub mod withdrawal_queue;
 
@@ -22,13 +21,8 @@ declare_id!("D33b3Lb42BGyUQZyftS52idrwsjMy8jYqjb6V4ow1RxD");
 pub mod jbl {
     use super::*;
 
-    pub fn create(
-        ctx: Context<Create>,
-        ltv_percent: u8,
-        feed_program: Pubkey,
-        feed_state: Pubkey,
-    ) -> Result<()> {
-        create_handler(ctx, ltv_percent, feed_program, feed_state)
+    pub fn create(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+        create_handler(ctx, ltv_percent)
     }
 
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {

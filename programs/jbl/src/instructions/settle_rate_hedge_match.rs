@@ -1,11 +1,10 @@
 use crate::{
     error::ErrorCode,
-    oracle::OracleState,
+    hooks::oracle::OracleState,
     state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition},
 };
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
-use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
 #[derive(Accounts)]
 pub struct SettleRateHedgeMatch<'info> {
@@ -100,9 +99,13 @@ pub struct SettleRateHedgeMatch<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
-    /// CHECK: fixed sysvar address — `address` constraint verified against SYSVAR_INSTRUCTIONS_ID.
-    #[account(address = Pubkey::new_from_array(SYSVAR_INSTRUCTIONS_ID.to_bytes()))]
-    pub sysvar_instructions: UncheckedAccount<'info>,
+    /// CHECK: feed program — invoked via CPI to read the oracle price.
+    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ ErrorCode::InvalidAmount)]
+    pub feed_program: UncheckedAccount<'info>,
+
+    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ ErrorCode::InvalidAmount)]
+    pub feed_state: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -160,11 +163,8 @@ impl<'info> SettleRateHedgeMatch<'info> {
 }
 
 pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
-    let (oracle, utilization) = {
-        let pool = ctx.accounts.pool.load()?;
-        let oracle = OracleState::new(&ctx.accounts.sysvar_instructions.to_account_info(), pool.feed_program, pool.feed_state)?;
-        (oracle, pool.calculate_utilization())
-    };
+    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
     let current_ts = oracle.current_ts;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
     // ── 1. Accrue interest, settle shares, update pool + position ────────────
-    let irm = crate::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     let state_bump = ctx.bumps.state;
     let current_value = {
         let mut pool = ctx.accounts.pool.load_mut()?;

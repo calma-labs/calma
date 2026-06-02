@@ -20,19 +20,6 @@ const LEND_DEPOSIT: u64 = 10_000_000;
 const COL_DEPOSIT: u64 = 10_000_000;
 const BORROW_AMOUNT: u64 = 5_000_000; // 50% LTV — within the 75% cap
 
-/// Build a `feed::set_value` instruction that sets the price to `value`.
-fn feed_set_value_ix(feed_id: &Pubkey, feed_pda: &Pubkey, authority: &Pubkey, value: u64) -> Instruction {
-    Instruction::new_with_bytes(
-        *feed_id,
-        &feed::instruction::SetValue { value }.data(),
-        feed::accounts::SetValue {
-            feed: *feed_pda,
-            authority: *authority,
-        }
-        .to_account_metas(None),
-    )
-}
-
 #[test]
 fn test_flow() {
     let jbl_id = jbl::id();
@@ -125,23 +112,26 @@ fn test_flow() {
         }
         .to_account_metas(None),
     );
-    // Create feed account first (separate transaction — no ordering constraint here)
-    send_ixs(&mut svm, &[feed_create_ix, alloc_pool_ix, irm_init_ix], &payer, &[&payer, &pool_kp]);
+    // Create feed account and set initial price (1_000_000 = 1.0 in 6-decimal fixed-point).
+    let feed_set_value_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        feed::accounts::SetValue {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[feed_create_ix, feed_set_value_ix, alloc_pool_ix, irm_init_ix], &payer, &[&payer, &pool_kp]);
 
     // ── Create pool ───────────────────────────────────────────────────────────
-    // set_value must appear BEFORE jbl::create in the same transaction.
-    let set_value_ix = feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000);
-
     send_ixs(
         &mut svm,
         &[
-            set_value_ix,
             Instruction::new_with_bytes(
                 jbl_id,
                 &jbl::instruction::Create {
                     ltv_percent: 75,
-                    feed_program: feed_id,
-                    feed_state: feed_pda,
                 }
                 .data(),
                 jbl::accounts::Create {
@@ -154,7 +144,8 @@ fn test_flow() {
                     lend_mint,
                     authority: payer.pubkey(),
                     payer: payer.pubkey(),
-                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    feed_program: feed_id,
+                    feed_state: feed_pda,
                     rate_program: irm_id,
                     irm_state: irm_config,
                     guard_program: None,
@@ -246,7 +237,6 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[
-            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
             Instruction::new_with_bytes(
                 jbl_id,
                 &jbl::instruction::Borrow { amount: BORROW_AMOUNT }.data(),
@@ -260,7 +250,7 @@ fn test_flow() {
                     user_position,
                     rate_program: irm_id,
                     irm_state: irm_config,
-                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    feed_program: feed_id,
                     feed_state: feed_pda,
                     token_program: spl_token::id(),
                     associated_token_program: atp_id,
@@ -281,7 +271,6 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[
-            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
             Instruction::new_with_bytes(
                 jbl_id,
                 &jbl::instruction::Repay { amount: u64::MAX }.data(),
@@ -294,7 +283,8 @@ fn test_flow() {
                     user_position,
                     rate_program: irm_id,
                     irm_state: irm_config,
-                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    feed_program: feed_id,
+                    feed_state: feed_pda,
                     token_program: spl_token::id(),
                     associated_token_program: atp_id,
                     system_program: anchor_lang::solana_program::system_program::id(),
@@ -313,7 +303,6 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[
-            feed_set_value_ix(&feed_id, &feed_pda, &payer.pubkey(), 1_000_000),
             Instruction::new_with_bytes(
                 jbl_id,
                 &jbl::instruction::WithdrawCollateral { amount: COL_DEPOSIT }.data(),
@@ -327,7 +316,7 @@ fn test_flow() {
                     user_position,
                     rate_program: irm_id,
                     irm_state: irm_config,
-                    sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+                    feed_program: feed_id,
                     feed_state: feed_pda,
                     token_program: spl_token::id(),
                     system_program: anchor_lang::solana_program::system_program::id(),

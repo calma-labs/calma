@@ -1,8 +1,8 @@
 import * as anchor from "@anchor-lang/core";
 import { getAccount } from "@solana/spl-token";
-import { Keypair, LAMPORTS_PER_SOL, SYSVAR_INSTRUCTIONS_PUBKEY } from "@solana/web3.js";
+import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
-import { setupTest, createLender, participateInPool, feedIx, TestSetup } from "./utils";
+import { setupTest, createLender, participateInPool, TestSetup } from "./utils";
 
 /** Deposited by setup.authority into the lend vault so borrowers have something to borrow. */
 const LEND_LIQUIDITY = 500_000_000; // 500 lend tokens
@@ -16,7 +16,6 @@ async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypai
             authority: authority.publicKey,
             userTokenAccount,
         })
-        .preInstructions([await feedIx(setup)])
         .signers([authority])
         .rpc();
 }
@@ -30,10 +29,9 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+            feedProgram: setup.feedProgram.programId,
             feedState: setup.feedPda,
         })
-        .preInstructions([await feedIx(setup)])
         .signers([authority])
         .rpc();
 }
@@ -47,9 +45,9 @@ async function repay(setup: TestSetup, authority: anchor.web3.Keypair, amount: n
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+            feedProgram: setup.feedProgram.programId,
+            feedState: setup.feedPda,
         })
-        .preInstructions([await feedIx(setup)])
         .signers([authority])
         .rpc();
 }
@@ -185,8 +183,6 @@ describe("borrow", () => {
             try {
                 await setup.program.methods
                     .borrow(new anchor.BN(50_000_000))
-                    .accounts({ pool: setup.pool, lendMint: setup.lendMint, authority: stranger.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig, sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY, feedState: setup.feedPda })
-                    .preInstructions([await feedIx(setup)])
                     .signers([stranger])
                     .rpc();
                 expect.fail("expected borrow to be rejected");
@@ -452,10 +448,9 @@ describe("borrow", () => {
                         userTokenAccount: setup.userCollateralTokenAccount,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
-                        sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
+                        feedProgram: setup.feedProgram.programId,
                         feedState: setup.feedPda,
                     })
-                    .preInstructions([await feedIx(setup)])
                     .signers([setup.authority])
                     .rpc();
                 expect.fail("expected withdraw to be rejected");

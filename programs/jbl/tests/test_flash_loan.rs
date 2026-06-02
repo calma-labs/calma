@@ -141,7 +141,16 @@ fn setup(seed_lend_amount: u64) -> Setup {
         }
         .to_account_metas(None),
     );
-    send_ixs(&mut svm, &[feed_create_ix], &payer, &[&payer]);
+    let feed_set_value_ix = Instruction::new_with_bytes(
+        feed_id,
+        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        feed::accounts::SetValue {
+            feed: feed_pda,
+            authority: payer.pubkey(),
+        }
+        .to_account_metas(None),
+    );
+    send_ixs(&mut svm, &[feed_create_ix, feed_set_value_ix], &payer, &[&payer]);
 
     let (irm_config, _) =
         Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
@@ -169,23 +178,10 @@ fn setup(seed_lend_amount: u64) -> Setup {
     );
     send_ixs(&mut svm, &[alloc_pool_ix, irm_init_ix], &payer, &[&payer, &pool_kp]);
 
-    // set_value must precede jbl::create in the same transaction.
-    let set_value_ix = Instruction::new_with_bytes(
-        feed_id,
-        &feed::instruction::SetValue { value: 1_000_000 }.data(),
-        feed::accounts::SetValue {
-            feed: feed_pda,
-            authority: payer.pubkey(),
-        }
-        .to_account_metas(None),
-    );
-
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &jbl::instruction::Create {
             ltv_percent: 75,
-            feed_program: feed_id,
-            feed_state: feed_pda,
         }
         .data(),
         jbl::accounts::Create {
@@ -198,7 +194,8 @@ fn setup(seed_lend_amount: u64) -> Setup {
             lend_mint: lend_mint_kp.pubkey(),
             authority: authority.pubkey(),
             payer: payer.pubkey(),
-            sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
+            feed_program: feed_id,
+            feed_state: feed_pda,
             rate_program: irm_id,
             irm_state: irm_config,
             guard_program: None,
@@ -211,7 +208,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
 
     send_ixs(
         &mut svm,
-        &[set_value_ix, create_ix],
+        &[create_ix],
         &payer,
         &[&payer, &authority],
     );

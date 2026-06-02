@@ -1,7 +1,6 @@
-use crate::{oracle::OracleState, state::Pool};
+use crate::{hooks::oracle::OracleState, state::Pool};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
-use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
 #[constant]
 pub const POOL_SPACE: u64 = (8 + std::mem::size_of::<Pool>()) as u64;
@@ -67,9 +66,11 @@ pub struct Create<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: fixed sysvar address — `address` constraint verified against SYSVAR_INSTRUCTIONS_ID.
-    #[account(address = Pubkey::new_from_array(SYSVAR_INSTRUCTIONS_ID.to_bytes()))]
-    pub sysvar_instructions: UncheckedAccount<'info>,
+    /// CHECK: Feed program — key stored in the pool.
+    pub feed_program: UncheckedAccount<'info>,
+
+    /// CHECK: Feed state — price is read from its `value` field; key stored in the pool.
+    pub feed_state: UncheckedAccount<'info>,
 
     /// CHECK: IRM program — invoked via CPI to fetch the initial borrow rate.
     pub rate_program: UncheckedAccount<'info>,
@@ -88,40 +89,27 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(
-    ctx: Context<Create>,
-    ltv_percent: u8,
-    feed_program: Pubkey,
-    feed_state: Pubkey,
-) -> Result<()> {
+pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     // ── Guard whitelist check ─────────────────────────────────────────────────
     if let (Some(guard_program), Some(guard_state)) =
         (&ctx.accounts.guard_program, &ctx.accounts.guard_state)
     {
-        guard::cpi::check(
-            CpiContext::new(
-                guard_program.key(),
-                guard::cpi::accounts::Check {
-                    guard_state: guard_state.to_account_info(),
-                },
-            ),
+        crate::hooks::guard::check_whitelist(
+            guard_program.to_account_info(),
+            guard_state.to_account_info(),
             ctx.accounts.authority.key(),
         )?;
     }
 
-    // ── Verify a set_value call on the feed precedes this instruction ─────────
-    let oracle = OracleState::new(
-        &ctx.accounts.sysvar_instructions.to_account_info(),
-        feed_program,
-        feed_state,
-    )?;
+    // ── CPI to feed::set_value to record the initial oracle price ────────────
+    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
 
     // ── Fetch initial IRM rate before load_init ───────────────────────────────
     // In Anchor 1.0, load_init() does NOT write the discriminator — that happens
     // in AccountsExit::exit() after the handler returns. Calling load() after
     // load_init() in the same instruction sees zeros and returns error 3002.
     // Utilization is 0 because the pool is brand-new with no borrows.
-    let irm = crate::irm::IrmState::new(
+    let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
         0,
         ctx.accounts.pool.to_account_info(),
@@ -144,8 +132,8 @@ pub fn create_handler(
     pool.market.ltv_percent = ltv_percent;
     pool.rate_program = ctx.accounts.rate_program.key();
     pool.irm_state = ctx.accounts.irm_state.key();
-    pool.feed_program = feed_program;
-    pool.feed_state = feed_state;
+    pool.feed_program = ctx.accounts.feed_program.key();
+    pool.feed_state = ctx.accounts.feed_state.key();
     pool.lp_mint_bump = ctx.bumps.lp_mint;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
