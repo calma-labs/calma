@@ -137,10 +137,10 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             ).map_err(crate::error::ErrorCode::from)?;
         } else {
             core.withdraw_lent_queued(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
-            pool.withdrawal_queue.push(WithdrawalQueueEntry {
-                requester: ctx.accounts.authority.key(),
-                amount: lend_for_shares,
-            })?;
+            pool.withdrawal_queue.push(WithdrawalQueueEntry::new(
+                ctx.accounts.authority.key(),
+                lend_for_shares,
+            ))?;
         }
         pool.market = core.market;
         (immediate, lend_for_shares)

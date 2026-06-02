@@ -3,14 +3,6 @@ use jbl_math::Position;
 
 /// Tracks a user's collateral deposit and any open borrow position.
 /// Created on first collateral deposit; borrow fields populated when the user borrows.
-///
-/// Memory layout (repr C, no implicit padding):
-///   offsets 0-31  : authority   (32 bytes)
-///   offsets 32-63 : pool        (32 bytes)
-///   offsets 64-71 : collateral_deposited (8)
-///   offsets 72-79 : debt_shares (8)
-///   offset 80     : bump        (1)
-///   offsets 81-87 : _pad        (7)
 #[account(zero_copy)]
 pub struct UserPosition {
     /// The user who owns this position

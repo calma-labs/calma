@@ -1,6 +1,5 @@
 pub mod constants;
 pub mod error;
-pub mod fees;
 pub mod hooks;
 pub mod instructions;
 pub mod math;
@@ -11,7 +10,6 @@ use anchor_lang::prelude::*;
 
 pub use constants::*;
 pub use error::ErrorCode;
-pub use fees::*;
 pub use instructions::*;
 pub use state::*;
 

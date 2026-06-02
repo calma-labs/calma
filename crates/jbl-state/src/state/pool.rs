@@ -91,6 +91,8 @@ pub struct Pool {
     _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
+    _reserved: [u64; 4]
+
 }
 
 impl Pool {

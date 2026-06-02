@@ -5,11 +5,9 @@ use anchor_lang::prelude::*;
 declare_id!("D33b3Lb42BGyUQZyftS52idrwsjMy8jYqjb6V4ow1RxD");
 
 pub mod error;
-pub mod fees;
 pub mod state;
 pub mod withdrawal_queue;
 
 pub use error::ErrorCode;
-pub use fees::*;
 pub use state::*;
 pub use withdrawal_queue::*;
