@@ -1,6 +1,5 @@
 use crate::withdrawal_queue::WithdrawalQueue;
 use anchor_lang::prelude::*;
-use jbl_math::compute_interest;
 
 /// Per-market accounting: supply, borrow, and fee state.
 #[zero_copy]
@@ -14,6 +13,53 @@ pub struct Market {
     pub last_update: i64,
     pub fee: u64,
     pub assets_in_queue: u64,
+    pub ltv_percent: u8,
+    _pad: [u8; 7],
+}
+
+impl jbl_math::Market for Market {
+    fn total_supply_assets(&self) -> u64 {
+        self.total_supply_assets
+    }
+    fn total_supply_shares(&self) -> u64 {
+        self.total_supply_shares
+    }
+    fn total_borrow_assets(&self) -> u64 {
+        self.total_borrow_assets
+    }
+    fn total_borrow_shares(&self) -> u64 {
+        self.total_borrow_shares
+    }
+    fn last_update(&self) -> i64 {
+        self.last_update
+    }
+    fn fee(&self) -> u64 {
+        self.fee
+    }
+    fn assets_in_queue(&self) -> u64 {
+        self.assets_in_queue
+    }
+    fn ltv_percent(&self) -> u8 {
+        self.ltv_percent
+    }
+    fn total_supply_assets_mut(&mut self) -> &mut u64 {
+        &mut self.total_supply_assets
+    }
+    fn total_supply_shares_mut(&mut self) -> &mut u64 {
+        &mut self.total_supply_shares
+    }
+    fn assets_in_queue_mut(&mut self) -> &mut u64 {
+        &mut self.assets_in_queue
+    }
+    fn total_borrow_assets_mut(&mut self) -> &mut u64 {
+        &mut self.total_borrow_assets
+    }
+    fn total_borrow_shares_mut(&mut self) -> &mut u64 {
+        &mut self.total_borrow_shares
+    }
+    fn last_update_mut(&mut self) -> &mut i64 {
+        &mut self.last_update
+    }
 }
 
 /// Unified lending pool account stored as zero-copy.
@@ -23,15 +69,6 @@ pub struct Market {
 ///   - `lend_mint`:       tokens lenders deposit (earning LP) and borrowers receive
 ///   - `lp_mint`:         issued 1:1 to lend-side depositors; redeemable for lend tokens
 ///
-/// Field ordering eliminates implicit repr(C) padding:
-///   offsets 0-127   : four Pubkeys  (4 × 32 = 128 bytes, align 1)
-///   offsets 128-135 : total_collateral_deposited (u64)
-///   offsets 136-191 : market (Market, 7 × 8 = 56 bytes)
-///   offsets 192-223 : rate_program (Pubkey, 32 bytes)
-///   offsets 224-255 : rate_state   (Pubkey, 32 bytes)
-///   offsets 256-257 : ltv_percent, lp_mint_bump  (2 × u8)
-///   offsets 258-263 : _pad [u8; 6]  (align withdrawal_queue to 8)
-///   offsets 264-... : WithdrawalQueue  (1024 entries × 40 bytes = 40 960 + 8 header)
 #[account(zero_copy)]
 pub struct Pool {
     pub authority: Pubkey,
@@ -41,55 +78,29 @@ pub struct Pool {
     pub lend_mint: Pubkey,
     /// LP token mint issued to lend-side depositors.
     pub lp_mint: Pubkey,
-    /// Raw sum of collateral tokens deposited across all positions.
-    pub total_collateral_deposited: u64,
     pub market: Market,
     /// IRM program ID. All borrow-rate queries are made via CPI to this program.
     pub rate_program: Pubkey,
     /// IRM state account (PDA) passed to the rate program CPI.
     pub irm_state: Pubkey,
-    pub ltv_percent: u8,
+    /// Feed program ID used for price oracle queries.
+    pub feed_program: Pubkey,
+    /// Feed state account (PDA) passed to the feed program.
+    pub feed_state: Pubkey,
     pub lp_mint_bump: u8,
-    _pad: [u8; 6], // explicit padding — no implicit/uninitialised bytes
+    _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
+    _reserved: [u64; 4]
+
 }
 
 impl Pool {
     pub fn calculate_utilization(&self) -> u64 {
-        let total_supply = self.market.total_supply_assets;
-        if total_supply == 0 {
-            return 0;
-        }
-        let effective_borrowed = self
-            .market
-            .total_borrow_assets
-            .saturating_add(self.market.assets_in_queue);
-        (effective_borrowed as u128)
-            .checked_mul(10_000)
-            .unwrap_or(0)
-            .checked_div(total_supply as u128)
-            .unwrap_or(0) as u64
-    }
-
-    /// Accrue interest into `total_borrow_assets` based on elapsed time since last
-    /// accrual, then update `market.last_update` to `current_ts`.
-    ///
-    /// `rate_bps` is the current borrow rate fetched via IRM CPI; it must be
-    /// provided by the caller — there is no on-chain fallback.
-    pub fn accrue_interest(&mut self, current_ts: i64, rate_bps: u32) -> Result<()> {
-        let elapsed = (current_ts.saturating_sub(self.market.last_update)).max(0) as u64;
-        if elapsed == 0 {
-            return Ok(());
-        }
-        let interest = compute_interest(self.market.total_borrow_assets, rate_bps, elapsed)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.total_borrow_assets = self
-            .market
-            .total_borrow_assets
-            .checked_add(interest)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        self.market.last_update = current_ts;
-        Ok(())
+        jbl_math::utilization_bps(
+            self.market.total_supply_assets,
+            self.market.total_borrow_assets,
+            self.market.assets_in_queue,
+        )
     }
 }

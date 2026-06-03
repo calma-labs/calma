@@ -29,6 +29,8 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
+            feedProgram: setup.feedProgram.programId,
+            feedState: setup.feedPda,
         })
         .signers([authority])
         .rpc();
@@ -43,6 +45,8 @@ async function repay(setup: TestSetup, authority: anchor.web3.Keypair, amount: n
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
+            feedProgram: setup.feedProgram.programId,
+            feedState: setup.feedPda,
         })
         .signers([authority])
         .rpc();
@@ -133,7 +137,7 @@ describe("borrow", () => {
                 await borrow(setup, setup.authority, OVER_LTV);
                 expect.fail("expected borrow to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });
@@ -179,7 +183,6 @@ describe("borrow", () => {
             try {
                 await setup.program.methods
                     .borrow(new anchor.BN(50_000_000))
-                    .accounts({ pool: setup.pool, lendMint: setup.lendMint, authority: stranger.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
                     .signers([stranger])
                     .rpc();
                 expect.fail("expected borrow to be rejected");
@@ -254,7 +257,7 @@ describe("borrow", () => {
                 await borrow(setup, setup.authority, SECOND_BORROW);
                 expect.fail("expected second borrow to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });
@@ -445,12 +448,14 @@ describe("borrow", () => {
                         userTokenAccount: setup.userCollateralTokenAccount,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
+                        feedProgram: setup.feedProgram.programId,
+                        feedState: setup.feedPda,
                     })
                     .signers([setup.authority])
                     .rpc();
                 expect.fail("expected withdraw to be rejected");
             } catch (e: any) {
-                expect(e.message).to.include("InsufficientFunds");
+                expect(e.message).to.include("Undercollateralized");
             }
         });
     });

@@ -1,4 +1,3 @@
-use crate::math::{amount_to_shares_burned, shares_to_amount};
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
@@ -58,84 +57,48 @@ pub struct Repay<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
-    let current_ts = Clock::get()?.unix_timestamp;
-
-    // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
-
-    // ── 2. Compute exact amount owed and shares to burn ───────────────────────
-    let (repay_amount, shares_to_burn) = {
-        let pool = ctx.accounts.pool.load()?;
-        let position = ctx.accounts.user_position.load()?;
-        let debt_shares = position.debt_shares;
-        let total_due =
-            shares_to_amount(debt_shares, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-                .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let repay_amount = amount.min(total_due);
-        require!(
-            ctx.accounts.user_token_account.amount >= repay_amount,
-            crate::error::ErrorCode::InsufficientFunds
-        );
-        // If repaying the full debt, burn ALL shares to avoid rounding dust
-        let shares_to_burn = if repay_amount == total_due {
-            debt_shares
-        } else {
-            amount_to_shares_burned(
-                repay_amount,
-                pool.market.total_borrow_assets,
-                pool.market.total_borrow_shares,
-                debt_shares,
-            )
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-        };
-        (repay_amount, shares_to_burn)
-    };
-
-    // ── 3. Transfer lend tokens back to the lend vault ─────────────────────────
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_token_account.to_account_info(),
-                to: ctx.accounts.lend_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        repay_amount,
-    )?;
-
-    // ── 4. Update pool and position state ─────────────────────────────────────
-    let (total_borrow_assets, total_borrow_shares) = {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_borrow_shares = pool
-            .market
-            .total_borrow_shares
-            .checked_sub(shares_to_burn)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.market.total_borrow_assets = pool
-            .market
-            .total_borrow_assets
-            .checked_sub(repay_amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        (pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-    };
-
-    {
-        let mut position = ctx.accounts.user_position.load_mut()?;
-        position.debt_shares = position
-            .debt_shares
-            .checked_sub(shares_to_burn)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+impl<'info> Repay<'info> {
+    pub fn transfer_lend_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_token_account.to_account_info(),
+                    to: self.lend_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
     }
+}
 
+pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
+    // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
+    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let (repay_amount, shares_to_burn) = {
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market)
+            .with_irm(irm)
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let result = core.repay(amount, |amt| {
+            require!(ctx.accounts.user_token_account.amount >= amt, crate::error::ErrorCode::InsufficientFunds);
+            ctx.accounts.transfer_lend_to_vault(amt)
+        }).map_err(crate::error::ErrorCode::from)?;
+        pool.market = core.market;
+        ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
+        result
+    };
+
+    let pool = ctx.accounts.pool.load()?;
     msg!(
         "Repaid {} tokens ({} shares). Pool total_borrow_assets: {}, total_shares: {}",
         repay_amount,
         shares_to_burn,
-        total_borrow_assets,
-        total_borrow_shares,
+        pool.market.total_borrow_assets,
+        pool.market.total_borrow_shares,
     );
 
     Ok(())

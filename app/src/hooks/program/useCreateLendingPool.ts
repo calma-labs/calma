@@ -8,6 +8,7 @@ import {
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 
 const IRM_PROGRAM_ID = new PublicKey('3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC')
+const FEED_PROGRAM_ID = new PublicKey('6BKcCM11A3dRkaf21Lnhqrj1XGMSifd7VA3oCfwNe5bX')
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { connection, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
@@ -91,14 +92,25 @@ async function createPool(
         IRM_PROGRAM_ID,
     )
 
+    const [feedState] = PublicKey.findProgramAddressSync(
+        [Buffer.from('feed'), payer.toBuffer()],
+        FEED_PROGRAM_ID,
+    )
+
     const createIx = await readonlyProgram.methods
-        .create(ltvPercent, IRM_PROGRAM_ID, irmState)
+        .create(ltvPercent)
         .accounts({
             pool: poolKeypair.publicKey,
             collateralMint: collateralMintKeypair.publicKey,
             lendMint: lendMintKeypair.publicKey,
             authority: payer,
             payer,
+            feedProgram: FEED_PROGRAM_ID,
+            feedState,
+            rateProgram: IRM_PROGRAM_ID,
+            irmState,
+            guardProgram: null,
+            guardState: null,
         })
         .instruction()
 

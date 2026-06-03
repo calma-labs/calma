@@ -1,15 +1,22 @@
 import * as anchor from "@anchor-lang/core";
-import { Program, AnchorProvider } from "@anchor-lang/core";
+import { Program, AnchorProvider, BN } from "@anchor-lang/core";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
 import { Jbl } from "../../target/types/jbl";
+import { Feed } from "../../target/types/feed";
+import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
 
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
         let provider: AnchorProvider;
         let program: Program<Jbl>;
+        let feedProgram: Program<Feed>;
+        let irmProgram: Program<Irm>;
+        let feedPda: PublicKey;
+        let feedAuthority: PublicKey;
+        let irmConfigPda: PublicKey;
         let payer: Keypair;
         let authority: Keypair;
         let collateralMint: PublicKey;
@@ -24,6 +31,13 @@ describe("pool creation (create)", () => {
             provider = AnchorProvider.env();
             anchor.setProvider(provider);
             program = anchor.workspace.Jbl as Program<Jbl>;
+            feedProgram = anchor.workspace.Feed as Program<Feed>;
+            irmProgram = anchor.workspace.Irm as Program<Irm>;
+            feedAuthority = provider.wallet.publicKey;
+            [feedPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("feed"), feedAuthority.toBuffer()],
+                feedProgram.programId
+            );
 
             payer = Keypair.generate();
             authority = Keypair.generate();
@@ -36,6 +50,16 @@ describe("pool creation (create)", () => {
 
             collateralMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
             lendMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
+
+            [irmConfigPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("irm_config"), poolKeypair.publicKey.toBuffer()],
+                irmProgram.programId
+            );
+            await irmProgram.methods
+                .initialize()
+                .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
+                .signers([payer, authority])
+                .rpc();
 
             [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
             [collateralVaultPda] = PublicKey.findProgramAddressSync(
@@ -50,6 +74,15 @@ describe("pool creation (create)", () => {
                 [Buffer.from("lp_mint"), poolKeypair.publicKey.toBuffer()],
                 program.programId
             );
+
+            // Create the feed account if it doesn't exist yet (shared provider wallet key).
+            if (!(await provider.connection.getAccountInfo(feedPda))) {
+                await feedProgram.methods
+                    .create()
+                    .accounts({ authority: feedAuthority, payer: payer.publicKey })
+                    .signers([payer])
+                    .rpc();
+            }
         });
 
         it("creates pool account with correct initial state", async () => {
@@ -63,13 +96,19 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(75, SystemProgram.programId, SystemProgram.programId)
+                .create(75)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
                     lendMint,
                     authority: authority.publicKey,
                     payer: payer.publicKey,
+                    feedProgram: feedProgram.programId,
+                    feedState: feedPda,
+                    rateProgram: irmProgram.programId,
+                    irmState: irmConfigPda,
+                    guardProgram: null,
+                    guardState: null,
                 })
                 .preInstructions([createPoolAccountIx])
                 .signers([payer, authority, poolKeypair])
@@ -81,12 +120,11 @@ describe("pool creation (create)", () => {
             expect(pool.collateralMint.toString()).to.equal(collateralMint.toString());
             expect(pool.lendMint.toString()).to.equal(lendMint.toString());
             expect(pool.lpMint.toString()).to.equal(lpMintPda.toString());
-            expect(pool.totalCollateralDeposited.toString()).to.equal("0");
             expect(pool.market.totalSupplyAssets.toString()).to.equal("0");
             expect(pool.market.totalSupplyShares.toString()).to.equal("0");
             expect(pool.market.totalBorrowAssets.toString()).to.equal("0");
             expect(pool.market.totalBorrowShares.toString()).to.equal("0");
-            expect(pool.ltvPercent).to.equal(75);
+            expect(pool.market.ltvPercent).to.equal(75);
         });
 
         it("initialises collateral_vault under state PDA authority", async () => {
@@ -115,13 +153,15 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(75, SystemProgram.programId, SystemProgram.programId)
+                    .create(75)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,
                         lendMint,
                         authority: authority.publicKey,
                         payer: payer.publicKey,
+                        feedProgram: feedProgram.programId,
+                        feedState: feedPda,
                     })
                     .signers([payer, authority])
                     .rpc();

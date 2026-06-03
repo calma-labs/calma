@@ -8,6 +8,7 @@ import {
 } from "@solana/spl-token";
 import { Jbl } from "../../target/types/jbl";
 import { Irm } from "../../target/types/irm";
+import { Feed } from "../../target/types/feed";
 
 import JblIdl from "../../target/idl/jbl.json";
 export const POOL_SPACE: number = Number(
@@ -36,6 +37,9 @@ export interface TestSetup {
   userLendTokenAccount: PublicKey;
   irmConfig: PublicKey;
   irmProgramId: PublicKey;
+  feedProgram: Program<Feed>;
+  feedPda: PublicKey;
+  feedAuthority: PublicKey;
 }
 
 /**
@@ -77,6 +81,13 @@ export async function setupTest(
   // Pool is a keypair account (too large for on-chain PDA allocation via CPI).
   const poolKeypair = opts.poolKeypair ?? Keypair.generate();
   const pool = poolKeypair.publicKey;
+
+  const feedProgram = anchor.workspace.Feed as Program<Feed>;
+  const feedAuthority = provider.wallet.publicKey;
+  const [feedPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("feed"), feedAuthority.toBuffer()],
+    feedProgram.programId
+  );
 
   const irmProgram = anchor.workspace.Irm as Program<Irm>;
   const [irmConfigPda] = PublicKey.findProgramAddressSync(
@@ -139,15 +150,36 @@ export async function setupTest(
     programId: program.programId,
   });
 
+  // Create the feed account once; skip if already exists (shared provider wallet key).
+  if (!(await connection.getAccountInfo(feedPda))) {
+    await feedProgram.methods
+      .create()
+      .accounts({ authority: feedAuthority, payer: payer.publicKey })
+      .signers([payer])
+      .rpc();
+  }
+
+  // Set initial oracle price so the CPI inside create reads a non-zero value.
+  await feedProgram.methods
+    .setValue(new BN(1_000_000))
+    .accounts({ authority: feedAuthority })
+    .rpc();
+
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, irmProgramId, irmConfig)
+    .create(ltvPercent)
     .accounts({
       pool,
       collateralMint,
       lendMint,
       authority: authority.publicKey,
       payer: payer.publicKey,
+      feedProgram: feedProgram.programId,
+      feedState: feedPda,
+      rateProgram: irmProgramId,
+      irmState: irmConfig,
+      guardProgram: null,
+      guardState: null,
     })
     .preInstructions([createPoolIx])
     .signers([payer, authority, poolKeypair])
@@ -171,6 +203,9 @@ export async function setupTest(
     userLendTokenAccount,
     irmConfig,
     irmProgramId,
+    feedProgram,
+    feedPda,
+    feedAuthority,
   };
 }
 

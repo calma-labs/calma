@@ -1,5 +1,17 @@
 use anchor_lang::prelude::*;
 
+impl From<jbl_math::MathError<Error>> for ErrorCode {
+    fn from(e: jbl_math::MathError<Error>) -> Self {
+        match e {
+            jbl_math::MathError::Arithmetic => ErrorCode::MathOverflow,
+            jbl_math::MathError::Undercollateralized => ErrorCode::Undercollateralized,
+            jbl_math::MathError::InsufficientBalance => ErrorCode::InsufficientFunds,
+            jbl_math::MathError::AmountTooSmall => ErrorCode::InvalidAmount,
+            jbl_math::MathError::Transfer(_) => ErrorCode::MathOverflow,
+        }
+    }
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Custom error message")]
@@ -10,6 +22,8 @@ pub enum ErrorCode {
     MathOverflow,
     #[msg("Insufficient funds")]
     InsufficientFunds,
+    #[msg("Borrow amount exceeds collateral LTV limit")]
+    Undercollateralized,
     #[msg("An open borrow position already exists; repay before borrowing again")]
     AlreadyBorrowed,
     #[msg("No open borrow to repay")]
@@ -40,4 +54,6 @@ pub enum ErrorCode {
     MissingRateProgram,
     #[msg("Rate state account missing from remaining accounts")]
     MissingRateState,
+    #[msg("Create pool: no matching feed set_value instruction found before this transaction")]
+    FeedSetValueMissing,
 }

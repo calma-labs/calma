@@ -1,7 +1,6 @@
 use crate::{
-    constants::SECONDS_PER_YEAR,
     error::ErrorCode,
-    math::{amount_to_shares, shares_to_amount},
+    hooks::oracle::OracleState,
     state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition},
 };
 use anchor_lang::prelude::*;
@@ -89,6 +88,14 @@ pub struct BorrowWithHedge<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
+    /// CHECK: feed program — invoked via CPI to read the oracle price.
+    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ ErrorCode::InvalidAmount)]
+    pub feed_program: UncheckedAccount<'info>,
+
+    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ ErrorCode::InvalidAmount)]
+    pub feed_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -104,6 +111,25 @@ pub struct BorrowWithHedge<'info> {
 ///
 /// The match account stores the initial debt shares so the crank can later compare
 /// actual variable growth against the borrower's fixed cap (`amount`).
+impl<'info> BorrowWithHedge<'info> {
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn borrow_with_hedge_handler<'a>(
     ctx: Context<'a, BorrowWithHedge<'a>>,
     amount: u64,
@@ -117,104 +143,36 @@ pub fn borrow_with_hedge_handler<'a>(
 
     // ── 1. Compute upfront fixed fee ──────────────────────────────────────────
     let fixed_rate_bps = ctx.accounts.rate_hedge_offer.load()?.fixed_rate_bps;
-    let upfront_fee: u64 = (amount as u128)
-        .checked_mul(fixed_rate_bps as u128)
-        .ok_or(ErrorCode::MathOverflow)?
-        .checked_mul(duration as u128)
-        .ok_or(ErrorCode::MathOverflow)?
-        .checked_div(10_000u128.checked_mul(SECONDS_PER_YEAR as u128).ok_or(ErrorCode::MathOverflow)?)
-        .ok_or(ErrorCode::MathOverflow)? as u64;
-    require!(upfront_fee > 0, ErrorCode::InvalidAmount);
-
-    let total_debt_amount = amount
-        .checked_add(upfront_fee)
+    let upfront_fee = jbl_math::compute_interest(amount, fixed_rate_bps as u32, duration)
         .ok_or(ErrorCode::MathOverflow)?;
+    require!(upfront_fee > 0, ErrorCode::InvalidAmount);
+    let total_debt_amount = amount.checked_add(upfront_fee).ok_or(ErrorCode::MathOverflow)?;
 
-    // ── 2. Accrue interest via IRM CPI ───────────────────────────────────────
-    let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
-
-    // ── 3. LTV check and share calculation (covers amount + fee as new debt) ──
+    // ── 2. Accrue interest + LTV check + share calculation ───────────────────
+    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
+    require!(ctx.accounts.pool.load()?.lend_mint == ctx.accounts.lend_mint.key(), ErrorCode::InvalidMint);
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let current_ts = irm.current_ts;
+    let state_bump = ctx.bumps.state;
     let new_shares = {
-        let pool = ctx.accounts.pool.load()?;
-        require!(
-            ctx.accounts.lend_mint.key() == pool.lend_mint,
-            ErrorCode::InvalidMint
-        );
-
-        let collateral = ctx.accounts.user_position.load()?.collateral_deposited;
-        let max_borrowable = collateral
-            .checked_mul(pool.ltv_percent as u64)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_div(100)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        let current_debt = if pool.market.total_borrow_shares > 0 {
-            shares_to_amount(
-                ctx.accounts.user_position.load()?.debt_shares,
-                pool.market.total_borrow_assets,
-                pool.market.total_borrow_shares,
-            )
-            .ok_or(ErrorCode::MathOverflow)?
-        } else {
-            0
-        };
-
-        let available = max_borrowable
-            .checked_sub(current_debt)
-            .ok_or(ErrorCode::InsufficientFunds)?;
-        // LTV check uses only `amount` (principal); fee is offer creator's risk.
-        require!(amount <= available, ErrorCode::InsufficientFunds);
-
-        let shares = amount_to_shares(total_debt_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-        require!(shares > 0, ErrorCode::InvalidAmount);
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market)
+            .with_oracle(oracle)
+            .with_irm(irm)
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
+        let shares = core.borrow_with_fee(amount, total_debt_amount, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .map_err(|e| match e {
+                jbl_math::MathError::Transfer(e) => e,
+                e => ErrorCode::from(e).into(),
+            })?;
+        pool.market = core.market;
+        ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         shares
     };
 
-    // ── 4. Update user position ───────────────────────────────────────────────
-    {
-        let mut position = ctx.accounts.user_position.load_mut()?;
-        position.debt_shares = position
-            .debt_shares
-            .checked_add(new_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-    }
-
-    // ── 5. Transfer `amount` lend tokens to the borrower (fee stays in pool) ──
-    let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
-    let signer = &[&seeds[..]];
-
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    // ── 6. Update pool state ──────────────────────────────────────────────────
-    {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_borrow_shares = pool
-            .market
-            .total_borrow_shares
-            .checked_add(new_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-        pool.market.total_borrow_assets = pool
-            .market
-            .total_borrow_assets
-            .checked_add(total_debt_amount)
-            .ok_or(ErrorCode::MathOverflow)?;
-    }
-
-    // ── 7. Update offer: reduce available capacity, credit locked tokens ──────
+    // ── 6. Update offer: reduce available capacity, credit locked tokens ──────
     {
         let mut offer = ctx.accounts.rate_hedge_offer.load_mut()?;
         offer.amount = offer

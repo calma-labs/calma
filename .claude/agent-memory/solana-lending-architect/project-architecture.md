@@ -25,6 +25,15 @@ JBL is a Solana-based DeFi lending protocol inspired by Morpho. Monorepo at `/ho
 - `from_bytes(data: &[u8]) -> Option<Self>` strips 8-byte Anchor discriminator, bytemuck::pod_read_unaligned
 - `crates/jbl-wasm/src/exports.rs`: `#[no_mangle]` C-ABI exports for wasmtime integration tests
 
+## Token transfer pattern (current)
+Token transfers happen **entirely inside `programs/jbl`** — `jbl-math` contains zero transfer logic.
+The Anchor instruction handlers follow a strict two-phase pattern:
+1. Call `jbl_math::Core` methods which mutate `market`/`position` state and return numeric results (amounts, shares).
+2. The handler uses those results to drive `anchor_spl::token::transfer` / `mint_to` / `burn` CPIs.
+The split is clean: math crate = pure bookkeeping, program = side effects.
+
+Oracle abstraction (prior commits) established the pattern: a Solana-specific struct (`OracleState`, `IrmState`) implements a `jbl_math` trait (`Oracle`, `IrmRate`), giving the math crate a dependency-free handle to runtime data. The identical pattern can be used for token transfers if they ever need to move into `jbl-math`.
+
 ## APY calculation gap
 - `poolDisplay.ts` calls `pd.supply_apy_bps()` and `pd.borrow_apy_bps()` on `PoolAccount`, but these methods do NOT currently exist in `jbl-wasm/src/state.rs`
 - APY must be derived from IrmState: utilization_bps → `IrmState.model.get_fee_bps()` → borrow_rate_bps; supply_apy_bps = borrow_rate_bps * utilization_bps / 10_000

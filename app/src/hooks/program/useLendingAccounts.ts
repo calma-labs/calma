@@ -21,7 +21,8 @@ async function fetchAllPools(): Promise<PoolAccountWithKey[]> {
         const pool = PoolAccount.from_bytes(account.data)
         if (!pool) return []
         const rateStatePubkey = new PublicKey(pool.irm_state)
-        return [{ pubkey, raw: account.data, rateStatePubkey }]
+        const feedStatePubkey = new PublicKey(pool.feed_state)
+        return [{ pubkey, raw: account.data, rateStatePubkey, feedStatePubkey }]
     })
 
     if (parsed.length === 0) return []
@@ -29,11 +30,17 @@ async function fetchAllPools(): Promise<PoolAccountWithKey[]> {
     const irmInfos = await connection.getMultipleAccountsInfo(
         parsed.map((p) => p.rateStatePubkey),
     )
+    // TODO: Fetch concurrently
+    const feedInfos = await connection.getMultipleAccountsInfo(
+        parsed.map((p) => p.feedStatePubkey),
+    )
+
 
     return parsed.flatMap(({ pubkey, raw }, i) => {
         const irmInfo = irmInfos[i]
-        if (!irmInfo) return []
-        const poolWithIrm = PoolWithIrm.from_bytes(raw, irmInfo.data)
+        const feedInfo = feedInfos[i]
+        if (!irmInfo || !feedInfo) return []
+        const poolWithIrm = PoolWithIrm.from_bytes(raw, irmInfo.data, feedInfo.data)
         return poolWithIrm ? [{ publicKey: pubkey, account: poolWithIrm }] : []
     })
 }

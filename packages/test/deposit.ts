@@ -26,6 +26,8 @@ async function withdrawCollateral(setup: TestSetup, authority: anchor.web3.Keypa
             userTokenAccount,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
+            feedProgram: setup.feedProgram.programId,
+            feedState: setup.feedPda,
         })
         .signers([authority])
         .rpc();
@@ -53,12 +55,11 @@ describe("deposit and withdraw", () => {
             expect(poolAccount.collateralMint.toString()).to.equal(collateralMint.toString());
             expect(poolAccount.lendMint.toString()).to.equal(lendMint.toString());
             expect(poolAccount.lpMint.toString()).to.equal(lpMintPda.toString());
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal(DEPOSIT_AMOUNT.toString());
             expect(poolAccount.market.totalSupplyAssets.toString()).to.equal("0");
             expect(poolAccount.market.totalSupplyAssets.toString()).to.equal("0"); // LP only issued via participate
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
-            expect(poolAccount.ltvPercent).to.equal(75);
+            expect(poolAccount.market.ltvPercent).to.equal(75);
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.authority.toString()).to.equal(authority.publicKey.toString());
@@ -79,7 +80,6 @@ describe("deposit and withdraw", () => {
             await withdrawCollateral(setup, authority, userCollateralTokenAccount, DEPOSIT_AMOUNT);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal("0");
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
 
             const position = await program.account.userPosition.fetch(userPositionPda);
@@ -114,7 +114,6 @@ describe("deposit and withdraw", () => {
             await withdrawCollateral(setup, authority, userCollateralTokenAccount, FIRST_WITHDRAW);
 
             const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal((DEPOSIT_AMOUNT - FIRST_WITHDRAW).toString());
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
 
             const position = await program.account.userPosition.fetch(userPositionPda);
@@ -132,9 +131,6 @@ describe("deposit and withdraw", () => {
             const { program, pool, collateralVaultPda, userPositionPda, userCollateralTokenAccount, authority, connection } = setup;
 
             await withdrawCollateral(setup, authority, userCollateralTokenAccount, SECOND_WITHDRAW);
-
-            const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal("0");
 
             const position = await program.account.userPosition.fetch(userPositionPda);
             expect(position.collateralDeposited.toString()).to.equal("0");
@@ -169,7 +165,6 @@ describe("deposit and withdraw", () => {
 
         it("asserts pool totals reflect both deposits", async () => {
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal((DEPOSIT_A + DEPOSIT_B).toString());
             expect(poolAccount.market.totalBorrowShares.toString()).to.equal("0");
 
             const positionA = await setup.program.account.userPosition.fetch(depositorA.userPositionPda);
@@ -186,7 +181,6 @@ describe("deposit and withdraw", () => {
             await withdrawCollateral(setup, depositorA.authority, depositorA.userTokenAccount, WITHDRAW_A);
 
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal(DEPOSIT_B.toString());
 
             const positionA = await setup.program.account.userPosition.fetch(depositorA.userPositionPda);
             expect(positionA.collateralDeposited.toString()).to.equal("0");
@@ -202,7 +196,6 @@ describe("deposit and withdraw", () => {
             await withdrawCollateral(setup, depositorB.authority, depositorB.userTokenAccount, WITHDRAW_B_PARTIAL);
 
             const poolAccount = await setup.program.account.pool.fetch(setup.pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal((DEPOSIT_B - WITHDRAW_B_PARTIAL).toString());
 
             const positionB = await setup.program.account.userPosition.fetch(depositorB.userPositionPda);
             expect(positionB.collateralDeposited.toString()).to.equal((DEPOSIT_B - WITHDRAW_B_PARTIAL).toString());
@@ -267,7 +260,7 @@ describe("deposit and withdraw", () => {
         });
 
         it("withdraws the exact collateralDeposited amount from position", async () => {
-            const { program, pool, collateralVaultPda, userPositionPda, userCollateralTokenAccount, authority, connection } = setup;
+            const { program, collateralVaultPda, userPositionPda, userCollateralTokenAccount, authority, connection } = setup;
 
             // Read the actual deposited amount from the position
             const positionBefore = await program.account.userPosition.fetch(userPositionPda);
@@ -277,9 +270,6 @@ describe("deposit and withdraw", () => {
             await withdrawCollateral(setup, authority, userCollateralTokenAccount, exactCollateralDeposited);
 
             // Verify state after withdraw
-            const poolAccount = await program.account.pool.fetch(pool);
-            expect(poolAccount.totalCollateralDeposited.toString()).to.equal("0");
-
             const positionAfter = await program.account.userPosition.fetch(userPositionPda);
             expect(positionAfter.collateralDeposited.toString()).to.equal("0");
 

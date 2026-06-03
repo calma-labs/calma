@@ -1,12 +1,45 @@
-const SECONDS_PER_YEAR: u64 = 31_557_600;
+mod traits;
+mod core;
 
-/// Compute simple interest on a pool's total borrowed balance.
-///
-/// ```text
-/// interest = total_borrowed × rate_bps × elapsed_secs
-///            ─────────────────────────────────────
-///                  10_000 × SECONDS_PER_YEAR
-/// ```
+pub use traits::*;
+pub use core::*;
+
+const SECONDS_PER_YEAR: u64 = 31_557_600;
+pub const PRICE_SCALE: u128 = 1_000_000;
+
+pub enum MathError<E> {
+    /// Integer overflow or underflow in a checked arithmetic operation.
+    Arithmetic,
+    /// Borrow or withdraw would violate the LTV limit.
+    Undercollateralized,
+    /// Withdrawal exceeds the available balance (collateral deposited or pool shares).
+    InsufficientBalance,
+    /// The requested amount is too small to mint even one share.
+    AmountTooSmall,
+    Transfer(E),
+}
+
+pub fn utilization_bps(total_supply_assets: u64, total_borrow_assets: u64, assets_in_queue: u64) -> u64 {
+    if total_supply_assets == 0 {
+        return 0;
+    }
+    let effective_borrowed = total_borrow_assets.saturating_add(assets_in_queue);
+    (effective_borrowed as u128)
+        .checked_mul(10_000)
+        .unwrap_or(0)
+        .checked_div(total_supply_assets as u128)
+        .unwrap_or(0) as u64
+}
+
+pub fn flash_fee(amount: u64, fee_bps: u32) -> Option<u64> {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(fee_bps as u128)?
+            .checked_div(10_000)?,
+    )
+    .ok()
+}
+
 pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -> Option<u64> {
     if elapsed_secs == 0 || rate_bps == 0 || total_borrowed == 0 {
         return Some(0);
@@ -19,28 +52,19 @@ pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -
     u64::try_from(interest).ok()
 }
 
-/// Convert a borrow amount to debt shares given pool state.
-///
-/// If the pool has no shares yet (first borrow), shares = amount (1:1).
-/// Otherwise: `shares = amount × total_debt_shares / total_borrowed`
-///
 /// Call this BEFORE adding `amount` to `total_borrowed`.
 pub fn amount_to_shares(amount: u64, total_borrowed: u64, total_debt_shares: u64) -> Option<u64> {
     if amount == 0 {
         return Some(0);
     }
     if total_debt_shares == 0 || total_borrowed == 0 {
-        return Some(amount); // 1:1 for the first borrow
+        return Some(amount);
     }
     let shares =
         (amount as u128).checked_mul(total_debt_shares as u128)? / (total_borrowed as u128);
     u64::try_from(shares).ok()
 }
 
-/// Convert debt shares to the current outstanding token amount.
-///
-/// `amount = shares × total_borrowed / total_debt_shares`
-///
 /// Uses ceiling division so the protocol never under-collects.
 pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64) -> Option<u64> {
     if shares == 0 {
@@ -51,8 +75,6 @@ pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64
     u64::try_from(result).ok()
 }
 
-/// Compute Loan-to-Value (LTV) ratio in basis points (100% = 10,000).
-/// Returns None if debt is 0 to indicate "N/A".
 pub fn compute_ltv(debt: u64, collateral: u64) -> Option<u32> {
     if debt == 0 {
         return None;
@@ -64,15 +86,10 @@ pub fn compute_ltv(debt: u64, collateral: u64) -> Option<u32> {
     u32::try_from(ltv_bps).ok()
 }
 
-/// Compute Health Factor in basis points (1.0 = 10,000).
-/// health_factor = (collateral * ltv_percent / 100) / debt
-/// Returns None if debt is 0 to indicate "N/A".
 pub fn compute_health_factor(collateral: u64, ltv_percent: u8, debt: u64) -> Option<u32> {
     if debt == 0 {
         return None;
     }
-    // (collateral * (ltv_percent / 100) * 10,000) / debt
-    // = (collateral * ltv_percent * 100) / debt
     let numerator = (collateral as u128)
         .checked_mul(ltv_percent as u128)?
         .checked_mul(100)?;
@@ -80,9 +97,6 @@ pub fn compute_health_factor(collateral: u64, ltv_percent: u8, debt: u64) -> Opt
     u32::try_from(hf_bps).ok()
 }
 
-/// Compute Liquidation "Price" (ratio) in basis points.
-/// liq_price = debt / (collateral * ltv_percent / 100)
-/// Returns None if debt is 0 to indicate "N/A".
 pub fn compute_liquidation_threshold(debt: u64, collateral: u64, ltv_percent: u8) -> Option<u32> {
     if debt == 0 {
         return None;
@@ -90,20 +104,13 @@ pub fn compute_liquidation_threshold(debt: u64, collateral: u64, ltv_percent: u8
     if collateral == 0 || ltv_percent == 0 {
         return Some(0);
     }
-    // (debt * 10,000) / (collateral * ltv_percent / 100)
-    // = (debt * 1,000,000) / (collateral * ltv_percent)
     let numerator = (debt as u128).checked_mul(1_000_000)?;
     let denominator = (collateral as u128).checked_mul(ltv_percent as u128)?;
     let liq_bps = numerator / denominator;
     u32::try_from(liq_bps).ok()
 }
 
-/// Convert a repay token amount to the number of debt shares to burn.
-///
-/// `shares = repay_amount × total_debt_shares / total_borrowed`
-///
-/// Uses ceiling division and is capped at `max_shares` so full-repay rounding
-/// never burns more shares than the user holds.
+/// Uses ceiling division, capped at `max_shares` so full-repay never burns more shares than held.
 pub fn amount_to_shares_burned(
     repay_amount: u64,
     total_borrowed: u64,
@@ -119,10 +126,6 @@ pub fn amount_to_shares_burned(
     Some(shares)
 }
 
-/// Maximum amount a user may borrow against their collateral.
-///
-/// `max_borrowable = collateral * ltv_percent / 100`
-///
 /// Mirrors the on-chain LTV check in `borrow_handler`.
 pub fn max_borrowable(collateral: u64, ltv_percent: u8) -> u64 {
     collateral.saturating_mul(ltv_percent as u64) / 100
@@ -133,8 +136,6 @@ mod tests {
     use super::*;
 
     const YEAR: u64 = SECONDS_PER_YEAR;
-
-    // ── compute_interest ─────────────────────────────────────────────────────
 
     #[test]
     fn zero_elapsed_is_zero_interest() {
@@ -179,8 +180,6 @@ mod tests {
         let _ = result;
     }
 
-    // ── amount_to_shares / shares_to_amount ──────────────────────────────────
-
     #[test]
     fn first_borrow_is_one_to_one() {
         assert_eq!(amount_to_shares(500, 0, 0), Some(500));
@@ -189,7 +188,7 @@ mod tests {
     #[test]
     fn round_trip_single_borrower() {
         let amount = 1_000_000u64;
-        let shares = amount_to_shares(amount, 0, 0).unwrap(); // first borrow
+        let shares = amount_to_shares(amount, 0, 0).unwrap();
         assert_eq!(shares, amount);
         let back = shares_to_amount(shares, amount, shares).unwrap();
         assert_eq!(back, amount);
@@ -197,15 +196,9 @@ mod tests {
 
     #[test]
     fn second_borrow_after_interest_accrual() {
-        // Pool had 1_000_000 borrowed, accrued 100_000 interest -> total_borrowed = 1_100_000
-        // total_debt_shares still = 1_000_000 (first borrower's shares)
-        // Second borrower wants 100_000; shares should be proportional
         let shares = amount_to_shares(100_000, 1_100_000, 1_000_000).unwrap();
-        // 100_000 * 1_000_000 / 1_100_000 = ~90_909 shares
         assert_eq!(shares, 90_909);
-        // First borrower's debt grew: 1_000_000 shares * 1_200_000 / 1_090_909 ≈...
-        // Second borrower's debt: 90_909 * 1_200_000 / 1_090_909 ≈ 100_000
-        let new_total_borrowed = 1_100_000 + 100_000; // after second borrow
+        let new_total_borrowed = 1_100_000 + 100_000;
         let new_total_shares = 1_000_000 + shares;
         let second_debt = shares_to_amount(shares, new_total_borrowed, new_total_shares).unwrap();
         assert!(second_debt.abs_diff(100_000) <= 1);

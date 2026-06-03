@@ -40,6 +40,7 @@ pub struct RateHedgeOffer {
     pub locked_tokens: u64,
     pub bump: u8,
     _pad: [u8; 7],
+    _reserved: [u64; 4]
 }
 
 /// Records an active rate-hedge match between a borrower and an offer creator.

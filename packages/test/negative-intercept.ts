@@ -54,7 +54,7 @@ describe("negative intercept", () => {
             .signers([authority])
             .rpc();
 
-        const config = await irmProgram.account.irmConfig.fetch(irmConfig);
+        const config = await irmProgram.account.irmState.fetch(irmConfig);
         expect(config.model.curves[0].b.toNumber()).to.equal(200);
         expect(config.model.curves[1].a.toNumber()).to.equal(14000);
         expect(config.model.curves[1].b.toNumber()).to.equal(-11000);
@@ -68,7 +68,7 @@ describe("negative intercept", () => {
             .signers([authority])
             .rpc();
 
-        const config = await irmProgram.account.irmConfig.fetch(irmConfig);
+        const config = await irmProgram.account.irmState.fetch(irmConfig);
         expect(config.model.curves[0].a.toNumber()).to.equal(1000);
         expect(config.model.curves[0].b.toNumber()).to.equal(-500);
     });
@@ -86,7 +86,7 @@ describe("negative intercept", () => {
             .signers([authority])
             .rpc();
 
-        const config = await irmProgram.account.irmConfig.fetch(irmConfig);
+        const config = await irmProgram.account.irmState.fetch(irmConfig);
         expect(config.model.curves[0].b.toNumber()).to.equal(-200);
         expect(config.model.curves[1].b.toNumber()).to.equal(-1000);
     });

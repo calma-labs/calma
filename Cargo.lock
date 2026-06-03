@@ -1583,6 +1583,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835a3dc7d1ec9e75e2b5fb4ba75396837112d2060b03f7d43bc1897c7f7211da"
 
 [[package]]
+name = "feed"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+]
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1780,6 +1787,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "guard"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+]
+
+[[package]]
 name = "hash32"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1967,6 +1981,8 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "bytemuck",
+ "feed",
+ "guard",
  "irm",
  "jbl-math",
  "jbl-state",
@@ -1992,6 +2008,9 @@ dependencies = [
 [[package]]
 name = "jbl-math"
 version = "0.1.0"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "jbl-state"
@@ -2001,6 +2020,7 @@ dependencies = [
  "bytemuck",
  "jbl-irm",
  "jbl-math",
+ "sha2 0.10.9",
 ]
 
 [[package]]

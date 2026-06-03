@@ -8,7 +8,7 @@ pub use error::ErrorCode;
 pub use instructions::*;
 pub use jbl_irm::*;
 
-declare_id!("3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC");
+declare_id!("8gnZd9Hsx9YZZwNXgAXR8odRstSdKH2cETNfrg661oKE");
 
 #[program]
 pub mod irm {

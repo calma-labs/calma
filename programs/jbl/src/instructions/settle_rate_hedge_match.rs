@@ -1,6 +1,5 @@
 use crate::{
     error::ErrorCode,
-    math::{amount_to_shares, shares_to_amount},
     state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition},
 };
 use anchor_lang::prelude::*;
@@ -99,6 +98,14 @@ pub struct SettleRateHedgeMatch<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
+    /// CHECK: feed program — invoked via CPI to read the oracle price.
+    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ ErrorCode::InvalidAmount)]
+    pub feed_program: UncheckedAccount<'info>,
+
+    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ ErrorCode::InvalidAmount)]
+    pub feed_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -118,8 +125,46 @@ pub struct SettleRateHedgeMatch<'info> {
 /// 5. Adjust the borrower's debt shares so their outstanding debt = `amount` (their cap).
 /// 6. Restore offer capacity and decrement `locked_tokens`.
 /// 7. Close the match account (rent returned to cranker).
+impl<'info> SettleRateHedgeMatch<'info> {
+    pub fn transfer_excess_collateral_to_pool(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
+        let signer = &[state_seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.offer_collateral_vault.to_account_info(),
+                    to: self.collateral_vault.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+
+    pub fn transfer_upfront_fee_to_offer_creator(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
+        let signer = &[state_seeds];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.offer_creator_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
-    let current_ts = Clock::get()?.unix_timestamp;
+    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let current_ts = irm.current_ts;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
     let (settlement_ts, initial_debt_shares, borrow_amount, upfront_fee) = {
@@ -132,118 +177,42 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
     };
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
-    // ── 1. Accrue interest so shares reflect current state (via IRM CPI) ─────
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
+    // ── 1. Accrue interest, settle shares, update pool + position ────────────
+    let state_bump = ctx.bumps.state;
+    let current_value = {
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market)
+            .with_irm(irm)
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
+        let (current_value, _new_shares) = core
+            .settle_hedge(
+                initial_debt_shares,
+                borrow_amount,
+                upfront_fee,
+                |excess| {
+                    let available = ctx.accounts.offer_collateral_vault.amount;
+                    let transfer_amount = excess.min(available);
+                    if transfer_amount > 0 {
+                        ctx.accounts.transfer_excess_collateral_to_pool(transfer_amount, state_bump)
+                    } else {
+                        Ok(())
+                    }
+                },
+                |fee| ctx.accounts.transfer_upfront_fee_to_offer_creator(fee, state_bump),
+            )
+            .map_err(crate::error::ErrorCode::from)?;
+        pool.market = core.market;
+        ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
+        current_value
+    };
 
-    // ── 2. Snapshot match fields already done above ───────────────────────────
     let fixed_total = borrow_amount
         .checked_add(upfront_fee)
         .ok_or(ErrorCode::MathOverflow)?;
-
-    // ── 3. Compute current variable value of the initial debt shares ──────────
-    let current_value = {
-        let pool = ctx.accounts.pool.load()?;
-        shares_to_amount(initial_debt_shares, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-            .ok_or(ErrorCode::MathOverflow)?
-    };
-
-    // ── 4. Compute excess owed by offer creator ───────────────────────────────
     let excess = current_value.saturating_sub(fixed_total);
 
-    let state_bump = ctx.bumps.state;
-    let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
-    let signer = &[state_seeds];
-
-    // ── 5. If excess > 0 — transfer collateral from offer vault to pool vault ─
-    //
-    // The collateral is denominated in the pool's collateral token. The `excess`
-    // is a lend-token amount; for now we treat it as a 1:1 token count transfer
-    // (oracle-based conversion is a later concern).
-    if excess > 0 {
-        let available = ctx.accounts.offer_collateral_vault.amount;
-        let transfer_amount = excess.min(available); // never panic if under-collateralised
-        if transfer_amount > 0 {
-            anchor_spl::token::transfer(
-                CpiContext::new_with_signer(
-                    *ctx.accounts.token_program.to_account_info().key,
-                    anchor_spl::token::Transfer {
-                        from: ctx.accounts.offer_collateral_vault.to_account_info(),
-                        to: ctx.accounts.collateral_vault.to_account_info(),
-                        authority: ctx.accounts.state.to_account_info(),
-                    },
-                    signer,
-                ),
-                transfer_amount,
-            )?;
-        }
-    }
-
-    // ── 6. Transfer upfront fee from lend vault to offer creator ─────────────
-    anchor_spl::token::transfer(
-        CpiContext::new_with_signer(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.lend_vault.to_account_info(),
-                to: ctx.accounts.offer_creator_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        upfront_fee,
-    )?;
-
-    // ── 7. Adjust borrower's debt shares to cap at `borrow_amount` ───────────
-    //
-    // Remove the initial_debt_shares from the user's position and from pool totals,
-    // then re-issue shares worth `borrow_amount` at the current pool ratio.
-    {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-
-        // Remove old shares from pool.
-        pool.market.total_borrow_shares = pool
-            .market
-            .total_borrow_shares
-            .checked_sub(initial_debt_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-        pool.market.total_borrow_assets = pool
-            .market
-            .total_borrow_assets
-            .checked_sub(current_value)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        // Account for the upfront fee that just left the pool.
-        pool.market.total_supply_assets = pool
-            .market
-            .total_supply_assets
-            .saturating_sub(upfront_fee);
-
-        // Re-issue shares for the borrower's capped amount.
-        let new_shares =
-            amount_to_shares(borrow_amount, pool.market.total_borrow_assets, pool.market.total_borrow_shares)
-                .ok_or(ErrorCode::MathOverflow)?;
-
-        pool.market.total_borrow_shares = pool
-            .market
-            .total_borrow_shares
-            .checked_add(new_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-        pool.market.total_borrow_assets = pool
-            .market
-            .total_borrow_assets
-            .checked_add(borrow_amount)
-            .ok_or(ErrorCode::MathOverflow)?;
-
-        // Update user position.
-        let new_debt_shares = ctx.accounts.user_position.load()?.debt_shares
-            .checked_sub(initial_debt_shares)
-            .ok_or(ErrorCode::MathOverflow)?
-            .checked_add(new_shares)
-            .ok_or(ErrorCode::MathOverflow)?;
-        ctx.accounts.user_position.load_mut()?.debt_shares = new_debt_shares;
-    }
-
-    // ── 8. Update offer ───────────────────────────────────────────────────────
+    // ── 4. Update offer ───────────────────────────────────────────────────────
     {
         let mut offer = ctx.accounts.rate_hedge_offer.load_mut()?;
         offer.amount = offer

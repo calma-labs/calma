@@ -1,4 +1,4 @@
-use crate::math::shares_to_amount;
+use crate::hooks::oracle::OracleState;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -57,8 +57,35 @@ pub struct WithdrawCollateral<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
+    /// CHECK: feed program — invoked via CPI to read the oracle price.
+    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ crate::error::ErrorCode::InvalidAmount)]
+    pub feed_program: UncheckedAccount<'info>,
+
+    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidAmount)]
+    pub feed_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+}
+
+impl<'info> WithdrawCollateral<'info> {
+    pub fn transfer_collateral_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        token::transfer(
+            CpiContext::new_with_signer(
+                self.token_program.to_account_info().key.clone(),
+                Transfer {
+                    from: self.collateral_vault.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
 }
 
 pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
@@ -72,79 +99,30 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
     }
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
-    let current_ts = Clock::get()?.unix_timestamp;
-    let irm_rate = crate::irm::fetch_irm_rate(&*ctx.accounts.pool.load()?, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
-    ctx.accounts.pool.load_mut()?.accrue_interest(current_ts, irm_rate)?;
-
-    // ── 2. LTV check: ensure remaining collateral still covers open debt ──────
-    {
-        let pool = ctx.accounts.pool.load()?;
-        let position = ctx.accounts.user_position.load()?;
-
-        let remaining_collateral = position
-            .collateral_deposited
-            .checked_sub(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let max_borrowable = remaining_collateral
-            .checked_mul(pool.ltv_percent as u64)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(100)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let current_debt = if pool.market.total_borrow_shares > 0 {
-            shares_to_amount(
-                position.debt_shares,
-                pool.market.total_borrow_assets,
-                pool.market.total_borrow_shares,
-            )
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-        } else {
-            0
-        };
-        require!(
-            current_debt <= max_borrowable,
-            crate::error::ErrorCode::InsufficientFunds
-        );
-    }
-
-    // ── 3. Check collateral vault liquidity ───────────────────────────────────
+    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
+    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
     require!(
         ctx.accounts.collateral_vault.amount >= amount,
         crate::error::ErrorCode::InsufficientFunds
     );
 
-    // ── 4. Transfer collateral tokens back to user ────────────────────────────
-    let seeds = &[b"state" as &[u8], &[ctx.bumps.state]];
-    let signer = &[&seeds[..]];
-
-    token::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info().key.clone(),
-            Transfer {
-                from: ctx.accounts.collateral_vault.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.state.to_account_info(),
-            },
-            signer,
-        ),
-        amount,
-    )?;
-
-    // ── 5. Update state ───────────────────────────────────────────────────────
-    {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_collateral_deposited = pool
-            .total_collateral_deposited
-            .checked_sub(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-    }
-
+    let state_bump = ctx.bumps.state;
     let remaining = {
-        let mut position = ctx.accounts.user_position.load_mut()?;
-        position.collateral_deposited = position
-            .collateral_deposited
-            .checked_sub(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        position.collateral_deposited
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let mut core = jbl_math::Core::new(pool.market)
+            .with_oracle(oracle)
+            .with_irm(irm)
+            .with_position(*ctx.accounts.user_position.load()?)
+            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let remaining = core.withdraw_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_user(amt, state_bump))
+            .map_err(|e| match e {
+                jbl_math::MathError::Transfer(e) => e,
+                e => crate::error::ErrorCode::from(e).into(),
+            })?;
+        pool.market = core.market;
+        ctx.accounts.user_position.load_mut()?.collateral_deposited = core.position.collateral_deposited;
+        remaining
     };
 
     msg!(

@@ -41,7 +41,7 @@ describe("irm initialize", () => {
             .signers([payer, authority])
             .rpc();
 
-        const config = await program.account.irmConfig.fetch(irmConfig);
+        const config = await program.account.irmState.fetch(irmConfig);
         expect(config.pool.toString()).to.equal(pool.toString());
         const c0 = config.model.curves[0];
         expect(c0.b.toNumber()).to.equal(100);
@@ -102,6 +102,8 @@ describe("irm initialize", () => {
                 authority: jblSetup.authority.publicKey,
                 rateProgram: irmProgram.programId,
                 irmState: cpiIrmConfig,
+                feedProgram: jblSetup.feedProgram.programId,
+                feedState: jblSetup.feedPda,
             })
             .signers([jblSetup.authority])
             .rpc();
@@ -135,7 +137,7 @@ describe("irm initialize", () => {
 
         expect(irmConfig.toString()).to.not.equal(irmConfig2.toString());
 
-        const config2 = await program.account.irmConfig.fetch(irmConfig2);
+        const config2 = await program.account.irmState.fetch(irmConfig2);
         expect(config2.pool.toString()).to.equal(pool2.toString());
     });
 });
