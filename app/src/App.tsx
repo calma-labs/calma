@@ -1,4 +1,5 @@
 import { RootLayout } from "@/layouts/RootLayout";
+import { AdminPage } from "@/pages/AdminPage";
 import { CreatePoolPage } from "@/pages/CreatePoolPage";
 import { MarketPage } from "@/pages/MarketPage";
 import { MultiplyDetailPage } from "@/pages/MultiplyDetailPage";
@@ -21,6 +22,7 @@ function App() {
           <Route path="/multiply" element={<MultiplyPage />} />
           <Route path="/multiply/:id" element={<MultiplyDetailPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

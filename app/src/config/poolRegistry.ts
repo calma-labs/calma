@@ -22,10 +22,10 @@ export interface PoolMeta {
     binancePerp?: string
 }
 
-const POOL_REGISTRY: Record<string, PoolMeta> = {
+const WHITELISTED_TOKENS: Record<string, PoolMeta> = {
     // ── Default / first entry ────────────────────────────────────────────────
     // Used as fallback when a pool address is not found in the registry.
-    'DEFAULT': {
+    '7o6D8yQ5Lh6TtCHvSsba61katHH5yu9Uc3HNz6ud8jGZ': {
         name: 'Tether USD',
         symbol: 'USDT',
         icon: USDT_ICON,
@@ -35,7 +35,7 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
         lendIcon: USDT_ICON,
         category: 'stablecoin',
     },
-    '8WoFq2vbqNRtqp6Mih9Jeeg4gHFeme24QsRkMAK45gh7': {
+    '5ACU6KVLxkiWhnpk3XQ5buVHDzVKWskQZowVPJ3nL7Uk': {
         name: 'Tesla',
         symbol: 'TSLAx',
         icon: "https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FTSLAx.png&dpr=2&quality=80",
@@ -46,7 +46,7 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
         category: 'volatile',
         binancePerp: 'TSLAUSDT',
     },
-    'DWwda5bYhp28eoZpRJGn4niZngVigM9rgJa4LkSeqEnt': {
+    '9yrNzB6mLc4HTqA5jrZdAsWCbojyxDG6dNqAeFMGW4x8': {
         name: 'Nvidia',
         symbol: 'NVDAx',
         icon: "https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FNVDAx.png&dpr=2&quality=80",
@@ -57,7 +57,7 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
         category: 'volatile',
         binancePerp: 'NVDAUSDT',
     },
-    "9YVPeb6Lu4mtND3QmmTSbbqLvQs1BtS5nJcY6es8Kujy": {
+    "6cE4YR7WmMQJiN88gP3uEbDtdDVCQ9BMUFScNJFAqFpb": {
         name: 'Circle',
         symbol: 'CRCLx',
         icon: "https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FCRCLx.png&dpr=2&quality=80",
@@ -68,7 +68,7 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
         category: 'volatile',
         binancePerp: 'CRCLUSDT'
     },
-    "6M7KN8FQ6c3AUScXtAzSKwMqgQHhqBZosYNjhf7EHP3E": {
+    "CLG3cmT4c1hrBW7vUouhvDZ3fXhv7j5BvsLkAaf7js2V": {
         name: 'Marinade Staked SOL',
         symbol: 'mSOL',
         icon: "https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fraw.githubusercontent.com%2Fsolana-labs%2Ftoken-list%2Fmain%2Fassets%2Fmainnet%2FmSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So%2Flogo.png&dpr=2&quality=80",
@@ -79,7 +79,7 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
         category: 'lsd',
         binancePerp: 'SOLUSDT',
     },
-    "7QCFsNSaKEqTMNZ3Z4BMykuKtPXQK3pE2sJcVmhxfbc6": {
+    "GhTVtceExcwpT4LN5QjNgFpgWBztQyjyq2KcsWyx6HYG": {
         name: "Prime",
         symbol: 'PRIME',
         icon: "https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fstorage.googleapis.com%2Fhastra-cdn-prod%2Fspl%2Fprimetoken.png&dpr=2&quality=80",
@@ -92,12 +92,28 @@ const POOL_REGISTRY: Record<string, PoolMeta> = {
 }
 
 /** The fallback metadata returned for any unrecognised pool address. */
-const DEFAULT_POOL_META: PoolMeta = POOL_REGISTRY.DEFAULT
+const DEFAULT_POOL_META: PoolMeta = WHITELISTED_TOKENS["7o6D8yQ5Lh6TtCHvSsba61katHH5yu9Uc3HNz6ud8jGZ"]
 
 /**
  * Look up display metadata for the given pool address.
  * Falls back to the default (USDT/USDC) entry if the address is not registered.
  */
 export function getPoolMeta(address: string): PoolMeta {
-    return POOL_REGISTRY[address] || DEFAULT_POOL_META
+    return WHITELISTED_TOKENS[address] || DEFAULT_POOL_META
+}
+
+/** All non-default entries from the whitelist, ordered as defined. */
+export function getWhitelistedTokens(): Array<{ address: string; meta: PoolMeta }> {
+    return Object.entries(WHITELISTED_TOKENS)
+        .filter(([key]) => key !== 'DEFAULT')
+        .map(([address, meta]) => ({ address, meta }))
+}
+
+/** Flat token list ready for use in a TokenSelect dropdown. */
+export function getTokenOptions(): Array<{ address: string; symbol: string; icon: string }> {
+    return getWhitelistedTokens().map(({ address, meta }) => ({
+        address,
+        symbol: meta.lendSymbol,
+        icon: meta.lendIcon,
+    }))
 }

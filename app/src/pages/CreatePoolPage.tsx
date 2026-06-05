@@ -1,13 +1,16 @@
 import { BackButton } from "@/components/common/BackButton";
 import {
   useCreateLendingPool,
-  type CreatePoolParams,
   type CreatePoolResult,
 } from "@/hooks/program/useCreateLendingPool";
+import { getTokenOptions } from "@/config/poolRegistry";
+import { TokenSelect } from "@/components/ui/token-select";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
+import { PublicKey } from "@solana/web3.js";
 import {
   CheckCircle2,
+  Coins,
   Copy,
   ExternalLink,
   Loader2,
@@ -203,6 +206,8 @@ function validate(form: FormState): FormErrors {
   return errors;
 }
 
+const TOKEN_OPTIONS = getTokenOptions();
+
 export function CreatePoolPage() {
   const navigate = useNavigate();
   const { connected } = useWalletConnection();
@@ -210,9 +215,13 @@ export function CreatePoolPage() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [result, setResult] = useState<CreatePoolResult | null>(null);
+  const [lendAddr, setLendAddr] = useState("");
+  const [collateralAddr, setCollateralAddr] = useState("");
 
   const errors = validate(form);
   const hasErrors = Object.keys(errors).length > 0;
+  const mintsReady = !!lendAddr && !!collateralAddr && lendAddr !== collateralAddr;
+  const canSubmit = connected && mintsReady;
 
   const { mutateAsync, isPending } = useCreateLendingPool({
     onCreated: (r) => setResult(r),
@@ -229,13 +238,13 @@ export function CreatePoolPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    if (hasErrors || !connected) return;
+    if (hasErrors || !canSubmit) return;
 
-    const params: CreatePoolParams = {
+    await mutateAsync({
+      collateralMint: new PublicKey(collateralAddr),
+      lendMint: new PublicKey(lendAddr),
       ltvPercent: Number(form.ltvPercent),
-    };
-
-    await mutateAsync(params);
+    });
   }
 
   // ── success screen ────────────────────────────────────────────────────────
@@ -318,7 +327,6 @@ export function CreatePoolPage() {
           </div>
           <p className="text-sm text-surface-foreground/50 max-w-lg">
             Configure interest rate parameters and deploy a new lending pool.
-            Token mints are generated automatically and shown after deployment.
           </p>
         </div>
 
@@ -327,6 +335,39 @@ export function CreatePoolPage() {
           noValidate
           className="flex flex-col gap-5 justify-center"
         >
+          {/* Token Pair */}
+          <Section
+            title="Token Pair"
+            icon={<Coins className="h-4 w-4" />}
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Field id="lendToken" label="Lend Token">
+                <TokenSelect
+                  value={lendAddr}
+                  onChange={setLendAddr}
+                  options={TOKEN_OPTIONS}
+                  placeholder="Select lend token"
+                />
+              </Field>
+
+              <Field id="collateralToken" label="Collateral Token">
+                <TokenSelect
+                  value={collateralAddr}
+                  onChange={setCollateralAddr}
+                  options={TOKEN_OPTIONS}
+                  placeholder="Select collateral token"
+                />
+              </Field>
+            </div>
+            {submitAttempted && !mintsReady && (
+              <p className="text-[11px] text-[#d45677]">
+                {lendAddr === collateralAddr
+                  ? "Lend and collateral tokens must be different"
+                  : "Select both tokens"}
+              </p>
+            )}
+          </Section>
+
           {/* Fee Config */}
           <Section
             title="Interest Rate Model"
@@ -429,22 +470,18 @@ export function CreatePoolPage() {
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-1">
-            {!connected && (
-              <p className="text-xs text-destructive">
-                Connect your wallet to deploy the pool
-              </p>
+            {!connected ? (
+              <p className="text-xs text-destructive">Connect your wallet to deploy the pool</p>
+            ) : submitAttempted && hasErrors ? (
+              <p className="text-xs text-destructive">Fix the errors above before continuing</p>
+            ) : (
+              <span />
             )}
-            {connected && submitAttempted && hasErrors && (
-              <p className="text-xs text-destructive">
-                Fix the errors above before continuing
-              </p>
-            )}
-            {connected && !(submitAttempted && hasErrors) && <span />}
 
             {/* style-exception: glow shadow requires exact rgba for surface-accent color */}
             <button
               type="submit"
-              disabled={isPending || !connected}
+              disabled={isPending || !canSubmit}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
                 "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)]",
@@ -465,9 +502,9 @@ export function CreatePoolPage() {
                 </>
               )}
             </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </div >
+        </form >
+      </div >
+    </div >
   );
 }

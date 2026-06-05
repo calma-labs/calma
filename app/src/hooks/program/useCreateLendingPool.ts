@@ -1,10 +1,4 @@
 import { useWalletConnection } from '@solana/react-hooks'
-import {
-    createInitializeMint2Instruction,
-    getMinimumBalanceForRentExemptMint,
-    MINT_SIZE,
-    TOKEN_PROGRAM_ID,
-} from '@solana/spl-token'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 
 const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
@@ -14,15 +8,13 @@ import { connection, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
-import { MINTER_KEYPAIR } from '../../store/wallet.store'
-
-/** Decimal precision for auto-generated mints. */
-const MINT_DECIMALS = 6
 
 /** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
 const POOL_SPACE = 41_256
 
 export interface CreatePoolParams {
+    collateralMint: PublicKey
+    lendMint: PublicKey
     ltvPercent?: number
 }
 
@@ -37,53 +29,7 @@ async function createPool(
     wallet: Parameters<typeof signAndSendV1>[1],
     payer: PublicKey,
 ): Promise<CreatePoolResult> {
-    const collateralMintKeypair = Keypair.generate()
-    const lendMintKeypair = Keypair.generate()
     const poolKeypair = Keypair.generate()
-
-    // Step 1: create and initialize both SPL mints in a single transaction
-    const mintLamports = await getMinimumBalanceForRentExemptMint(connection)
-
-    await handleTransaction(
-        async () => {
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
-            const tx = new Transaction({ blockhash, lastValidBlockHeight, feePayer: payer })
-            tx.add(
-                SystemProgram.createAccount({
-                    fromPubkey: payer,
-                    newAccountPubkey: collateralMintKeypair.publicKey,
-                    space: MINT_SIZE,
-                    lamports: mintLamports,
-                    programId: TOKEN_PROGRAM_ID,
-                }),
-                createInitializeMint2Instruction(
-                    collateralMintKeypair.publicKey,
-                    MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey,
-                    null,
-                ),
-                SystemProgram.createAccount({
-                    fromPubkey: payer,
-                    newAccountPubkey: lendMintKeypair.publicKey,
-                    space: MINT_SIZE,
-                    lamports: mintLamports,
-                    programId: TOKEN_PROGRAM_ID,
-                }),
-                createInitializeMint2Instruction(
-                    lendMintKeypair.publicKey,
-                    MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey,
-                    null,
-                ),
-            )
-            tx.partialSign(collateralMintKeypair, lendMintKeypair)
-            return tx
-        },
-        wallet,
-        { loadingMessage: 'Creating token mints…', successMessage: 'Mints created' },
-    )
-
-    // Step 2: pre-allocate pool account + initialize the pool in a single transaction
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
 
@@ -101,8 +47,8 @@ async function createPool(
         .create(ltvPercent)
         .accounts({
             pool: poolKeypair.publicKey,
-            collateralMint: collateralMintKeypair.publicKey,
-            lendMint: lendMintKeypair.publicKey,
+            collateralMint: params.collateralMint,
+            lendMint: params.lendMint,
             authority: payer,
             payer,
             feedProgram: FEED_PROGRAM_ID,
@@ -137,8 +83,8 @@ async function createPool(
 
     return {
         poolAddress: poolKeypair.publicKey,
-        collateralMint: collateralMintKeypair.publicKey,
-        lendMint: lendMintKeypair.publicKey,
+        collateralMint: params.collateralMint,
+        lendMint: params.lendMint,
     }
 }
 
