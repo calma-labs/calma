@@ -24,7 +24,10 @@ impl IrmState {
         );
         let rate_bps = irm::cpi::borrow_rate(cpi_ctx, utilization)?.get();
         let current_ts = Clock::get()?.unix_timestamp;
-        Ok(Self { rate_bps, current_ts })
+        Ok(Self {
+            rate_bps,
+            current_ts,
+        })
     }
 }
 

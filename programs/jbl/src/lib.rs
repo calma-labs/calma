@@ -13,7 +13,7 @@ pub use error::ErrorCode;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("D33b3Lb42BGyUQZyftS52idrwsjMy8jYqjb6V4ow1RxD");
+declare_id!("c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8");
 
 #[program]
 pub mod jbl {
@@ -35,7 +35,10 @@ pub mod jbl {
         repay_handler(ctx, amount)
     }
 
-    pub fn withdraw_collateral<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
+    pub fn withdraw_collateral<'a>(
+        ctx: Context<'a, WithdrawCollateral<'a>>,
+        amount: u64,
+    ) -> Result<()> {
         withdraw_collateral_handler(ctx, amount)
     }
 

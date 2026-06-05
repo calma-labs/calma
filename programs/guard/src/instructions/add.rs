@@ -10,8 +10,14 @@ pub struct Add<'info> {
 
 pub fn add_handler(ctx: Context<Add>, pubkey: Pubkey) -> Result<()> {
     let guard_state = &mut ctx.accounts.guard_state;
-    require!(guard_state.whitelist.len() < MAX_WHITELIST, ErrorCode::WhitelistFull);
-    require!(!guard_state.whitelist.contains(&pubkey), ErrorCode::AlreadyWhitelisted);
+    require!(
+        guard_state.whitelist.len() < MAX_WHITELIST,
+        ErrorCode::WhitelistFull
+    );
+    require!(
+        !guard_state.whitelist.contains(&pubkey),
+        ErrorCode::AlreadyWhitelisted
+    );
     guard_state.whitelist.push(pubkey);
     Ok(())
 }

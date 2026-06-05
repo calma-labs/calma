@@ -83,9 +83,12 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let lend_mint_kp = Keypair::new();
 
     let mut svm = LiteSVM::new();
-    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so")).unwrap();
-    svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so")).unwrap();
-    svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so")).unwrap();
+    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so"))
+        .unwrap();
+    svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so"))
+        .unwrap();
+    svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so"))
+        .unwrap();
     svm.airdrop(&payer.pubkey(), 100_000_000_000).unwrap();
     svm.airdrop(&authority.pubkey(), 10_000_000_000).unwrap();
 
@@ -126,10 +129,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let (lp_mint_pda, _) = find_lp_mint_pda(&pool_pubkey, &program_id);
 
     // ── Feed account (payer is authority so it can sign set_value) ────────────
-    let (feed_pda, _) = Pubkey::find_program_address(
-        &[b"feed", payer.pubkey().as_ref()],
-        &feed_id,
-    );
+    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
         &feed::instruction::Create {}.data(),
@@ -150,7 +150,12 @@ fn setup(seed_lend_amount: u64) -> Setup {
         }
         .to_account_metas(None),
     );
-    send_ixs(&mut svm, &[feed_create_ix, feed_set_value_ix], &payer, &[&payer]);
+    send_ixs(
+        &mut svm,
+        &[feed_create_ix, feed_set_value_ix],
+        &payer,
+        &[&payer],
+    );
 
     let (irm_config, _) =
         Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
@@ -176,14 +181,16 @@ fn setup(seed_lend_amount: u64) -> Setup {
         }
         .to_account_metas(None),
     );
-    send_ixs(&mut svm, &[alloc_pool_ix, irm_init_ix], &payer, &[&payer, &pool_kp]);
+    send_ixs(
+        &mut svm,
+        &[alloc_pool_ix, irm_init_ix],
+        &payer,
+        &[&payer, &pool_kp],
+    );
 
     let create_ix = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create {
-            ltv_percent: 75,
-        }
-        .data(),
+        &jbl::instruction::Create { ltv_percent: 75 }.data(),
         jbl::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
@@ -206,12 +213,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
         .to_account_metas(None),
     );
 
-    send_ixs(
-        &mut svm,
-        &[create_ix],
-        &payer,
-        &[&payer, &authority],
-    );
+    send_ixs(&mut svm, &[create_ix], &payer, &[&payer, &authority]);
 
     // ── Seed lend vault directly + patch pool state ───────────────────────────
     if seed_lend_amount > 0 {
@@ -505,5 +507,4 @@ fn test_flash_loan_leveraged_swap() {
         &s.payer,
         &[&s.payer],
     );
-
 }

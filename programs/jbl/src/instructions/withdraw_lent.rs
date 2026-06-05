@@ -127,16 +127,18 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
         let mut core = jbl_math::Core::new(pool.market);
-        let lend_for_shares = core.calc_lend_for_shares(shares)
+        let lend_for_shares = core
+            .calc_lend_for_shares(shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         let immediate = queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0;
         if immediate {
-            core.withdraw_lent_immediate(
-                shares,
-                |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump),
-            ).map_err(crate::error::ErrorCode::from)?;
+            core.withdraw_lent_immediate(shares, |amt| {
+                ctx.accounts.transfer_lend_to_user(amt, state_bump)
+            })
+            .map_err(crate::error::ErrorCode::from)?;
         } else {
-            core.withdraw_lent_queued(shares).ok_or(crate::error::ErrorCode::MathOverflow)?;
+            core.withdraw_lent_queued(shares)
+                .ok_or(crate::error::ErrorCode::MathOverflow)?;
             pool.withdrawal_queue.push(WithdrawalQueueEntry::new(
                 ctx.accounts.authority.key(),
                 lend_for_shares,
@@ -147,7 +149,6 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     };
 
     if immediate {
-
         msg!(
             "Leave: burned {} LP, withdrew {} lend tokens immediately. total_supply_shares: {}",
             shares,

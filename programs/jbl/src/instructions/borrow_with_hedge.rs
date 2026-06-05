@@ -146,13 +146,26 @@ pub fn borrow_with_hedge_handler<'a>(
     let upfront_fee = jbl_math::compute_interest(amount, fixed_rate_bps as u32, duration)
         .ok_or(ErrorCode::MathOverflow)?;
     require!(upfront_fee > 0, ErrorCode::InvalidAmount);
-    let total_debt_amount = amount.checked_add(upfront_fee).ok_or(ErrorCode::MathOverflow)?;
+    let total_debt_amount = amount
+        .checked_add(upfront_fee)
+        .ok_or(ErrorCode::MathOverflow)?;
 
     // ── 2. Accrue interest + LTV check + share calculation ───────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
-    require!(ctx.accounts.pool.load()?.lend_mint == ctx.accounts.lend_mint.key(), ErrorCode::InvalidMint);
-    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let oracle = OracleState::new(
+        ctx.accounts.feed_program.to_account_info(),
+        ctx.accounts.feed_state.to_account_info(),
+    )?;
+    require!(
+        ctx.accounts.pool.load()?.lend_mint == ctx.accounts.lend_mint.key(),
+        ErrorCode::InvalidMint
+    );
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
     let current_ts = irm.current_ts;
     let state_bump = ctx.bumps.state;
     let new_shares = {
@@ -161,8 +174,12 @@ pub fn borrow_with_hedge_handler<'a>(
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
-            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
-        let shares = core.borrow_with_fee(amount, total_debt_amount, |amt| ctx.accounts.transfer_lend_to_user(amt, state_bump))
+            .accrue_interest()
+            .ok_or(ErrorCode::MathOverflow)?;
+        let shares = core
+            .borrow_with_fee(amount, total_debt_amount, |amt| {
+                ctx.accounts.transfer_lend_to_user(amt, state_bump)
+            })
             .map_err(|e| match e {
                 jbl_math::MathError::Transfer(e) => e,
                 e => ErrorCode::from(e).into(),

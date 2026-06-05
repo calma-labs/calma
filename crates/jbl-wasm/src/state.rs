@@ -153,16 +153,25 @@ impl PoolAccount {
         if total_lend == 0 {
             return 0;
         }
-        let effective_borrowed =
-            self.0.market.total_borrow_assets.saturating_add(self.pending_withdrawals());
+        let effective_borrowed = self
+            .0
+            .market
+            .total_borrow_assets
+            .saturating_add(self.pending_withdrawals());
         ((effective_borrowed as u128 * 10_000 / total_lend as u128).min(10_000)) as u16
     }
 
     /// Available liquidity in raw token units (lend deposited minus effective borrowed).
     pub fn available_liquidity(&self) -> u64 {
-        let effective_borrowed =
-            self.0.market.total_borrow_assets.saturating_add(self.pending_withdrawals());
-        self.0.market.total_supply_assets.saturating_sub(effective_borrowed)
+        let effective_borrowed = self
+            .0
+            .market
+            .total_borrow_assets
+            .saturating_add(self.pending_withdrawals());
+        self.0
+            .market
+            .total_supply_assets
+            .saturating_sub(effective_borrowed)
     }
 }
 
@@ -306,12 +315,20 @@ impl IrmConfigAccount {
 
     /// Kink point in utilization basis points (0..=10_000) for the given curve index (0–3).
     pub fn fee_curve_kink(&self, curve: u8) -> u64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.kink)
+        self.0
+            .model
+            .curves
+            .get(curve as usize)
+            .map_or(0, |c| c.kink)
     }
 
     /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
     pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.enabled)
+        self.0
+            .model
+            .curves
+            .get(curve as usize)
+            .map_or(0, |c| c.enabled)
     }
 }
 
@@ -327,7 +344,11 @@ impl FeedAccount {
         let authority = body[..32].try_into().ok()?;
         let value = u64::from_le_bytes(body[32..40].try_into().ok()?);
         let bump = body[40];
-        Some(FeedAccount { authority, value, bump })
+        Some(FeedAccount {
+            authority,
+            value,
+            bump,
+        })
     }
 
     /// Authority pubkey as raw 32 bytes.
@@ -353,7 +374,11 @@ pub struct PoolWithIrm {
 impl PoolWithIrm {
     /// Parse all three accounts from raw Anchor wire bytes (8-byte discriminator
     /// included in each slice). Returns `None` if any slice fails to parse.
-    pub fn from_bytes(pool_bytes: &[u8], irm_bytes: &[u8], feed_bytes: &[u8]) -> Option<PoolWithIrm> {
+    pub fn from_bytes(
+        pool_bytes: &[u8],
+        irm_bytes: &[u8],
+        feed_bytes: &[u8],
+    ) -> Option<PoolWithIrm> {
         let pool = PoolAccount::from_bytes(pool_bytes)?;
         let irm = IrmConfigAccount::from_bytes(irm_bytes)?;
         let feed = FeedAccount::from_bytes(feed_bytes)?;
@@ -402,7 +427,12 @@ impl PoolWithIrm {
         if total_supply == 0 {
             return 0;
         }
-        let new_borrow = self.pool.0.market.total_borrow_assets.saturating_add(additional_raw);
+        let new_borrow = self
+            .pool
+            .0
+            .market
+            .total_borrow_assets
+            .saturating_add(additional_raw);
         let util_bps = ((new_borrow as u128 * 10_000 / total_supply as u128).min(10_000)) as u64;
         self.irm.0.model.get_fee_bps(util_bps)
     }
@@ -410,52 +440,86 @@ impl PoolWithIrm {
     // ── PoolAccount delegates ─────────────────────────────────────────────────
 
     #[wasm_bindgen(getter)]
-    pub fn authority(&self) -> Vec<u8> { self.pool.authority() }
+    pub fn authority(&self) -> Vec<u8> {
+        self.pool.authority()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn collateral_mint(&self) -> Vec<u8> { self.pool.collateral_mint() }
+    pub fn collateral_mint(&self) -> Vec<u8> {
+        self.pool.collateral_mint()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn lend_mint(&self) -> Vec<u8> { self.pool.lend_mint() }
+    pub fn lend_mint(&self) -> Vec<u8> {
+        self.pool.lend_mint()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn lp_mint(&self) -> Vec<u8> { self.pool.lp_mint() }
+    pub fn lp_mint(&self) -> Vec<u8> {
+        self.pool.lp_mint()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn irm_state(&self) -> Vec<u8> { self.pool.irm_state() }
+    pub fn irm_state(&self) -> Vec<u8> {
+        self.pool.irm_state()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn total_supply_assets(&self) -> u64 { self.pool.total_supply_assets() }
+    pub fn total_supply_assets(&self) -> u64 {
+        self.pool.total_supply_assets()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn total_supply_shares(&self) -> u64 { self.pool.total_supply_shares() }
+    pub fn total_supply_shares(&self) -> u64 {
+        self.pool.total_supply_shares()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn total_borrow_assets(&self) -> u64 { self.pool.total_borrow_assets() }
+    pub fn total_borrow_assets(&self) -> u64 {
+        self.pool.total_borrow_assets()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn total_borrow_shares(&self) -> u64 { self.pool.total_borrow_shares() }
+    pub fn total_borrow_shares(&self) -> u64 {
+        self.pool.total_borrow_shares()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn last_update(&self) -> i64 { self.pool.last_update() }
+    pub fn last_update(&self) -> i64 {
+        self.pool.last_update()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn fee(&self) -> u64 { self.pool.fee() }
+    pub fn fee(&self) -> u64 {
+        self.pool.fee()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn assets_in_queue(&self) -> u64 { self.pool.assets_in_queue() }
+    pub fn assets_in_queue(&self) -> u64 {
+        self.pool.assets_in_queue()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn ltv_percent(&self) -> u8 { self.pool.ltv_percent() }
+    pub fn ltv_percent(&self) -> u8 {
+        self.pool.ltv_percent()
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn lp_mint_bump(&self) -> u8 { self.pool.lp_mint_bump() }
+    pub fn lp_mint_bump(&self) -> u8 {
+        self.pool.lp_mint_bump()
+    }
 
-    pub fn pending_withdrawals(&self) -> u64 { self.pool.pending_withdrawals() }
+    pub fn pending_withdrawals(&self) -> u64 {
+        self.pool.pending_withdrawals()
+    }
 
-    pub fn utilization_bps(&self) -> u16 { self.pool.utilization_bps() }
+    pub fn utilization_bps(&self) -> u16 {
+        self.pool.utilization_bps()
+    }
 
-    pub fn available_liquidity(&self) -> u64 { self.pool.available_liquidity() }
+    pub fn available_liquidity(&self) -> u64 {
+        self.pool.available_liquidity()
+    }
 }
 
 impl RateHedgeOfferAccount {
@@ -635,7 +699,8 @@ mod tests {
     fn pool_with_irm_zero_supply_yields_zero_supply_apy() {
         let pool_bytes = pool_wire(0, 0);
         let irm_bytes = irm_wire_flat(500); // base rate 500 bps at any utilization
-        let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+        let pwi =
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
         // Borrow rate at util=0 is the curve base rate (b=500).
         assert_eq!(pwi.borrow_apy_bps(), 500);
         // Supply APY is zero because utilization is zero (no deployed capital).
@@ -650,7 +715,8 @@ mod tests {
         // 10_000 supplied, 5_000 borrowed → util = 5_000 bps
         let pool_bytes = pool_wire(10_000, 5_000);
         let irm_bytes = irm_wire_flat(800);
-        let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+        let pwi =
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
         assert_eq!(pwi.borrow_apy_bps(), 800);
         assert_eq!(pwi.supply_apy_bps(), 400);
     }
@@ -662,7 +728,8 @@ mod tests {
     fn pool_with_irm_full_utilization_supply_equals_borrow() {
         let pool_bytes = pool_wire(5_000, 5_000);
         let irm_bytes = irm_wire_flat(1_200);
-        let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+        let pwi =
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
         assert_eq!(pwi.borrow_apy_bps(), 1_200);
         assert_eq!(pwi.supply_apy_bps(), 1_200);
     }
@@ -675,7 +742,8 @@ mod tests {
             let borrow = supply * util_pct / 100;
             let pool_bytes = pool_wire(supply, borrow);
             let irm_bytes = irm_wire_flat(1_000);
-            let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+            let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire())
+                .expect("should parse");
             assert!(
                 pwi.supply_apy_bps() <= pwi.borrow_apy_bps(),
                 "supply_apy ({}) > borrow_apy ({}) at util {}%",
@@ -707,7 +775,8 @@ mod tests {
     fn pool_with_irm_pool_getter_roundtrips_data() {
         let pool_bytes = pool_wire(12_345, 6_789);
         let irm_bytes = irm_wire_flat(300);
-        let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+        let pwi =
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
         let returned_pool = pwi.pool();
         assert_eq!(returned_pool.total_supply_assets(), 12_345);
         assert_eq!(returned_pool.total_borrow_assets(), 6_789);

@@ -91,10 +91,8 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
             *ctx.accounts.user_position.load()?
         };
         let mut core = jbl_math::Core::new(pool.market).with_position(starting_position);
-        core.deposit_collateral(
-            amount,
-            |amt| ctx.accounts.transfer_collateral_to_vault(amt),
-        ).map_err(crate::error::ErrorCode::from)?;
+        core.deposit_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_vault(amt))
+            .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         if needs_init {
             let mut position = ctx.accounts.user_position.load_init()?;
@@ -103,7 +101,8 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
             position.collateral_deposited = core.position.collateral_deposited;
             position.bump = ctx.bumps.user_position;
         } else {
-            ctx.accounts.user_position.load_mut()?.collateral_deposited = core.position.collateral_deposited;
+            ctx.accounts.user_position.load_mut()?.collateral_deposited =
+                core.position.collateral_deposited;
         }
     }
 

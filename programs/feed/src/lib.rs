@@ -8,7 +8,7 @@ use anchor_lang::prelude::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("6BKcCM11A3dRkaf21Lnhqrj1XGMSifd7VA3oCfwNe5bX");
+declare_id!("orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4");
 
 #[program]
 pub mod feed {

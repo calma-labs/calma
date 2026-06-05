@@ -4,8 +4,8 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at_checked};
 use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
-use crate::FLASH_LOAN_FEE_BPS;
 use super::flash_borrow::FLASH_BORROW_DISCRIMINATOR;
+use crate::FLASH_LOAN_FEE_BPS;
 
 #[derive(Accounts)]
 pub struct FlashRepay<'info> {
@@ -104,7 +104,8 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     }
 
     let borrowed = borrowed_amount.ok_or(ErrorCode::FlashBorrowMissing)?;
-    let fee = jbl_math::flash_fee(borrowed, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
+    let fee =
+        jbl_math::flash_fee(borrowed, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = borrowed.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     require!(amount >= min_repay, ErrorCode::FlashLoanFeeNotCovered);
 

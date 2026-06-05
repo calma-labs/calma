@@ -7,8 +7,8 @@ import {
 } from '@solana/spl-token'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 
-const IRM_PROGRAM_ID = new PublicKey('3zq3hPKkE9SPpkbMcWhaCawWDPXGfkYtboyLE48qKVBC')
-const FEED_PROGRAM_ID = new PublicKey('6BKcCM11A3dRkaf21Lnhqrj1XGMSifd7VA3oCfwNe5bX')
+const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
+const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4')
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { connection, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'

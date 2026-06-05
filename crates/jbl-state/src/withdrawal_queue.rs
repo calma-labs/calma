@@ -11,7 +11,7 @@ pub struct WithdrawalQueueEntry {
     pub requester: Pubkey,
     /// Amount of underlying tokens to withdraw.
     pub amount: u64,
-    _reserved: u64
+    _reserved: u64,
 }
 
 /// Fixed-capacity circular-buffer queue of withdrawal requests embedded
@@ -27,7 +27,11 @@ pub struct WithdrawalQueue {
 
 impl WithdrawalQueueEntry {
     pub fn new(requester: Pubkey, amount: u64) -> Self {
-        Self { requester, amount, _reserved: 0 }
+        Self {
+            requester,
+            amount,
+            _reserved: 0,
+        }
     }
 }
 

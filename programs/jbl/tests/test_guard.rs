@@ -14,10 +14,17 @@ use {
 
 fn setup_svm() -> (LiteSVM, Keypair, Keypair, Keypair) {
     let mut svm = LiteSVM::new();
-    svm.add_program(jbl::id(), include_bytes!("../../../target/deploy/jbl.so")).unwrap();
-    svm.add_program(feed::id(), include_bytes!("../../../target/deploy/feed.so")).unwrap();
-    svm.add_program(irm::id(), include_bytes!("../../../target/deploy/irm.so")).unwrap();
-    svm.add_program(guard::id(), include_bytes!("../../../target/deploy/guard.so")).unwrap();
+    svm.add_program(jbl::id(), include_bytes!("../../../target/deploy/jbl.so"))
+        .unwrap();
+    svm.add_program(feed::id(), include_bytes!("../../../target/deploy/feed.so"))
+        .unwrap();
+    svm.add_program(irm::id(), include_bytes!("../../../target/deploy/irm.so"))
+        .unwrap();
+    svm.add_program(
+        guard::id(),
+        include_bytes!("../../../target/deploy/guard.so"),
+    )
+    .unwrap();
 
     let payer = Keypair::new();
     let collateral_mint_kp = Keypair::new();
@@ -26,9 +33,24 @@ fn setup_svm() -> (LiteSVM, Keypair, Keypair, Keypair) {
     svm.airdrop(&payer.pubkey(), 10_000_000_000).unwrap();
 
     let mint_rent = svm.minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN);
-    let [cc, ci] = create_mint_ixs(&payer.pubkey(), &collateral_mint_kp.pubkey(), &payer.pubkey(), mint_rent);
-    let [lc, li] = create_mint_ixs(&payer.pubkey(), &lend_mint_kp.pubkey(), &payer.pubkey(), mint_rent);
-    send_ixs(&mut svm, &[cc, ci, lc, li], &payer, &[&payer, &collateral_mint_kp, &lend_mint_kp]);
+    let [cc, ci] = create_mint_ixs(
+        &payer.pubkey(),
+        &collateral_mint_kp.pubkey(),
+        &payer.pubkey(),
+        mint_rent,
+    );
+    let [lc, li] = create_mint_ixs(
+        &payer.pubkey(),
+        &lend_mint_kp.pubkey(),
+        &payer.pubkey(),
+        mint_rent,
+    );
+    send_ixs(
+        &mut svm,
+        &[cc, ci, lc, li],
+        &payer,
+        &[&payer, &collateral_mint_kp, &lend_mint_kp],
+    );
 
     (svm, payer, collateral_mint_kp, lend_mint_kp)
 }
@@ -97,10 +119,7 @@ fn create_pool_ix(
     };
     Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create {
-            ltv_percent: 75,
-        }
-        .data(),
+        &jbl::instruction::Create { ltv_percent: 75 }.data(),
         jbl::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
@@ -149,8 +168,7 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
         Pubkey::find_program_address(&[b"lend_vault", pool_pubkey.as_ref()], &program_id);
     let (lp_mint, _) =
         Pubkey::find_program_address(&[b"lp_mint", pool_pubkey.as_ref()], &program_id);
-    let (feed_pda, _) =
-        Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
+    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
     let (irm_config, _) =
         Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
 
@@ -199,9 +217,22 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
         }
         .to_account_metas(None),
     );
-    send_ixs(svm, &[create_pool_account_ix, irm_init_ix], payer, &[payer, &pool_keypair]);
+    send_ixs(
+        svm,
+        &[create_pool_account_ix, irm_init_ix],
+        payer,
+        &[payer, &pool_keypair],
+    );
 
-    PoolSetup { pool_keypair, state_pda, collateral_vault, lend_vault, lp_mint, feed_pda, irm_config }
+    PoolSetup {
+        pool_keypair,
+        state_pda,
+        collateral_vault,
+        lend_vault,
+        lp_mint,
+        feed_pda,
+        irm_config,
+    }
 }
 
 #[test]

@@ -65,8 +65,7 @@ pub fn create_token_account_ixs(
             spl_token::state::Account::LEN as u64,
             &spl_token::id(),
         ),
-        spl_token::instruction::initialize_account(&spl_token::id(), account, mint, owner)
-            .unwrap(),
+        spl_token::instruction::initialize_account(&spl_token::id(), account, mint, owner).unwrap(),
     ]
 }
 
@@ -78,4 +77,3 @@ pub fn read_token_balance(svm: &LiteSVM, account: &Pubkey) -> u64 {
     let data = svm.get_account(account).unwrap().data;
     spl_token::state::Account::unpack(&data).unwrap().amount
 }
-

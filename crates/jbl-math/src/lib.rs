@@ -1,8 +1,8 @@
-mod traits;
 mod core;
+mod traits;
 
-pub use traits::*;
 pub use core::*;
+pub use traits::*;
 
 const SECONDS_PER_YEAR: u64 = 31_557_600;
 pub const PRICE_SCALE: u128 = 1_000_000;
@@ -19,7 +19,11 @@ pub enum MathError<E> {
     Transfer(E),
 }
 
-pub fn utilization_bps(total_supply_assets: u64, total_borrow_assets: u64, assets_in_queue: u64) -> u64 {
+pub fn utilization_bps(
+    total_supply_assets: u64,
+    total_borrow_assets: u64,
+    assets_in_queue: u64,
+) -> u64 {
     if total_supply_assets == 0 {
         return 0;
     }

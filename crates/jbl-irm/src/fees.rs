@@ -66,15 +66,36 @@ mod tests {
     use super::*;
 
     fn curve(a: i64, b: i64) -> LinearSegment {
-        LinearSegment { a, b, a2: 0, kink: 0, enabled: 1, _pad: [0; 7] }
+        LinearSegment {
+            a,
+            b,
+            a2: 0,
+            kink: 0,
+            enabled: 1,
+            _pad: [0; 7],
+        }
     }
 
     fn kinked(a: i64, b: i64, kink: u64, a2: i64) -> LinearSegment {
-        LinearSegment { a, b, a2, kink, enabled: 1, _pad: [0; 7] }
+        LinearSegment {
+            a,
+            b,
+            a2,
+            kink,
+            enabled: 1,
+            _pad: [0; 7],
+        }
     }
 
     fn disabled(a: i64, b: i64) -> LinearSegment {
-        LinearSegment { a, b, a2: 0, kink: 0, enabled: 0, _pad: [0; 7] }
+        LinearSegment {
+            a,
+            b,
+            a2: 0,
+            kink: 0,
+            enabled: 0,
+            _pad: [0; 7],
+        }
     }
 
     fn make_config(curves: [LinearSegment; 4]) -> PiecewiseLinearModel {
@@ -83,7 +104,12 @@ mod tests {
 
     #[test]
     fn test_flat_fee() {
-        let config = make_config([curve(0, 500), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            curve(0, 500),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(0), 500);
         assert_eq!(config.get_fee_bps(5000), 500);
         assert_eq!(config.get_fee_bps(10000), 500);
@@ -91,7 +117,12 @@ mod tests {
 
     #[test]
     fn test_linear_fee() {
-        let config = make_config([curve(1000, 200), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            curve(1000, 200),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(0), 200);
         assert_eq!(config.get_fee_bps(5000), 700);
         assert_eq!(config.get_fee_bps(10000), 1200);
@@ -99,7 +130,12 @@ mod tests {
 
     #[test]
     fn test_negative_values_clamped() {
-        let config = make_config([curve(1000, -500), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            curve(1000, -500),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(1000), 0);
         assert_eq!(config.get_fee_bps(5000), 0);
         assert_eq!(config.get_fee_bps(6000), 100);
@@ -114,55 +150,106 @@ mod tests {
 
     #[test]
     fn test_disabled_curve_ignored() {
-        let config = make_config([curve(0, 100), disabled(0, 9999), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            curve(0, 100),
+            disabled(0, 9999),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(5000), 100);
         assert_eq!(config.get_fee_bps(10000), 100);
     }
 
     #[test]
     fn test_all_disabled_returns_zero() {
-        let config = make_config([disabled(0, 100), disabled(0, 200), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            disabled(0, 100),
+            disabled(0, 200),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(0), 0);
         assert_eq!(config.get_fee_bps(10000), 0);
     }
 
     #[test]
     fn test_default_pool_fee() {
-        let config = make_config([curve(0, DEFAULT_POOL_FEE_BPS), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            curve(0, DEFAULT_POOL_FEE_BPS),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(0), 100);
         assert_eq!(config.get_fee_bps(10000), 100);
     }
 
     #[test]
     fn test_kink_below_kink_uses_a() {
-        let config = make_config([kinked(200, 0, 8000, 2000), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            kinked(200, 0, 8000, 2000),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(4000), 80);
     }
 
     #[test]
     fn test_kink_at_kink_point() {
-        let config = make_config([kinked(200, 0, 8000, 2000), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            kinked(200, 0, 8000, 2000),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(8000), 160);
     }
 
     #[test]
     fn test_kink_above_kink_uses_a2() {
-        let config = make_config([kinked(200, 0, 8000, 2000), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            kinked(200, 0, 8000, 2000),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(9000), 360);
     }
 
     #[test]
     fn test_kink_zero_treated_as_linear() {
-        let kinked_config = make_config([kinked(500, 100, 0, 9999), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
-        let linear_config = make_config([curve(500, 100), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let kinked_config = make_config([
+            kinked(500, 100, 0, 9999),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
+        let linear_config = make_config([
+            curve(500, 100),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(kinked_config.get_fee_bps(0), linear_config.get_fee_bps(0));
-        assert_eq!(kinked_config.get_fee_bps(5000), linear_config.get_fee_bps(5000));
-        assert_eq!(kinked_config.get_fee_bps(10000), linear_config.get_fee_bps(10000));
+        assert_eq!(
+            kinked_config.get_fee_bps(5000),
+            linear_config.get_fee_bps(5000)
+        );
+        assert_eq!(
+            kinked_config.get_fee_bps(10000),
+            linear_config.get_fee_bps(10000)
+        );
     }
 
     #[test]
     fn test_kink_with_base_rate() {
-        let config = make_config([kinked(100, 200, 5000, 1000), disabled(0, 0), disabled(0, 0), disabled(0, 0)]);
+        let config = make_config([
+            kinked(100, 200, 5000, 1000),
+            disabled(0, 0),
+            disabled(0, 0),
+            disabled(0, 0),
+        ]);
         assert_eq!(config.get_fee_bps(3000), 230);
         assert_eq!(config.get_fee_bps(5000), 250);
         assert_eq!(config.get_fee_bps(7500), 500);

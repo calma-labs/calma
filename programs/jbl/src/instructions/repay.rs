@@ -76,17 +76,28 @@ impl<'info> Repay<'info> {
 pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
     let (repay_amount, shares_to_burn) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
-            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let result = core.repay(amount, |amt| {
-            require!(ctx.accounts.user_token_account.amount >= amt, crate::error::ErrorCode::InsufficientFunds);
-            ctx.accounts.transfer_lend_to_vault(amt)
-        }).map_err(crate::error::ErrorCode::from)?;
+            .accrue_interest()
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let result = core
+            .repay(amount, |amt| {
+                require!(
+                    ctx.accounts.user_token_account.amount >= amt,
+                    crate::error::ErrorCode::InsufficientFunds
+                );
+                ctx.accounts.transfer_lend_to_vault(amt)
+            })
+            .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         result

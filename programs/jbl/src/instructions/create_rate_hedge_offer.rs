@@ -114,7 +114,8 @@ pub fn create_rate_hedge_offer_handler(
     );
 
     // Transfer collateral from the user into the offer vault.
-    ctx.accounts.transfer_collateral_to_offer_vault(collateral_amount)?;
+    ctx.accounts
+        .transfer_collateral_to_offer_vault(collateral_amount)?;
 
     // Initialise the offer account.
     {

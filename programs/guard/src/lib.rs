@@ -10,7 +10,7 @@ pub use error::ErrorCode;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("FyJvcrTMrMbzSmqTkwY7h8AkVR4BYq2pQrfgXmN1jh5M");
+declare_id!("grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt");
 
 #[program]
 pub mod guard {

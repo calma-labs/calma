@@ -88,7 +88,10 @@ impl<'info> WithdrawCollateral<'info> {
     }
 }
 
-pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>, amount: u64) -> Result<()> {
+pub fn withdraw_collateral_handler<'a>(
+    ctx: Context<'a, WithdrawCollateral<'a>>,
+    amount: u64,
+) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
     {
         let position = ctx.accounts.user_position.load()?;
@@ -100,8 +103,16 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
-    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let oracle = OracleState::new(
+        ctx.accounts.feed_program.to_account_info(),
+        ctx.accounts.feed_state.to_account_info(),
+    )?;
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
     require!(
         ctx.accounts.collateral_vault.amount >= amount,
         crate::error::ErrorCode::InsufficientFunds
@@ -114,14 +125,19 @@ pub fn withdraw_collateral_handler<'a>(ctx: Context<'a, WithdrawCollateral<'a>>,
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
-            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let remaining = core.withdraw_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_user(amt, state_bump))
+            .accrue_interest()
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let remaining = core
+            .withdraw_collateral(amount, |amt| {
+                ctx.accounts.transfer_collateral_to_user(amt, state_bump)
+            })
             .map_err(|e| match e {
                 jbl_math::MathError::Transfer(e) => e,
                 e => crate::error::ErrorCode::from(e).into(),
             })?;
         pool.market = core.market;
-        ctx.accounts.user_position.load_mut()?.collateral_deposited = core.position.collateral_deposited;
+        ctx.accounts.user_position.load_mut()?.collateral_deposited =
+            core.position.collateral_deposited;
         remaining
     };
 

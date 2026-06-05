@@ -114,11 +114,13 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     let lp_to_mint = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let mut core = jbl_math::Core::new(pool.market);
-        let lp = core.deposit_lent(
-            amount,
-            |amt| ctx.accounts.transfer_lend_to_vault(amt),
-            |lp| ctx.accounts.mint_lp_to_user(lp, state_bump),
-        ).map_err(crate::error::ErrorCode::from)?;
+        let lp = core
+            .deposit_lent(
+                amount,
+                |amt| ctx.accounts.transfer_lend_to_vault(amt),
+                |lp| ctx.accounts.mint_lp_to_user(lp, state_bump),
+            )
+            .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
         lp
     };

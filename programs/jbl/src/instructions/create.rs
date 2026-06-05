@@ -102,7 +102,10 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     }
 
     // ── CPI to feed::set_value to record the initial oracle price ────────────
-    let _oracle = OracleState::new(ctx.accounts.feed_program.to_account_info(), ctx.accounts.feed_state.to_account_info())?;
+    let _oracle = OracleState::new(
+        ctx.accounts.feed_program.to_account_info(),
+        ctx.accounts.feed_state.to_account_info(),
+    )?;
 
     // ── Fetch initial IRM rate before load_init ───────────────────────────────
     // In Anchor 1.0, load_init() does NOT write the discriminator — that happens
@@ -140,7 +143,8 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     {
         let core = jbl_math::Core::new(pool.market)
             .with_irm(irm)
-            .accrue_interest().ok_or(crate::error::ErrorCode::MathOverflow)?;
+            .accrue_interest()
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
         pool.market = core.market;
     }
 

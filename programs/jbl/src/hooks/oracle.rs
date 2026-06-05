@@ -18,12 +18,10 @@ impl OracleState {
         feed_state: AccountInfo<'info>,
     ) -> Result<Self> {
         let current_ts = Clock::get()?.unix_timestamp;
-        let price = feed::cpi::get_value(
-            CpiContext::new(
-                feed_program.key(),
-                feed::cpi::accounts::GetValue { feed: feed_state },
-            ),
-        )?
+        let price = feed::cpi::get_value(CpiContext::new(
+            feed_program.key(),
+            feed::cpi::accounts::GetValue { feed: feed_state },
+        ))?
         .get();
         Ok(Self { current_ts, price })
     }

@@ -11,7 +11,6 @@ pub const FLASH_REPAY_DISCRIMINATOR: [u8; 8] = [182, 143, 19, 23, 39, 221, 184, 
 /// Anchor discriminator for `flash_borrow` = sha256("global:flash_borrow")[0..8].
 pub const FLASH_BORROW_DISCRIMINATOR: [u8; 8] = [166, 221, 220, 25, 61, 73, 127, 240];
 
-
 #[derive(Accounts)]
 pub struct FlashBorrow<'info> {
     #[account(mut)]
@@ -90,7 +89,8 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     let sysvar_info = ctx.accounts.sysvar_instructions.to_account_info();
     let current_index = load_current_index_checked(&sysvar_info)? as usize;
 
-    let fee = jbl_math::flash_fee(amount, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
+    let fee =
+        jbl_math::flash_fee(amount, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = amount.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     let pool_key = ctx.accounts.pool.key();
 
@@ -124,7 +124,8 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     require!(found, ErrorCode::FlashRepayMissing);
 
     // ── 2. Transfer tokens from lend vault to user ────────────────────────────
-    ctx.accounts.transfer_lend_to_user(amount, ctx.bumps.state)?;
+    ctx.accounts
+        .transfer_lend_to_user(amount, ctx.bumps.state)?;
 
     // ── 3. Update pool accounting ─────────────────────────────────────────────
     {

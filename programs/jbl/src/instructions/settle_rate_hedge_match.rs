@@ -161,9 +161,16 @@ impl<'info> SettleRateHedgeMatch<'info> {
     }
 }
 
-pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
+pub fn settle_rate_hedge_match_handler<'a>(
+    ctx: Context<'a, SettleRateHedgeMatch<'a>>,
+) -> Result<()> {
     let utilization = ctx.accounts.pool.load()?.calculate_utilization();
-    let irm = crate::hooks::irm::IrmState::new(ctx.accounts.rate_program.to_account_info(), utilization, ctx.accounts.pool.to_account_info(), ctx.accounts.irm_state.to_account_info())?;
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
     let current_ts = irm.current_ts;
 
     // ── 0. Duration guard ─────────────────────────────────────────────────────
@@ -173,7 +180,12 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
             .start_ts
             .checked_add(m.duration as i64)
             .ok_or(ErrorCode::MathOverflow)?;
-        (settlement_ts, m.initial_debt_shares, m.amount, m.upfront_fee)
+        (
+            settlement_ts,
+            m.initial_debt_shares,
+            m.amount,
+            m.upfront_fee,
+        )
     };
     require!(current_ts >= settlement_ts, ErrorCode::HedgeNotYetMatured);
 
@@ -184,7 +196,8 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
         let mut core = jbl_math::Core::new(pool.market)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
-            .accrue_interest().ok_or(ErrorCode::MathOverflow)?;
+            .accrue_interest()
+            .ok_or(ErrorCode::MathOverflow)?;
         let (current_value, _new_shares) = core
             .settle_hedge(
                 initial_debt_shares,
@@ -194,12 +207,16 @@ pub fn settle_rate_hedge_match_handler<'a>(ctx: Context<'a, SettleRateHedgeMatch
                     let available = ctx.accounts.offer_collateral_vault.amount;
                     let transfer_amount = excess.min(available);
                     if transfer_amount > 0 {
-                        ctx.accounts.transfer_excess_collateral_to_pool(transfer_amount, state_bump)
+                        ctx.accounts
+                            .transfer_excess_collateral_to_pool(transfer_amount, state_bump)
                     } else {
                         Ok(())
                     }
                 },
-                |fee| ctx.accounts.transfer_upfront_fee_to_offer_creator(fee, state_bump),
+                |fee| {
+                    ctx.accounts
+                        .transfer_upfront_fee_to_offer_creator(fee, state_bump)
+                },
             )
             .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;
