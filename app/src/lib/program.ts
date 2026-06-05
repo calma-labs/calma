@@ -3,6 +3,8 @@ import { Connection } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import IDL from "../../../target/idl/jbl.json";
 import type { Jbl } from "../../../target/types/jbl";
+import IRM_IDL from "../../../target/idl/irm.json";
+import type { Irm } from "../../../target/types/irm";
 
 if (typeof window !== "undefined" && !window.Buffer) {
   window.Buffer = Buffer;
@@ -22,3 +24,4 @@ const readOnlyProvider = new AnchorProvider(
 );
 
 export const program = new Program<Jbl>(IDL as unknown as Jbl, readOnlyProvider);
+export const irmProgram = new Program<Irm>(IRM_IDL as unknown as Irm, readOnlyProvider);

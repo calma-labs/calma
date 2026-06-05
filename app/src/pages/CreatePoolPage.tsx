@@ -1,4 +1,5 @@
 import { BackButton } from "@/components/common/BackButton";
+import { IrmCurveChart } from "@/components/pool/charts/IrmCurveChart";
 import {
   useCreateLendingPool,
   type CreatePoolResult,
@@ -244,6 +245,10 @@ export function CreatePoolPage() {
       collateralMint: new PublicKey(collateralAddr),
       lendMint: new PublicKey(lendAddr),
       ltvPercent: Number(form.ltvPercent),
+      curveM1: Number(form.m1),
+      curveC1: Number(form.c1),
+      curveM2: Number(form.m2),
+      curveC2: Number(form.c2),
     });
   }
 
@@ -442,6 +447,13 @@ export function CreatePoolPage() {
                 />
               </Field>
             </div>
+
+            <IrmCurveChart
+              m1={Number(form.m1) || 0}
+              c1={Number(form.c1) || 0}
+              m2={Number(form.m2) || 0}
+              c2={Number(form.c2) || 0}
+            />
           </Section>
 
           {/* LTV */}

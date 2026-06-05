@@ -1,13 +1,14 @@
+import { BN } from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
-import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
-
-const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
-const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4')
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, program as readonlyProgram } from '../../lib/program'
+import { connection, irmProgram, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
+
+const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
+const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4')
 
 /** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
 const POOL_SPACE = 41_256
@@ -16,6 +17,10 @@ export interface CreatePoolParams {
     collateralMint: PublicKey
     lendMint: PublicKey
     ltvPercent?: number
+    curveM1?: number
+    curveC1?: number
+    curveM2?: number
+    curveC2?: number
 }
 
 export interface CreatePoolResult {
@@ -42,6 +47,39 @@ async function createPool(
         [Buffer.from('feed'), payer.toBuffer()],
         FEED_PROGRAM_ID,
     )
+
+    const irmInitIx = await irmProgram.methods
+        .initialize()
+        .accounts({
+            pool: poolKeypair.publicKey,
+            authority: payer,
+            payer,
+        })
+        .instruction()
+
+    // irmState is a PDA whose seed comes from inside the account data, so Anchor's
+    // IDL-based auto-derivation can't resolve it — pass it explicitly via cast.
+    const irmSetCurve0Ix = await (irmProgram.methods
+        .setFeeCurve(0, {
+            a: new BN(params.curveM1 ?? 450),
+            b: new BN(params.curveC1 ?? 0),
+            a2: new BN(0),
+            kink: new BN(0),
+            enabled: true,
+        }) as unknown as { accounts: (a: object) => { instruction: () => Promise<TransactionInstruction> } })
+        .accounts({ irmState, authority: payer })
+        .instruction()
+
+    const irmSetCurve1Ix = await (irmProgram.methods
+        .setFeeCurve(1, {
+            a: new BN(params.curveM2 ?? 8000),
+            b: new BN(params.curveC2 ?? -7173),
+            a2: new BN(0),
+            kink: new BN(0),
+            enabled: true,
+        }) as unknown as { accounts: (a: object) => { instruction: () => Promise<TransactionInstruction> } })
+        .accounts({ irmState, authority: payer })
+        .instruction()
 
     const createIx = await readonlyProgram.methods
         .create(ltvPercent)
@@ -72,6 +110,9 @@ async function createPool(
                     lamports: poolLamports,
                     programId: readonlyProgram.programId,
                 }),
+                irmInitIx,
+                irmSetCurve0Ix,
+                irmSetCurve1Ix,
                 createIx,
             )
             tx.partialSign(poolKeypair)
