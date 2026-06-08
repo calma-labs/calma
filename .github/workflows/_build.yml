@@ -61,6 +61,8 @@ jobs:
       - name: Build for GitHub Pages (base /jbl/)
         if: inputs.build_pages
         working-directory: app
+        env:
+          VITE_ROUTER_BASENAME: /jbl/
         run: bun run build --base=/jbl/
 
       - uses: actions/upload-pages-artifact@v3
@@ -68,12 +70,18 @@ jobs:
         with:
           path: app/dist
 
-      - name: Build for Vercel (base /)
+      - name: Build for Vercel (base /app/)
         working-directory: app
-        run: bun run build --base=/
+        run: bun run build --base=/app/
+
+      - name: Assemble Vercel output
+        run: |
+          mkdir -p vercel-output/app
+          cp -r app/dist/. vercel-output/app/
+          cp -r landing/. vercel-output/
 
       - uses: actions/upload-artifact@v4
         with:
           name: app-dist
-          path: app/dist
+          path: vercel-output
           include-hidden-files: true
