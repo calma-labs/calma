@@ -1,0 +1,1632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0E17">
+<title>Calma — Lending optimised for tradfi, available to everyone</title>
+<meta name="description" content="Institutional-grade lending protocol. Powered by Solana. Built by lenders. Join the closed beta.">
+<meta property="og:title" content="Calma — Lending optimised for tradfi">
+<meta property="og:description" content="Powered by Solana. Built by lenders. Institutional-grade lending protocol.">
+<meta property="og:type" content="website">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        base:   '#FFFFFF',
+        ink:    '#F6F8FB',
+        surface:'#EDF1F8',
+        rule:   '#D6DCEA',
+        muted:  '#6B7299',
+        soft:   '#3F4866',
+        fg:     '#0A0E17',
+        accent: '#0A0E17',
+        accent2:'#3F4866',
+      },
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+      },
+      letterSpacing: {
+        tightest: '-0.04em',
+        tighter:  '-0.025em',
+      },
+      maxWidth: {
+        page: '1200px',
+      },
+    }
+  }
+}
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body {
+    font-feature-settings: 'ss01', 'cv11', 'tnum';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background:
+      radial-gradient(1200px 600px at 50% -200px, rgba(10,14,23,0.04), transparent 60%),
+      #FFFFFF;
+    background-attachment: fixed;
+  }
+  .tabular { font-variant-numeric: tabular-nums; }
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .faq-chev { transform: rotate(180deg); }
+  .faq-chev { transition: transform 200ms ease; }
+
+  .fade-up { opacity: 0; transform: translateY(16px); transition: opacity 700ms cubic-bezier(.2,.6,.2,1), transform 700ms cubic-bezier(.2,.6,.2,1); }
+  .fade-up.is-in { opacity: 1; transform: translateY(0); }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(150,160,185,0.18) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(150,160,185,0.18) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 80%);
+  }
+
+  /* Curve animation handled by JS — just keep stroke styles */
+  .curve-line { fill: none; stroke: #0A0E17; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .curve-line-dashed { fill: none; stroke: #0A0E17; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 6; opacity: 0.45; }
+  .curve-grid line { stroke: #D6DCEA; stroke-width: 1; }
+  .curve-axis text { fill: #6B7299; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+  /* Header auto-inverts to white while the hero animation shows a black background.
+     Toggled by the hero pager adding/removing .nav-on-dark on #nav. */
+  #nav .logo-mark,
+  #nav .nav-wordmark,
+  #nav nav a,
+  #nav #menuBtn { transition: filter .45s ease, color .45s ease; }
+  #nav.nav-on-dark .nav-wordmark,
+  #nav.nav-on-dark nav a,
+  #nav.nav-on-dark #menuBtn { color: #fff; }
+  #nav.nav-on-dark nav a:hover { color: #fff; opacity: .75; }
+  #nav.nav-on-dark .logo-mark { filter: brightness(0) invert(1); }
+
+  /* Sticky nav blur after scroll */
+  .nav-scrolled { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #E6EBF5; }
+
+  /* hero phase transition — promote each phase layer to its own GPU layer so Chrome composites
+     opacity/transform without repainting. Eliminates ghost-frame + scroll stutter on Chrome. */
+  #heroContent,
+  #heroMini {
+    will-change: opacity, transform;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+  }
+  #heroMini { opacity: 0; }
+  /* canvas fills the pin like a video would */
+  #heroCanvas { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fade-up { opacity: 1; transform: none; transition: none; }
+    .anim-dot { animation: none !important; }
+    .bento-anim, .bento-anim * { animation: none !important; }
+  }
+
+  /* ===== Bento section animations ===== */
+  /* Tile 01 — utilization horizontal fill */
+  @keyframes utilFillGrow {
+    0%, 5%   { transform: scaleX(0); }
+    35%, 95% { transform: scaleX(var(--target, 1)); }
+    100%     { transform: scaleX(var(--target, 1)); }
+  }
+  .util-fill {
+    transform-origin: left center;
+    animation: utilFillGrow 5s cubic-bezier(.2,.8,.2,1) infinite;
+  }
+
+  /* Tile 02 — spread converge */
+  @keyframes spreadDown {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(8px); }
+  }
+  @keyframes spreadUp {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+  }
+  .spread-top  { animation: spreadDown 4.5s ease-in-out infinite; transform-origin: center; }
+  .spread-bot  { animation: spreadUp 4.5s ease-in-out infinite; transform-origin: center; }
+
+  /* Tile 03 — chaotic to flat (wave morph) handled inline via <animate> in SVG */
+
+  /* Tile 05 — RWA bars grow */
+  @keyframes barRise {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+  }
+  .rwa-bar { transform-origin: bottom; animation: barRise 1.6s cubic-bezier(.2,.8,.2,1) both; }
+</style>
+</head>
+
+<body class="font-sans text-fg antialiased">
+
+<!-- ============ LOGO SVG (reusable, referenced via <use>) ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="cmL0" x1="4.74599" y1="52.1001" x2="34.03" y2="52.1001" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5F5F5F"/><stop offset="1" stop-color="#0D0D0D"/>
+    </linearGradient>
+    <linearGradient id="cmL1" x1="23.1691" y1="21.1046" x2="23.1691" y2="83.0889" gradientUnits="userSpaceOnUse">
+      <stop/><stop offset="1" stop-color="#666666"/>
+    </linearGradient>
+    <linearGradient id="cmL2" x1="53.8003" y1="88.8708" x2="61.9626" y2="69.1095" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2C2C2C"/><stop offset="1" stop-color="#585858"/>
+    </linearGradient>
+    <linearGradient id="cmL3" x1="70.5085" y1="11.8377" x2="6.58764" y2="38.4077" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A5A5A"/><stop offset="1" stop-color="#0B0B0B"/>
+    </linearGradient>
+    <linearGradient id="cmL4" x1="43.9473" y1="0.000701904" x2="43.9473" y2="45.9832" gradientUnits="userSpaceOnUse">
+      <stop stop-opacity="0"/><stop offset="1" stop-color="#494949"/>
+    </linearGradient>
+    <clipPath id="cmClip"><rect width="91.0637" height="100.542" fill="white"/></clipPath>
+    <symbol id="calma-mark" viewBox="0 0 92 101">
+      <g clip-path="url(#cmClip)">
+        <path d="M27.8827 58.7179L46.3382 68.9702L23.747 83.0889L3.44016 71.5648C1.31265 70.3579 0 68.1008 0 65.6562V33.781C0 32.7821 0.545516 31.8581 1.42175 31.3774L20.0614 21.1046L44.3198 34.7732L26.7235 43.0923C25.2983 43.7674 24.388 45.2028 24.388 46.7814V52.7786C24.388 55.2471 25.7245 57.5178 27.8827 58.7179Z" fill="url(#cmL0)"/>
+        <path d="M43.8838 34.757L26.6377 42.9113C25.1428 43.6194 24.1875 45.1254 24.1875 46.7814V52.7784C24.1875 55.3195 25.5637 57.6573 27.7852 58.8927L45.9453 68.9796L23.7412 82.8556L3.53906 71.3907C1.47428 70.2194 0.200247 68.029 0.200195 65.6564V33.7814C0.200195 32.8554 0.705719 31.9984 1.51758 31.5529H1.51855L20.0596 21.3331L43.8838 34.757Z" stroke="url(#cmL1)" stroke-width="0.4"/>
+        <path d="M23.5038 83.1088C23.0605 82.8531 23.0571 82.2156 23.4969 81.9564L54.339 63.8555C57.5099 61.9974 61.4069 61.878 64.6834 63.5419L89.0407 77.0638C91.1136 78.2469 91.1341 81.2302 89.0748 82.4372L60.517 99.3789C57.8951 100.917 54.6527 100.93 52.0206 99.4164L23.5038 83.1088Z" fill="url(#cmL2)"/>
+        <path d="M0.0209876 33.4606C0.0209876 33.4606 -0.0676587 32.3968 0.900632 31.6638L55.0294 1.05695C57.5286 -0.33412 60.5664 -0.351168 63.086 1.0058L86.4887 13.6277C88.398 14.6948 88.323 17.4702 86.3557 18.4316L31.2075 45.4347C29.7005 46.1745 27.9309 46.1643 26.4308 45.4142C26.4308 45.4142 7.95484 36.1063 1.7905 33.0139C0.644921 32.4377 0.0175781 33.4606 0.0175781 33.4606H0.0209876Z" fill="url(#cmL3)"/>
+        <path d="M55.127 1.23215C57.5663 -0.125618 60.5315 -0.142391 62.9912 1.18234V1.18137L86.3906 13.8015V13.8025C88.1591 14.7909 88.0898 17.3611 86.2676 18.2517L31.1191 45.2546V45.2556C29.7592 45.9232 28.1767 45.9557 26.7939 45.362L26.5205 45.2351H26.5195L26.5078 45.2292C26.4989 45.2247 26.4853 45.2175 26.4678 45.2087C26.4326 45.191 26.3799 45.165 26.3115 45.1306C26.1747 45.0617 25.9734 44.96 25.7148 44.8298C25.1976 44.5693 24.4513 44.1936 23.5371 43.7331C21.7087 42.8122 19.2064 41.5517 16.5117 40.195C11.1228 37.4818 4.96335 34.382 1.88086 32.8357C1.23951 32.5131 0.722276 32.6348 0.370117 32.8503C0.340711 32.8683 0.313043 32.888 0.286133 32.907C0.287593 32.9015 0.288517 32.8959 0.290039 32.8904C0.379356 32.5673 0.577034 32.1623 1.01367 31.8288L55.126 1.23117L55.127 1.23215Z" stroke="url(#cmL4)" stroke-width="0.4"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============ HEADER ============ -->
+<header id="nav" class="fixed top-0 inset-x-0 z-50 transition-colors">
+  <div class="max-w-page mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="flex items-center gap-2.5">
+      <svg class="logo-mark w-7 h-7" aria-hidden="true"><use href="#calma-mark"/></svg>
+      <span class="nav-wordmark text-fg text-lg font-semibold tracking-tighter">Calma</span>
+    </a>
+    <nav class="hidden md:flex items-center gap-8 text-sm text-soft">
+      <a href="#why" class="hover:text-fg transition-colors">Why Calma</a>
+      <a href="#institutions" class="hover:text-fg transition-colors">Institutions</a>
+      <a href="#whales" class="hover:text-fg transition-colors">Whales</a>
+      <a href="#how" class="hover:text-fg transition-colors">How it works</a>
+      <a href="#products" class="hover:text-fg transition-colors">Products</a>
+    </nav>
+    <div class="flex items-center gap-3">
+      <a href="#beta" class="hidden sm:inline-flex items-center gap-2 bg-accent hover:bg-accent2 text-base px-4 py-2 rounded-md text-sm font-medium transition-colors">
+        Join closed beta
+      </a>
+      <button id="menuBtn" class="md:hidden p-2 text-soft hover:text-fg" aria-label="Open menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+  </div>
+  <!-- Mobile menu -->
+  <div id="mobileMenu" class="md:hidden hidden border-t border-rule bg-base/95 backdrop-blur">
+    <div class="px-6 py-4 flex flex-col gap-4 text-soft">
+      <a href="#why" class="py-1">Why Calma</a>
+      <a href="#institutions" class="py-1">Institutions</a>
+      <a href="#whales" class="py-1">Whales</a>
+      <a href="#how" class="py-1">How it works</a>
+      <a href="#products" class="py-1">Products</a>
+      <a href="#beta" class="mt-2 inline-flex justify-center bg-accent text-base px-4 py-2 rounded-md text-sm font-medium">Join closed beta</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ============ HERO (V2 — parallax video pin, bottom-left text, blend-mode auto invert) ============ -->
+<section id="heroWrap" class="relative h-screen">
+  <div id="heroPin" class="sticky top-0 h-screen w-full overflow-hidden bg-base">
+    <!-- Background animation: image-sequence player on a canvas. Way more performant than scroll-
+         scrubbed <video> on Chrome/Firefox (no per-frame decode). Frames live in media/frames/. -->
+    <canvas id="heroCanvas" class="absolute inset-0 w-full h-full object-cover" aria-hidden="true"></canvas>
+
+    <!-- Hero content: centered.
+         Strategy: each element decides its own blending.
+         - Pill + CTAs: solid white background, dark text — always readable on any video frame.
+         - Headline + subhead: mix-blend-mode: difference — auto-inverts vs video luminance. -->
+    <div id="heroContent" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pointer-events-none">
+      <!-- headline — black text, visible on the light opening frames -->
+      <h1 class="text-4xl sm:text-5xl xl:text-[64px] font-semibold leading-[1.05] tracking-tightest max-w-4xl text-black pointer-events-auto">
+        <span class="sm:whitespace-nowrap">Lending optimized for TradFi,</span><br class="hidden sm:block">
+        available to everyone.
+      </h1>
+      <!-- subhead — black -->
+      <p class="mt-6 text-lg md:text-xl max-w-2xl text-black/80 pointer-events-auto">
+        Institutional-grade lending built for capital efficiency. Powered by Solana.
+      </p>
+      <!-- CTAs — primary opens the waitlist modal, secondary jumps to institutions -->
+      <div class="mt-10 flex flex-col sm:flex-row gap-3 justify-center pointer-events-auto">
+        <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-black text-white px-6 py-3 rounded-md font-medium transition-opacity hover:opacity-90">
+          Join waitlist
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+        <a href="#institutions" class="inline-flex items-center justify-center gap-2 border-2 border-black text-black px-6 py-3 rounded-md font-medium transition-colors hover:bg-black hover:text-white">
+          For Institutions
+        </a>
+      </div>
+    </div>
+
+    <!-- PHASE 2 — compact panel bottom-left, white background. Fades IN once the symbol appears. -->
+    <div id="heroMini" class="absolute bottom-8 left-8 md:bottom-10 md:left-10 max-w-md bg-white rounded-xl px-6 py-5 pointer-events-none border border-rule" style="box-shadow: 0 8px 32px rgba(10,14,23,0.08);">
+      <h2 class="text-xl md:text-2xl font-semibold tracking-tighter text-black leading-snug">
+        Lending optimized for TradFi,<br>available to everyone.
+      </h2>
+      <p class="mt-2 text-sm text-soft">
+        Institutional-grade lending built for capital efficiency. Powered by Solana.
+      </p>
+      <div class="mt-4 flex gap-2 pointer-events-auto">
+        <button type="button" data-waitlist class="inline-flex items-center gap-1.5 bg-black text-white px-3 py-1.5 rounded-md text-xs font-medium hover:opacity-90 transition-opacity">
+          Join waitlist
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+        <a href="#institutions" class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-black/20 text-black hover:border-black transition-colors">
+          For Institutions
+        </a>
+      </div>
+    </div>
+
+    <!-- scroll indicator: bottom-right corner, also blend-mode inverted -->
+    <div id="heroScrollHint" class="absolute bottom-6 right-6 z-20 flex flex-col items-center gap-2 text-white text-[10px] font-mono uppercase tracking-wider" style="mix-blend-mode: difference;">
+      <span>Scroll</span>
+      <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="1" width="10" height="18" rx="5"/>
+        <line x1="6" y1="6" x2="6" y2="10">
+          <animate attributeName="y2" values="6;12;6" dur="1.8s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="1;0.3;1" dur="1.8s" repeatCount="indefinite"/>
+        </line>
+      </svg>
+    </div>
+
+    <!-- progress bar at bottom of hero (also blend mode) -->
+    <div class="absolute bottom-0 left-0 right-0 h-[3px] z-20" style="mix-blend-mode: difference;">
+      <div class="h-full w-full bg-white/30"></div>
+      <div id="heroProgress" class="h-full bg-white absolute top-0 left-0" style="width: 0%"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION — LIVE RATE ENGINE (curve demo, ported from v1 hero) ============ -->
+<section id="rate-engine" class="relative py-24 border-t border-rule overflow-hidden">
+  <div class="absolute inset-0 grid-bg pointer-events-none"></div>
+  <div class="max-w-page mx-auto px-6 relative z-10">
+    <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+      <div class="lg:col-span-7">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-rule text-xs text-soft font-mono uppercase tracking-wider mb-6 fade-up">
+          <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+          Live rate engine
+        </div>
+        <h2 class="text-3xl md:text-5xl font-semibold leading-[1.05] tracking-tightest fade-up">
+          Rates that move <span class="text-accent">in real time</span>.
+        </h2>
+        <p class="mt-6 text-lg md:text-xl text-soft max-w-2xl fade-up">
+          Calma's utilization curve re-prices every second. When demand rises, lenders earn more — automatically. No idle capital, no stale rates.
+        </p>
+        <div class="mt-10 flex flex-col sm:flex-row gap-3 fade-up">
+          <a href="#beta" class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-6 py-3 rounded-md font-medium transition-colors">
+            Join closed beta
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+          <a href="#how" class="inline-flex items-center justify-center gap-2 border border-rule hover:border-accent text-fg px-6 py-3 rounded-md font-medium transition-colors">
+            See how it works
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: animated utilization curve panel (same engine as v1 hero) -->
+      <div class="lg:col-span-5 fade-up">
+        <div class="relative rounded-xl border border-rule bg-ink backdrop-blur p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div class="text-xs text-muted font-mono uppercase tracking-wider">Dynamic Utilization Curve</div>
+              <div class="text-fg font-medium mt-1">Live rate response</div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-muted font-mono">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+              SIMULATED
+            </div>
+          </div>
+          <svg id="heroCurve" viewBox="0 0 360 220" class="w-full h-auto">
+            <g class="curve-grid">
+              <line x1="40" y1="40"  x2="340" y2="40"/>
+              <line x1="40" y1="90"  x2="340" y2="90"/>
+              <line x1="40" y1="140" x2="340" y2="140"/>
+              <line x1="40" y1="190" x2="340" y2="190"/>
+            </g>
+            <g class="curve-axis">
+              <text x="40"  y="208">0%</text>
+              <text x="179" y="208" text-anchor="middle">50%</text>
+              <text x="318" y="208" text-anchor="middle">100%</text>
+              <text x="32"  y="194" text-anchor="end">low</text>
+              <text x="32"  y="44"  text-anchor="end">high</text>
+            </g>
+            <path id="curvePath" class="curve-line" d="M40,185 L318,120"/>
+            <path id="curvePathDashed" class="curve-line-dashed" d="M318,120 L340,44"/>
+            <g id="curveDotGroup">
+              <circle r="14" fill="#0A0E17" opacity="0.15">
+                <animate attributeName="r" values="10;18;10" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              <circle id="curveDot" r="5" fill="#fff" stroke="#0A0E17" stroke-width="2"/>
+            </g>
+            <g id="curveLabel" transform="translate(0,0)">
+              <rect x="-58" y="-46" width="116" height="34" rx="6" fill="#0A0E17" stroke="#2B344D"/>
+              <text x="0" y="-30" text-anchor="middle" fill="#6B7299" font-family="JetBrains Mono" font-size="9">UTILIZATION</text>
+              <text id="curveLabelVal" x="0" y="-17" text-anchor="middle" fill="#E6EBF5" font-family="JetBrains Mono" font-size="12" font-weight="500">0%</text>
+            </g>
+          </svg>
+          <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Avg util.</div>
+              <div class="text-fg font-mono tabular text-sm mt-0.5">98.3%</div>
+            </div>
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Lend APY</div>
+              <div class="text-accent font-mono tabular text-sm mt-0.5">12.4%</div>
+            </div>
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Spread</div>
+              <div class="text-fg font-mono tabular text-sm mt-0.5">0.8%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 1 — WHY CALMA (BENTO) ============ -->
+<section id="why" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Why Calma</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Better lending for better finance.</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl">
+        Lending is the base unit of finance. Calma is a high-capital-efficient lending protocol to build the most optimized products of tomorrow's finance.
+      </p>
+    </div>
+
+    <!-- Bento grid -->
+    <div class="mt-16 grid grid-cols-12 auto-rows-[minmax(180px,auto)] gap-4 md:gap-5" data-gsap-stagger>
+
+      <!-- ============== Tile 01 — BIG: Utilization meter ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 md:row-span-2 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="flex items-center justify-between">
+          <div class="text-xs text-muted font-mono uppercase tracking-wider">01 · Capital efficiency</div>
+          <div class="text-[10px] text-muted font-mono uppercase tracking-wider">live</div>
+        </div>
+        <h3 class="mt-4 text-fg font-semibold text-2xl tracking-tight">Optimized capital utilization.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">Every dollar works harder. 98% utilization on Calma, while now +10% of capital sits idle.</p>
+
+        <!-- animation: utilization bars -->
+        <div class="bento-anim mt-7 flex-1 flex flex-col gap-4 justify-end">
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Calma</span>
+              <span class="text-fg font-mono tabular text-sm">98%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#0A0E17">
+                  <animate attributeName="width" values="0;196;196" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Industry avg</span>
+              <span class="text-soft font-mono tabular text-sm">88%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#D6DCEA">
+                  <animate attributeName="width" values="0;176;176" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div class="text-[11px] text-muted font-mono leading-relaxed pt-1">
+            Higher utilization → better economics for everyone. Less idle capital, more yield, cheaper borrowing.
+          </div>
+        </div>
+      </div>
+
+      <!-- ============== Tile 02 — Better rates, both sides ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">02 · Both sides win</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Better rates for lenders <em class="not-italic text-soft">and</em> borrowers.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Higher utilization means better economics on both sides of the trade.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 240 120" class="w-full max-w-xs">
+            <line x1="20" y1="60" x2="220" y2="60" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 3"/>
+            <g class="spread-top">
+              <line x1="40" y1="30" x2="200" y2="30" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="30" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="30" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="22" font-family="JetBrains Mono" font-size="9" fill="#6B7299">LEND</text>
+            <text x="200" y="22" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">4.2%</text>
+
+            <g class="spread-bot">
+              <line x1="40" y1="90" x2="200" y2="90" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="90" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="90" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="108" font-family="JetBrains Mono" font-size="9" fill="#6B7299">BORROW</text>
+            <text x="200" y="108" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">5.0%</text>
+
+            <text x="120" y="64" font-family="JetBrains Mono" font-size="8" fill="#6B7299" text-anchor="middle">SPREAD 0.8%</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ============== Tile 03 — Fixed rates / predictability ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">03 · Predictability</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Fixed rates, by design.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Institutions need certainty. Traders need leverage. Both need rates that don't surprise.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 260 100" class="w-full max-w-xs">
+            <line x1="10" y1="50" x2="250" y2="50" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <path fill="none" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <animate attributeName="d"
+                values="
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 35 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 50 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 50 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50"
+                dur="6s" repeatCount="indefinite"
+                calcMode="spline"
+                keyTimes="0; 0.25; 0.5; 0.8; 1"
+                keySplines="0.45 0 0.55 1; 0.45 0 0.55 1; 0 0 1 1; 0.45 0 0.55 1"/>
+            </path>
+            <text x="10" y="95" font-family="JetBrains Mono" font-size="9" fill="#6B7299">VOLATILE</text>
+            <text x="250" y="95" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">FIXED</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ============== Tile 04 — Liquid by architecture (queue) ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">04 · Always liquid</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Liquid by architecture, not accident.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">Withdraw queue + dynamic curve = never stuck, even during stress. Predictable exits, no panic.</p>
+
+        <div class="bento-anim mt-6 flex-1 flex items-center">
+          <svg viewBox="0 0 320 70" class="w-full">
+            <line x1="20" y1="30" x2="240" y2="30" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <g transform="translate(248, 12)">
+              <rect x="0" y="0" width="3" height="36" fill="#0A0E17"/>
+              <rect x="14" y="0" width="3" height="36" fill="#0A0E17"/>
+              <text x="-2" y="52" font-family="JetBrains Mono" font-size="8" fill="#6B7299">GATE</text>
+            </g>
+            <text x="290" y="34" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="middle">EXIT</text>
+            <text x="20" y="14" font-family="JetBrains Mono" font-size="8" fill="#6B7299">QUEUE</text>
+            <g>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+          </svg>
+        </div>
+        <div class="mt-4 text-[11px] text-muted font-mono">
+          # In order. Guaranteed. <span class="text-fg">No race conditions.</span>
+        </div>
+      </div>
+
+      <!-- ============== Tile 05 — RWA opportunity gap ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">05 · Market gap</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">The RWA opportunity gap.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">RWA grew +44%. Utilization <em class="not-italic text-fg">dropped</em> 16%. Ecosystem needs polished products for RWA utilization.</p>
+
+        <div class="bento-anim mt-5 flex-1 flex flex-col justify-end">
+          <div class="flex items-end gap-4">
+            <div class="flex-1 flex flex-col items-center">
+              <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$30.97B</div>
+              <div class="w-full h-24 bg-base border border-rule rounded overflow-hidden flex items-end">
+                <div class="rwa-bar w-full bg-fg" style="height: 92%; animation-delay: 0.1s"></div>
+              </div>
+              <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Mcap<br>+44.4%</div>
+            </div>
+            <div class="flex-1 flex flex-col items-center">
+              <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$956M</div>
+              <div class="w-full h-24 bg-base border border-rule rounded overflow-hidden flex items-end">
+                <div class="rwa-bar w-full bg-fg" style="height: 6%; animation-delay: 0.25s"></div>
+              </div>
+              <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Lent<br>+20.9%</div>
+            </div>
+          </div>
+          <div class="mt-5 pt-4 border-t border-rule flex items-baseline justify-between">
+            <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Utilization</span>
+            <span class="font-mono tabular"><span class="text-fg text-base font-semibold">3.09%</span> <span class="text-[10px] text-soft">−16.3%</span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="mt-12 flex justify-center fade-up">
+      <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-7 py-3.5 rounded-md font-medium transition-colors">
+        Join waitlist
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 2 — FOR INSTITUTIONS ============ -->
+<section id="institutions" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For institutions</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Build financial products on top of the best infrastructure.</h2>
+      <p class="mt-5 text-soft text-lg fade-up">
+        TradFi-grade lending for institutions, issuers, and protocol builders. We handle the infrastructure. You build the products.
+      </p>
+    </div>
+
+    <div class="mt-16 grid lg:grid-cols-3 gap-6" data-gsap-stagger>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Distribution platform for RWA</h3>
+        <p class="mt-3 text-soft leading-relaxed">Tokenized real-world assets deserve the deepest liquidity and the best economics. Every product built on Calma gets better rates.</p>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Hedge risk with the best rates</h3>
+        <p class="mt-3 text-soft leading-relaxed">Borrow at the lowest costs to hedge your positions. Lend idle capital for better returns than staking. Dynamic rates always on the efficient frontier.</p>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>
+        </div>
+        <h3 class="text-fg font-semibold text-xl">Run your onchain vault</h3>
+        <p class="mt-3 text-soft leading-relaxed">Access best-performing markets via Calma's infrastructure. Build strategies by managing spot and leverage positions.</p>
+      </div>
+    </div>
+
+    <!-- Institutional waitlist form -->
+    <div id="beta" class="mt-20 grid lg:grid-cols-2 gap-10 items-start fade-up">
+      <div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">Institutional program</div>
+        <h3 class="text-2xl md:text-3xl font-semibold tracking-tighter">Tell us what you'd build with Calma.</h3>
+        <p class="mt-4 text-soft">We're onboarding hedge funds, treasuries, RWA issuers, and integrators ahead of mainnet. Tell us where you want better economics — we'll get back to you.</p>
+      </div>
+
+      <form id="instForm" class="rounded-xl border border-rule bg-ink p-8 space-y-5">
+        <div>
+          <label class="block text-sm text-soft mb-2">Email <span class="text-accent">*</span></label>
+          <input type="email" name="email" required placeholder="you@firm.com"
+                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Organization <span class="text-accent">*</span></label>
+          <input type="text" name="org" required placeholder="Firm / DAO / Protocol"
+                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Telegram</label>
+          <input type="text" name="telegram" placeholder="@name"
+                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Interest</label>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="rwa" class="accent-accent"> RWA distribution
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="hedging" class="accent-accent"> Hedging
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input type="checkbox" name="interest" value="vault" class="accent-accent"> Vault curator
+            </label>
+            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
+              <input id="intOther" type="checkbox" name="interest" value="other" class="accent-accent"> Other
+            </label>
+          </div>
+          <input id="intOtherText" type="text" name="interest_other" placeholder="Tell us what you're interested in"
+                 class="hidden mt-2 w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label class="block text-sm text-soft mb-2">Message <span class="text-accent">*</span></label>
+          <textarea name="msg" rows="3" required placeholder="What are you trying to build / hedge / deploy?"
+                    class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors resize-none"></textarea>
+        </div>
+        <button type="submit"
+                class="w-full bg-accent hover:bg-accent2 text-base py-3 rounded-md font-medium transition-colors">
+          Join institutional program
+        </button>
+        <p id="instStatus" class="text-xs text-center text-muted"></p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 3 — FOR WHALES ============ -->
+<section id="whales" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For whales</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Don't let capital sit idle. Use it fully.</h2>
+      <p class="mt-5 text-soft text-lg fade-up">
+        Your capital is your edge. The best yields come from capital that's fully deployed, efficiently utilized, and always earning. Calma is the best place for your capital to work.
+      </p>
+    </div>
+
+    <div class="mt-16 grid md:grid-cols-3 gap-6" data-gsap-stagger>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Better rates, across the board</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Lend and earn more on the same capital</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Borrow at lower cost, deeper liquidity</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Fixed rates coming — lock in yield, reduce variance</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Closed beta access</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Join while mechanisms are being shaped</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Live leaderboard, see your rank</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Your capital helps build the most efficient market</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold mb-4">Referral network</div>
+        <ul class="space-y-2.5 text-sm text-soft">
+          <li class="flex gap-2"><span class="text-accent">→</span> Invite 5 people OR hit 1M USD volume</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Whichever comes first unlocks beta</li>
+          <li class="flex gap-2"><span class="text-accent">→</span> Every referral strengthens the ecosystem</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Leaderboard mock -->
+    <div class="mt-12 fade-up rounded-xl border border-rule bg-ink overflow-hidden">
+      <div class="px-6 py-4 border-b border-rule flex items-center justify-between">
+        <div>
+          <div class="text-xs text-muted font-mono uppercase tracking-wider">Closed beta leaderboard</div>
+          <div class="text-fg font-medium mt-0.5">Top contributors — last 24h</div>
+        </div>
+        <div class="text-xs text-muted font-mono">SIMULATED</div>
+      </div>
+      <div class="divide-y divide-rule" data-gsap-rows>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-accent font-mono tabular">01</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0xA9...8E4F</div>
+          <div class="col-span-3 text-soft text-sm">RWA looping</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$12.4M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">02</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x73...2B1C</div>
+          <div class="col-span-3 text-soft text-sm">Stable lending</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$8.9M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">03</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x55...9F02</div>
+          <div class="col-span-3 text-soft text-sm">Leverage long</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$6.2M</div>
+        </div>
+        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
+          <div class="col-span-1 text-soft font-mono tabular">04</div>
+          <div class="col-span-5 font-mono text-sm text-fg">0x21...77AD</div>
+          <div class="col-span-3 text-soft text-sm">Delta hedge</div>
+          <div class="col-span-3 text-right font-mono tabular text-fg">$4.8M</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10 flex flex-col sm:flex-row sm:items-center gap-4 fade-up">
+      <a href="#" class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-8 py-3.5 rounded-md font-medium transition-colors self-start">
+        Join closed beta
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </a>
+      <span class="text-xs text-muted font-mono">5-MINUTE SETUP · BEST RATES AVAILABLE</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 4 — HOW IT WORKS ============ -->
+<section id="how" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>How it works</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">2 mechanisms, 1 outcome:<br>capital working harder.</h2>
+    </div>
+
+    <div class="mt-16 grid lg:grid-cols-2 gap-8" data-gsap-stagger>
+      <!-- Mechanism 1 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M1</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Withdraw Queue</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">When everyone wants their money out at once, lending breaks. Lenders panic, rates spike, systems crisis.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Instead of race conditions, we use a queue. You request a withdrawal, it processes in order. Predictable. Fair. No front-running.</p>
+        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
+          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
+          <p class="text-fg text-sm leading-relaxed">You deposit <span class="font-mono tabular">$1M</span> at <span class="font-mono tabular">10% APY</span>. Market stress hits. Instead of "is my money still there?" you know: <em class="text-accent2">"I'm #47 in queue, I withdraw in 2 days guaranteed."</em></p>
+        </div>
+      </div>
+
+      <!-- Mechanism 2 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M2</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Dynamic Curve</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">Static interest curves don't adapt to real demand. Utilization spikes, but rates stay the same. Capital locks in inefficient markets.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Our curve moves in real-time. More demand → rates rise smoothly. Less demand → rates drop. Supply and demand, always balanced.</p>
+        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
+          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
+          <p class="text-fg text-sm leading-relaxed">Your <span class="font-mono tabular">$5M</span> is deployed. As leverage traders borrow, utilization rises. Your rates increase <em class="text-accent2">automatically</em> — earning more on the same capital. When leverage unwinds, rates adjust back.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 5 — PRODUCTS ============ -->
+<section id="products" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Products</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Tailor-Make Products For Tomorrow's Finance.</h2>
+    </div>
+
+    <div class="mt-16 grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5" data-gsap-stagger>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Lending &amp; Borrowing</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Use your assets to work for you, or borrow against them for the best rates.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Looping</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">RWA and LST loops on the best markets.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Vaults</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Set up your strategy on Calma markets.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Fixed Rates</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">From variable volatility to institutional predictability.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Funds</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Use spot and leverage positions.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">LP Tokens</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Get LP tokens from your allocation to use as collateral.</p>
+      </div>
+    </div>
+
+    <div class="mt-12 flex justify-center fade-up">
+      <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-7 py-3.5 rounded-md font-medium transition-colors">
+        Join waitlist
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 6 — FAQ (hidden for now — to be rebuilt later) ============ -->
+<section id="faq" class="hidden py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="grid lg:grid-cols-12 gap-12">
+      <div class="lg:col-span-4">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>FAQ</div>
+        <h2 class="text-3xl md:text-4xl font-semibold tracking-tighter fade-up">Questions, answered.</h2>
+        <p class="mt-4 text-soft fade-up">Not finding what you need? <a href="mailto:founders@calma.fi" class="text-accent hover:underline">Email us</a>.</p>
+      </div>
+
+      <div class="lg:col-span-8 divide-y divide-rule border-y border-rule" data-gsap-rows>
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">When is mainnet?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Summer 2026 or later. Traction-driven, not timeline-driven. Mainnet launches when product is stable and audited, testnet shows real demand and meaningful TVL, and the community is ready. Rushing to mainnet with weak traction = doomed protocol.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">Is Calma safe?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Testnet is for testing — only use money you can afford to lose. Professional security audits will run before mainnet. All findings will be public. If critical issues arise, we fix them before launch — no matter the timeline.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">How does the referral program work?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Unique referral link in your profile. To access closed beta: invite 5+ people OR hit <span class="font-mono tabular">$1M</span> in lending/borrowing volume. Whichever comes first unlocks your beta access. All tracked on-chain.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">What if I lose my seed phrase?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">This is testnet. Points are non-custodial (stored on-chain), but if you lose access to your wallet, we cannot recover them. Use a wallet you're comfortable with.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">Will there be a token?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">We're exploring tokenomics, but nothing is decided. Once mainnet launches, governance will determine token mechanics, supply, and how it relates to your testnet points. No guarantees on 1:1 conversion or anything else.</p>
+        </details>
+
+        <details class="py-6 group">
+          <summary class="flex items-start justify-between gap-4">
+            <span class="text-fg font-medium text-lg pr-4">How can I get involved beyond testnet?</span>
+            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
+          <p class="mt-4 text-soft leading-relaxed">Join our <a href="https://t.me/calmalend" target="_blank" rel="noopener" class="text-accent hover:underline">Telegram</a> and follow us on <a href="https://x.com/calmalend" target="_blank" rel="noopener" class="text-accent hover:underline">X</a> for updates. Reach out at <a href="mailto:founders@calma.fi" class="text-accent hover:underline">founders@calma.fi</a> if you're an institution, integrator, or researcher.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FLOATING VERSION SWITCHER ============ -->
+<div id="versionSwitcher" class="fixed bottom-5 right-5 z-[100]">
+  <div id="vMenu" class="hidden mb-3 rounded-xl border border-rule bg-base shadow-lg overflow-hidden min-w-[200px]">
+    <div class="px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted border-b border-rule">Page version</div>
+    <a href="index.html" data-vlink="v1" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors">
+      <div>
+        <div class="text-fg text-sm font-medium">Version 1</div>
+        <div class="text-muted text-xs">Clean · monochrome</div>
+      </div>
+      <span data-vactive="v1" class="hidden text-fg text-lg">●</span>
+    </a>
+    <a href="v2.html" data-vlink="v2" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors border-t border-rule">
+      <div>
+        <div class="text-fg text-sm font-medium">Version 2</div>
+        <div class="text-muted text-xs">Work in progress</div>
+      </div>
+      <span data-vactive="v2" class="hidden text-fg text-lg">●</span>
+    </a>
+  </div>
+  <button id="vToggle" class="flex items-center gap-2 bg-fg text-base px-4 py-3 rounded-full shadow-lg hover:opacity-90 transition-opacity">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+    <span id="vLabel" class="text-xs font-mono uppercase tracking-wider">v1</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="vChev"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+</div>
+
+<!-- ============ FOOTER ============ -->
+<footer class="border-t border-rule bg-base">
+  <div class="max-w-page mx-auto px-6 py-16">
+    <div class="grid md:grid-cols-12 gap-10">
+      <div class="md:col-span-5">
+        <div class="flex items-center gap-2.5 mb-4">
+          <svg class="w-8 h-8"><use href="#calma-mark"/></svg>
+          <span class="text-fg text-xl font-semibold tracking-tighter">Calma</span>
+        </div>
+        <p class="text-soft max-w-sm">Built by lenders, for better finance.</p>
+        <p class="mt-2 text-xs text-muted font-mono uppercase tracking-wider">Powered by Solana / Built by lenders</p>
+        <div class="flex items-center gap-3 mt-5">
+          <a href="https://x.com/calmalend" target="_blank" rel="noopener" aria-label="Calma on X" class="w-9 h-9 rounded-md border border-rule flex items-center justify-center text-soft hover:text-fg hover:border-fg transition-colors">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </a>
+          <a href="https://t.me/calmalend" target="_blank" rel="noopener" aria-label="Calma on Telegram" class="w-9 h-9 rounded-md border border-rule flex items-center justify-center text-soft hover:text-fg hover:border-fg transition-colors">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
+          </a>
+          <a href="https://www.linkedin.com/company/calmalend" target="_blank" rel="noopener" aria-label="Calma on LinkedIn" class="w-9 h-9 rounded-md border border-rule flex items-center justify-center text-soft hover:text-fg hover:border-fg transition-colors">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 110-4.13 2.06 2.06 0 010 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="md:col-span-2">
+        <div class="text-fg font-medium mb-4 text-sm">Product</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="#how" class="hover:text-fg transition-colors">How it works</a></li>
+          <li><a href="#" class="hover:text-fg transition-colors">Docs</a></li>
+        </ul>
+      </div>
+      <div class="md:col-span-2">
+        <div class="text-fg font-medium mb-4 text-sm">Community</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="https://x.com/calmalend" target="_blank" rel="noopener" class="hover:text-fg transition-colors">X (Twitter)</a></li>
+          <li><a href="https://t.me/calmalend" target="_blank" rel="noopener" class="hover:text-fg transition-colors">Telegram</a></li>
+          <li><a href="https://www.linkedin.com/company/calmalend" target="_blank" rel="noopener" class="hover:text-fg transition-colors">LinkedIn</a></li>
+          <li><a href="mailto:founders@calma.fi" class="hover:text-fg transition-colors">Email</a></li>
+        </ul>
+      </div>
+      <div class="md:col-span-3">
+        <div class="text-fg font-medium mb-4 text-sm">Legal</div>
+        <ul class="space-y-2 text-sm text-soft">
+          <li><a href="#" class="hover:text-fg transition-colors">Terms of Service</a></li>
+          <li><a href="#" class="hover:text-fg transition-colors">Privacy Policy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="mt-14 pt-8 border-t border-rule flex flex-col md:flex-row gap-3 items-center justify-between">
+      <div class="text-xs text-muted font-mono">© 2026 Calma Protocol · Just Better Lending</div>
+      <div class="text-xs text-muted font-mono">v0.1 · testnet</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ===== Nav scrolled state =====
+const nav = document.getElementById('nav');
+const onScroll = () => {
+  if (window.scrollY > 16) nav.classList.add('nav-scrolled');
+  else nav.classList.remove('nav-scrolled');
+};
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// ===== Mobile menu =====
+document.getElementById('menuBtn').addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.toggle('hidden');
+});
+document.querySelectorAll('#mobileMenu a').forEach(a => a.addEventListener('click', () => {
+  document.getElementById('mobileMenu').classList.add('hidden');
+}));
+
+// ===== Fade-up on scroll =====
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('is-in'); });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
+// Fallback — ensure everything is visible after 1.2s in case observer is suppressed (headless screenshots etc.)
+setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el => el.classList.add('is-in')), 1200);
+
+// ===== Hero image-sequence player (replaces video) =====
+// Pre-renders frames to <img> objects, then on scroll progress draws the appropriate frame
+// into a canvas. This is the Apple-style approach and runs identically fast on every browser
+// because there is no per-frame video decode — just a cached image swap.
+(function(){
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  const wrap    = document.getElementById('heroWrap');
+  const canvas  = document.getElementById('heroCanvas');
+  const content = document.getElementById('heroContent');
+  const progressBar = document.getElementById('heroProgress');
+  const hint    = document.getElementById('heroScrollHint');
+  if (!wrap || !canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const FRAME_COUNT = 85;
+  const PAD = (n) => String(n).padStart(3, '0');
+  const frames = [];
+  let lastDrawn = -1;
+  let canvasSized = false;
+
+  // Preload every frame. Browsers cache them so re-draws are instant.
+  for (let i = 1; i <= FRAME_COUNT; i++) {
+    const img = new Image();
+    img.src = `media/frames/frame_${PAD(i)}.jpg`;
+    frames.push(img);
+  }
+
+  function sizeCanvas(img) {
+    if (canvasSized) return;
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvasSized = true;
+  }
+
+  function drawFrame(idx) {
+    if (idx === lastDrawn) return;
+    const img = frames[idx];
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+    sizeCanvas(img);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    lastDrawn = idx;
+  }
+
+  // Draw first frame as soon as it's available so the canvas isn't blank at load.
+  if (frames[0].complete) drawFrame(0);
+  else frames[0].addEventListener('load', () => drawFrame(0), { once: true });
+
+  const mini = document.getElementById('heroMini');
+
+  // ===== Triggered segment pager (replaces 1:1 scroll-scrubbing) =====
+  // Each scroll gesture plays exactly ONE segment of the sequence with an
+  // ease-in/ease-out tween at a fixed speed — independent of how hard the user
+  // scrolls. The hero is pinned (page scroll locked) until the final stop is
+  // reached; scrolling back up replays segments in reverse.
+  // Stops land on the key "money shots" of the sequence:
+  //   0 = frame 1  (hero text, light)  |  1 = frame 28 (Calma symbol, light)
+  //   2 = frame 63 (Solana logo, black) |  3 = frame 85 (end → auto-glide to next section)
+  const LAST         = FRAME_COUNT - 1;        // 84
+  const STOP_FRAMES  = [0, 27, 62, LAST];      // frame indices: 1, 28, 63, 85
+  const LAST_STOP    = STOP_FRAMES.length - 1; // 3
+  // Duration is proportional to how many frames a segment spans, so the on-screen
+  // motion speed stays constant across segments. (A fixed duration made the longest
+  // segment — 28→63 — look fast because it crammed more frames into the same time.)
+  const FRAMES_PER_SEC   = 18;                 // pacing → ~1.5s for the opening segment
+  const MIN_SEG_DURATION = 0.6;                // floor for tiny jumps
+  const SEG_EASE         = 'power3.inOut';     // pronounced ease-in / ease-out (gentle start + stop)
+  const segDuration = (target) =>
+    Math.max(MIN_SEG_DURATION, Math.abs(STOP_FRAMES[target] - STOP_FRAMES[currentStop]) / FRAMES_PER_SEC);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const playState = { f: 0 };
+  let currentStop   = 0;
+  let animating     = false;
+  let heroActive    = false;
+  let releasing     = false;
+  let cooldownUntil = 0;
+
+  const html = document.documentElement;
+  const lockScroll   = () => { html.style.overflow = 'hidden'; };
+  const unlockScroll = () => { html.style.overflow = ''; };
+
+  const setProgress = (frame) => {
+    if (progressBar) progressBar.style.width = ((frame / LAST) * 100).toFixed(2) + '%';
+  };
+
+  // Header (logo + menu) flips to white while the frame behind it is black.
+  const nav = document.getElementById('nav');
+  const NAV_DARK_FROM = 59;   // frame index from which the top of the canvas is black (frame 60+)
+  const updateNavTheme = (frameIdx) => {
+    if (nav) nav.classList.toggle('nav-on-dark', frameIdx >= NAV_DARK_FROM);
+  };
+
+  // Fade the centered hero text / bottom-left card based on the target stop.
+  function applyPhase(target) {
+    if (content) {
+      if (target >= 1) {
+        content.style.pointerEvents = 'none';
+        gsap.to(content, { opacity: 0, y: -30, scale: 0.97, duration: 0.4, ease: 'power2.out', overwrite: true });
+      } else {
+        gsap.to(content, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'power2.out', overwrite: true,
+                           onComplete: () => content.style.pointerEvents = 'auto' });
+      }
+    }
+    if (mini) {
+      if (target >= 2) {
+        gsap.to(mini, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out', overwrite: true,
+                        onComplete: () => mini.style.pointerEvents = 'auto' });
+      } else {
+        mini.style.pointerEvents = 'none';
+        gsap.to(mini, { opacity: 0, y: 30, duration: 0.4, ease: 'power2.out', overwrite: true });
+      }
+    }
+  }
+
+  // Smoothly play to a stop with ease-in/ease-out.
+  function goToStop(target, onDone) {
+    if (animating || target < 0 || target > LAST_STOP || target === currentStop) { if (onDone) onDone(); return; }
+    animating = true;
+    if (hint) gsap.to(hint, { opacity: 0, duration: 0.3, overwrite: true });
+    applyPhase(target);
+    const dur = segDuration(target);
+    gsap.to(canvas, { scale: 1 + 0.12 * (target / LAST_STOP), duration: dur, ease: SEG_EASE, overwrite: true });
+    gsap.to(playState, {
+      f: STOP_FRAMES[target],
+      duration: dur,
+      ease: SEG_EASE,
+      onUpdate: () => { const fr = Math.round(playState.f); drawFrame(fr); setProgress(fr); updateNavTheme(fr); },
+      onComplete: () => {
+        currentStop = target;
+        animating = false;
+        cooldownUntil = performance.now() + 300;
+        // Final segment finished → gently glide on to the next section (no extra scroll needed).
+        if (target === LAST_STOP) setTimeout(releaseDown, 350);
+        if (onDone) onDone();
+      }
+    });
+  }
+
+  // One scroll down plays the WHOLE sequence in stages: advance a stop, dwell ~1s,
+  // advance the next, dwell ~1s, reach the final stop, then auto-glide to the next section.
+  let autoPlaying = false;
+  const STAGE_DWELL = 1000; // ms pause between stages
+  function autoPlay() {
+    if (autoPlaying || animating) return;
+    autoPlaying = true;
+    const next = (target) => {
+      goToStop(target, () => {
+        if (target < LAST_STOP) setTimeout(() => next(target + 1), STAGE_DWELL);
+        else autoPlaying = false; // releaseDown already scheduled inside goToStop
+      });
+    };
+    next(currentStop + 1);
+  }
+
+  // Snap instantly to a stop (re-entry / reduced motion) — no tween.
+  function jumpToStop(target) {
+    gsap.killTweensOf([playState, canvas]);
+    currentStop = target;
+    playState.f = STOP_FRAMES[target];
+    drawFrame(STOP_FRAMES[target]);
+    setProgress(STOP_FRAMES[target]);
+    updateNavTheme(STOP_FRAMES[target]);
+    gsap.set(canvas, { scale: 1 + 0.12 * (target / LAST_STOP) });
+    applyPhase(target);
+  }
+
+  function activateHero(atStop) {
+    heroActive = true;
+    lockScroll();
+    window.scrollTo(0, 0);
+    jumpToStop(atStop);
+  }
+
+  // Eased programmatic scroll — native 'smooth' is too fast and not tunable.
+  function smoothScrollTo(targetY, duration, onDone) {
+    const startY = window.scrollY;
+    const dist   = targetY - startY;
+    const t0     = performance.now();
+    const ease   = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2); // easeInOutCubic
+    (function step(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      window.scrollTo(0, startY + dist * ease(p));
+      if (p < 1) requestAnimationFrame(step);
+      else if (onDone) onDone();
+    })(t0);
+  }
+
+  function releaseDown() {
+    if (!heroActive) return;
+    heroActive = false;
+    releasing  = true;
+    unlockScroll();
+    // Keep the header white during the glide (the black hero is still behind it),
+    // then flip back to dark once the light next section sits under the header.
+    smoothScrollTo(wrap.offsetHeight, 1100, () => { if (nav) nav.classList.remove('nav-on-dark'); });
+  }
+
+  // dir: +1 = forward/down, -1 = back/up
+  function handleIntent(dir) {
+    if (!heroActive || animating || autoPlaying || performance.now() < cooldownUntil) return;
+    if (dir > 0) {
+      // one scroll down kicks off the whole staged animation, then glides to the next section
+      currentStop < LAST_STOP ? autoPlay() : releaseDown();
+    } else if (currentStop > 0) {
+      goToStop(0);   // scroll up = one continuous rewind straight to the start
+    }
+    // dir < 0 at stop 0 → already at page top, nothing to do
+  }
+
+  window.addEventListener('wheel', (e) => {
+    if (!heroActive) return;
+    e.preventDefault();                       // we own the scroll while the hero is pinned
+    if (Math.abs(e.deltaY) < 4) return;
+    handleIntent(e.deltaY > 0 ? 1 : -1);
+  }, { passive: false });
+
+  let touchStartY = null;
+  window.addEventListener('touchstart', (e) => {
+    if (heroActive) touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (!heroActive || touchStartY === null) return;
+    e.preventDefault();
+    const dy = e.touches[0].clientY - touchStartY;
+    if (Math.abs(dy) < 24) return;
+    handleIntent(dy < 0 ? 1 : -1);            // swipe up = forward
+    touchStartY = null;
+  }, { passive: false });
+  window.addEventListener('touchend', () => { touchStartY = null; }, { passive: true });
+
+  window.addEventListener('keydown', (e) => {
+    if (!heroActive) return;
+    if (['ArrowDown', 'PageDown', ' ', 'Spacebar'].includes(e.key)) { e.preventDefault(); handleIntent(1); }
+    else if (['ArrowUp', 'PageUp'].includes(e.key))                 { e.preventDefault(); handleIntent(-1); }
+  });
+
+  // Re-pin the hero (at its end state) when the user scrolls all the way back to the top.
+  window.addEventListener('scroll', () => {
+    if (releasing) { if (window.scrollY > 10) releasing = false; return; }
+    if (heroActive || reduceMotion) return;
+    if (window.scrollY <= 1) activateHero(LAST_STOP);
+  }, { passive: true });
+
+  // In-page anchor links must escape the pin so they can scroll freely.
+  document.querySelectorAll('a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', () => { if (heroActive) { heroActive = false; releasing = true; unlockScroll(); } });
+  });
+
+  if (reduceMotion) {
+    // Accessibility: no scroll-jacking. Static hero, page scrolls normally.
+    unlockScroll();
+    jumpToStop(0);
+  } else {
+    activateHero(0);
+  }
+})();
+
+// ===== GSAP scroll-driven animations for all sections =====
+// IMPORTANT: hero is position:sticky inside a full-height (h-screen) wrapper. ScrollTrigger can
+// mis-calculate where post-hero sections "enter" the viewport in that context, so
+// every reveal here uses a forgiving trigger AND never sets opacity:0 as the initial
+// state — elements remain visible if for any reason the trigger doesn't fire.
+(function(){
+  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Always immediately reveal fade-up CSS class members so they're visible regardless of GSAP
+  gsap.utils.toArray('.fade-up').forEach(el => el.classList.add('is-in'));
+  if (reduce) return;
+
+  const baseST = {
+    start: 'top 92%',
+    toggleActions: 'play none none none',
+    once: true,
+    invalidateOnRefresh: true,
+  };
+
+  // 1) Section eyebrows + h2 + intro paragraph: subtle slide-up on enter
+  gsap.utils.toArray('main section').forEach(section => {
+    if (section.id === 'heroWrap') return;
+    const eyebrow = section.querySelector('[data-section-eyebrow]');
+    const heading = section.querySelector('h2');
+    const intro   = section.querySelector('h2 + p, h2 + * + p');
+    const trio = [eyebrow, heading, intro].filter(Boolean);
+    if (!trio.length) return;
+    gsap.fromTo(trio,
+      { y: 22 },
+      {
+        y: 0,
+        duration: 0.7,
+        stagger: 0.08,
+        ease: 'power3.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: section, start: 'top 88%' },
+      }
+    );
+  });
+
+  // 2) Stagger reveal for grids marked with data-gsap-stagger
+  //    Use fromTo with immediateRender:false so content is visible if ScrollTrigger
+  //    doesn't fire (e.g. inside pinned hero context). Animation is purely additive lift.
+  gsap.utils.toArray('[data-gsap-stagger]').forEach(group => {
+    const items = Array.from(group.children);
+    if (!items.length) return;
+    gsap.fromTo(items,
+      { y: 30 },
+      {
+        y: 0,
+        duration: 0.7,
+        stagger: 0.07,
+        ease: 'power3.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: group },
+      }
+    );
+  });
+
+  // 3) Row reveal (leaderboard, FAQ accordion)
+  gsap.utils.toArray('[data-gsap-rows]').forEach(group => {
+    const rows = Array.from(group.children);
+    if (!rows.length) return;
+    gsap.fromTo(rows,
+      { x: -18 },
+      {
+        x: 0,
+        duration: 0.55,
+        stagger: 0.06,
+        ease: 'power2.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: group },
+      }
+    );
+  });
+
+  // 4) Continuous parallax on section h2 — drift upward as you scroll through
+  gsap.utils.toArray('main section h2').forEach(h => {
+    gsap.to(h, {
+      yPercent: -18,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: h.closest('section'),
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1.2,
+        invalidateOnRefresh: true,
+      }
+    });
+  });
+
+  // 5) Counter-parallax on section eyebrows (only section-level, not bento tile labels)
+  gsap.utils.toArray('[data-section-eyebrow]').forEach(eb => {
+    gsap.to(eb, {
+      yPercent: 30,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: eb.closest('section'),
+        start: 'top bottom',
+        end: 'bottom top',
+        scrub: 1.5,
+        invalidateOnRefresh: true,
+      }
+    });
+  });
+
+  // 6) Form panel: subtle slide reveal
+  const form = document.getElementById('instForm');
+  if (form) {
+    gsap.fromTo(form, { y: 40 }, {
+      y: 0,
+      duration: 0.8,
+      ease: 'power3.out',
+      immediateRender: false,
+      scrollTrigger: { ...baseST, trigger: form },
+    });
+  }
+
+  // 7) Whales CTA — small spring lift
+  const whalesCta = document.querySelector('#whales a[href="#"]');
+  if (whalesCta) {
+    gsap.fromTo(whalesCta, { y: 20 }, {
+      y: 0,
+      duration: 0.7,
+      ease: 'back.out(1.4)',
+      immediateRender: false,
+      scrollTrigger: { ...baseST, trigger: whalesCta, start: 'top 95%' },
+    });
+  }
+
+  // 8) Footer reveal — small stagger
+  const footer = document.querySelector('footer');
+  if (footer) {
+    const cols = footer.querySelectorAll('.md\\:col-span-5, .md\\:col-span-2, .md\\:col-span-3');
+    if (cols.length) {
+      gsap.fromTo(cols, { y: 20 }, {
+        y: 0,
+        duration: 0.55,
+        stagger: 0.08,
+        ease: 'power2.out',
+        immediateRender: false,
+        scrollTrigger: { ...baseST, trigger: footer },
+      });
+    }
+  }
+
+  // Refresh ScrollTrigger after layout settles (covers webfont loading, video meta, etc.)
+  setTimeout(() => ScrollTrigger.refresh(), 400);
+  window.addEventListener('load', () => ScrollTrigger.refresh());
+
+  // Safety net: if GSAP somehow leaves any element at opacity 0 / translated, clear it after 4s
+  setTimeout(() => {
+    document.querySelectorAll('[data-gsap-stagger] > *, [data-gsap-rows] > *, #instForm, footer .md\\:col-span-5, footer .md\\:col-span-2, footer .md\\:col-span-3, main section [data-section-eyebrow], main section h2, main section h2 + p').forEach(el => {
+      const cs = getComputedStyle(el);
+      if (parseFloat(cs.opacity) < 0.1) el.style.opacity = '1';
+    });
+  }, 4000);
+})();
+
+// ===== Animated utilization curve =====
+(function(){
+  const solid    = document.getElementById('curvePath');
+  const dashed   = document.getElementById('curvePathDashed');
+  const dotGroup = document.getElementById('curveDotGroup');
+  const label    = document.getElementById('curveLabel');
+  const labelVal = document.getElementById('curveLabelVal');
+  if (!solid || !dotGroup) return;
+
+  // ---- geometry -------------------------------------------------------
+  // x ∈ [40,340] maps utilisation 0..108% ; y: 188 (low) .. 44 (high)
+  const X0 = 40, X1 = 340, U_MAX = 108;
+  const Y_LOW = 188, Y_ELBOW = 150, Y_TOP = 44, U_ELBOW = 98, U_PEAK = 105;
+
+  const xPos  = (u) => X0 + (u / U_MAX) * (X1 - X0);
+  function rateY(u){
+    if (u <= U_ELBOW){
+      // long, low, gently-rising tail (concave): 0% -> 98%
+      return Y_LOW - (Y_LOW - Y_ELBOW) * Math.pow(u / U_ELBOW, 0.65);
+    }
+    // sharp elbow -> steep climb, continues past 100% (dashed): 98% -> 108%
+    const f = (u - U_ELBOW) / (U_MAX - U_ELBOW);
+    return Y_ELBOW - (Y_ELBOW - Y_TOP) * Math.pow(f, 1.15);
+  }
+  function buildPath(uStart, uEnd){
+    let d = '', steps = 64;
+    for (let i = 0; i <= steps; i++){
+      const u = uStart + (uEnd - uStart) * i / steps;
+      d += (i === 0 ? 'M' : 'L') + xPos(u).toFixed(1) + ',' + rateY(u).toFixed(1) + ' ';
+    }
+    return d.trim();
+  }
+  solid.setAttribute('d', buildPath(0, 100));          // solid up to 100%
+  if (dashed) dashed.setAttribute('d', buildPath(100, U_MAX)); // dashed beyond 100%
+
+  // ---- motion timeline (seconds) -------------------------------------
+  // intro plays once (0% -> 98%), then we loop drift <-> spike forever.
+  const introDur = 2.6, driftDur = 2.8, upDur = 0.95, backDur = 0.5;
+  const loopDur  = driftDur + upDur + backDur;
+
+  function utilAt(t){
+    if (t < introDur){                                   // 0% -> 98% (ease-out)
+      const f = t / introDur;
+      return U_ELBOW * (1 - Math.pow(1 - f, 3));
+    }
+    const lt = (t - introDur) % loopDur;                 // never returns to 0 again
+    if (lt < driftDur){                                  // drift ~97–99% around 98%
+      const env = Math.sin(Math.PI * lt / driftDur);     // 0..1..0 → starts/ends at 98
+      return U_ELBOW + env * (0.9 * Math.sin(lt * 2.3) + 0.35 * Math.sin(lt * 1.1 + 0.6));
+    }
+    if (lt < driftDur + upDur){                          // spike 98% -> 105% (gentle ease-in-out)
+      const f = (lt - driftDur) / upDur;
+      return U_ELBOW + (U_PEAK - U_ELBOW) * (f * f * (3 - 2 * f));
+    }
+    const f = (lt - driftDur - upDur) / backDur;          // snap back 105% -> 98%
+    return U_PEAK - (U_PEAK - U_ELBOW) * (1 - Math.pow(1 - f, 2));
+  }
+
+  let start = performance.now();
+  function step(now){
+    const t = Math.max(0, (now - start) / 1000);
+    const u = Math.max(0, Math.min(U_MAX, utilAt(t)));
+    const x = xPos(u), y = rateY(u);
+    dotGroup.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+    if (labelVal) labelVal.textContent = Math.round(u) + '%';
+    let lx = x; if (lx < 80) lx = 80; if (lx > 300) lx = 300;
+    if (label) label.setAttribute('transform', `translate(${lx.toFixed(1)},${y.toFixed(1)})`);
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+})();
+
+// ===== Version switcher =====
+(function(){
+  const path = location.pathname.split('/').pop() || 'index.html';
+  const currentVersion = path.startsWith('v2') ? 'v2' : 'v1';
+  document.getElementById('vLabel').textContent = currentVersion;
+  const activeMark = document.querySelector(`[data-vactive="${currentVersion}"]`);
+  if (activeMark) activeMark.classList.remove('hidden');
+
+  const toggle = document.getElementById('vToggle');
+  const menu = document.getElementById('vMenu');
+  const chev = document.getElementById('vChev');
+  let open = false;
+  function setOpen(state){
+    open = state;
+    menu.classList.toggle('hidden', !open);
+    chev.style.transform = open ? 'rotate(180deg)' : '';
+  }
+  toggle.addEventListener('click', (e) => { e.stopPropagation(); setOpen(!open); });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('versionSwitcher').contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+})();
+
+// ===== Form fake-submit =====
+document.getElementById('instForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const status = document.getElementById('instStatus');
+  status.textContent = 'Submitting…';
+  status.className = 'text-xs text-center text-muted';
+  setTimeout(() => {
+    status.textContent = '✓ Got it. We will reach out within 48h.';
+    status.className = 'text-xs text-center text-accent';
+    e.target.reset();
+  }, 600);
+});
+
+// ===== Waitlist modal + institutional "Other" toggle =====
+// deferred: the modal markup lives below this script, so wait for full parse
+document.addEventListener('DOMContentLoaded', function(){
+  const modal = document.getElementById('waitlistModal');
+  if (modal) {
+    const formBox = document.getElementById('waitlistForm');
+    const success = document.getElementById('waitlistSuccess');
+    const formEl  = document.getElementById('waitlistFormEl');
+    const errBox  = document.getElementById('wlError');
+    const open = () => {
+      formBox.classList.remove('hidden'); success.classList.add('hidden');
+      if (errBox) { errBox.classList.add('hidden'); errBox.textContent = ''; }
+      modal.classList.remove('hidden');
+      setTimeout(() => { const f = document.getElementById('wlEmail'); if (f) f.focus(); }, 50);
+    };
+    const close = () => { modal.classList.add('hidden'); if (formEl) formEl.reset(); };
+    document.querySelectorAll('[data-waitlist]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); open(); }));
+    modal.querySelectorAll('[data-waitlist-close]').forEach(el => el.addEventListener('click', close));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
+    // don't let the hero pager advance on scroll while the modal is open
+    ['wheel','touchmove'].forEach(ev => modal.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+    if (formEl) formEl.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const wallet = document.getElementById('wlWallet').value.trim();
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) {
+        if (errBox) { errBox.textContent = 'That doesn’t look like a Solana address — please double-check.'; errBox.classList.remove('hidden'); }
+        return;
+      }
+      if (errBox) errBox.classList.add('hidden');
+      formBox.classList.add('hidden'); success.classList.remove('hidden');
+    });
+  }
+
+  // institutional form: reveal the free-text field when "Other" is ticked
+  const other = document.getElementById('intOther');
+  const otherText = document.getElementById('intOtherText');
+  if (other && otherText) other.addEventListener('change', () => otherText.classList.toggle('hidden', !other.checked));
+});
+</script>
+
+<!-- ============ WAITLIST MODAL ============ -->
+<div id="waitlistModal" class="hidden fixed inset-0 z-[200] flex items-center justify-center px-6">
+  <div data-waitlist-close class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+  <div class="relative w-full max-w-md rounded-2xl border border-rule bg-base p-7 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="waitlistTitle">
+    <button type="button" data-waitlist-close aria-label="Close" class="absolute top-4 right-4 text-muted hover:text-fg transition-colors">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+    <div id="waitlistForm">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider">Early access</div>
+      <h3 id="waitlistTitle" class="mt-2 text-fg font-semibold text-2xl tracking-tight">Join the waitlist</h3>
+      <p class="mt-2 text-soft text-sm leading-relaxed">Drop your email and Solana wallet — we'll reach out with early access.</p>
+      <form id="waitlistFormEl" class="mt-6 space-y-4">
+        <div>
+          <label for="wlEmail" class="block text-sm text-soft mb-2">Email <span class="text-accent">*</span></label>
+          <input id="wlEmail" type="email" required placeholder="you@fund.com"
+                 class="w-full bg-ink border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+        </div>
+        <div>
+          <label for="wlWallet" class="block text-sm text-soft mb-2">Solana wallet <span class="text-accent">*</span></label>
+          <input id="wlWallet" type="text" required autocomplete="off" spellcheck="false" placeholder="Your Solana address"
+                 class="w-full bg-ink border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm font-mono text-fg placeholder:text-muted transition-colors">
+        </div>
+        <p id="wlError" class="hidden text-xs text-red-500"></p>
+        <button type="submit" class="w-full bg-accent hover:bg-accent2 text-base py-3 rounded-md font-medium transition-colors">Join waitlist</button>
+      </form>
+      <p class="mt-3 text-[11px] text-muted text-center">No spam — only early-access updates.</p>
+    </div>
+    <div id="waitlistSuccess" class="hidden text-center py-4">
+      <div class="mx-auto w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent text-xl">✓</div>
+      <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">You're on the list.</h3>
+      <p class="mt-2 text-soft text-sm">Saved — we'll reach out soon with early access.</p>
+      <button type="button" data-waitlist-close class="mt-6 inline-flex items-center justify-center border border-rule hover:border-fg text-fg px-5 py-2.5 rounded-md text-sm font-medium transition-colors">Close</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
