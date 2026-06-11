@@ -1383,17 +1383,35 @@ setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el =>
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
 })();
 
-// ===== Form fake-submit =====
-document.getElementById('instForm').addEventListener('submit', (e) => {
+// ===== Form submit =====
+document.getElementById('instForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const status = document.getElementById('instStatus');
   status.textContent = 'Submitting…';
   status.className = 'text-xs text-center text-muted';
-  setTimeout(() => {
-    status.textContent = '✓ Got it. We will reach out within 48h.';
-    status.className = 'text-xs text-center text-accent';
-    e.target.reset();
-  }, 600);
+
+  const data = Object.fromEntries(new FormData(e.target));
+  data.interest = [...e.target.querySelectorAll('[name="interest"]:checked')].map(el => el.value);
+
+  try {
+    const res = await fetch('https://europe-west1-calma-functions.cloudfunctions.net/contactForm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (res.ok) {
+      status.textContent = '✓ Got it. We will reach out within 48h.';
+      status.className = 'text-xs text-center text-accent';
+      e.target.reset();
+    } else {
+      status.textContent = 'Something went wrong. Please try again.';
+      status.className = 'text-xs text-center text-red-400';
+    }
+  } catch {
+    status.textContent = 'Something went wrong. Please try again.';
+    status.className = 'text-xs text-center text-red-400';
+  }
 });
 </script>
 
