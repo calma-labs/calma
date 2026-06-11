@@ -15,7 +15,7 @@ fi
 
 gcloud functions deploy contactForm \
   --project calma-functions \
-  --runtime nodejs20 \
+  --runtime nodejs24 \
   --trigger-http \
   --allow-unauthenticated \
   --region europe-west1 \
