@@ -2,10 +2,6 @@ name: Build
 
 on:
   workflow_call:
-    inputs:
-      build_pages:
-        type: boolean
-        default: false
 
 jobs:
   build:
@@ -57,18 +53,6 @@ jobs:
       - name: Install dependencies
         working-directory: app
         run: npm i
-
-      - name: Build for GitHub Pages (base /jbl/)
-        if: inputs.build_pages
-        working-directory: app
-        env:
-          VITE_ROUTER_BASENAME: /jbl/
-        run: bun run build --base=/jbl/
-
-      - uses: actions/upload-pages-artifact@v3
-        if: inputs.build_pages
-        with:
-          path: app/dist
 
       - name: Build for Vercel (base /app/)
         working-directory: app
