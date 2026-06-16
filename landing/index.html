@@ -1550,7 +1550,7 @@ document.getElementById('instForm').addEventListener('submit', async (e) => {
   data.interest = [...e.target.querySelectorAll('[name="interest"]:checked')].map(el => el.value);
 
   try {
-    const res = await fetch('https://europe-west1-calma-functions.cloudfunctions.net/contactForm', {
+    const res = await fetch('https://europe-west1-calma-498512.cloudfunctions.net/contactForm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
