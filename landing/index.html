@@ -1538,77 +1538,9 @@ setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el =>
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
 })();
-
-// ===== Form submit =====
-document.getElementById('instForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const status = document.getElementById('instStatus');
-  status.textContent = 'Submitting…';
-  status.className = 'text-xs text-center text-muted';
-
-  const data = Object.fromEntries(new FormData(e.target));
-  data.interest = [...e.target.querySelectorAll('[name="interest"]:checked')].map(el => el.value);
-
-  try {
-    const res = await fetch('https://europe-west1-calma-498512.cloudfunctions.net/contactForm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-
-    if (res.ok) {
-      status.textContent = '✓ Got it. We will reach out within 48h.';
-      status.className = 'text-xs text-center text-accent';
-      e.target.reset();
-    } else {
-      status.textContent = 'Something went wrong. Please try again.';
-      status.className = 'text-xs text-center text-red-400';
-    }
-  } catch {
-    status.textContent = 'Something went wrong. Please try again.';
-    status.className = 'text-xs text-center text-red-400';
-  }
-});
-
-// ===== Waitlist modal + institutional "Other" toggle =====
-// deferred: the modal markup lives below this script, so wait for full parse
-document.addEventListener('DOMContentLoaded', function(){
-  const modal = document.getElementById('waitlistModal');
-  if (modal) {
-    const formBox = document.getElementById('waitlistForm');
-    const success = document.getElementById('waitlistSuccess');
-    const formEl  = document.getElementById('waitlistFormEl');
-    const errBox  = document.getElementById('wlError');
-    const open = () => {
-      formBox.classList.remove('hidden'); success.classList.add('hidden');
-      if (errBox) { errBox.classList.add('hidden'); errBox.textContent = ''; }
-      modal.classList.remove('hidden');
-      setTimeout(() => { const f = document.getElementById('wlEmail'); if (f) f.focus(); }, 50);
-    };
-    const close = () => { modal.classList.add('hidden'); if (formEl) formEl.reset(); };
-    document.querySelectorAll('[data-waitlist]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); open(); }));
-    modal.querySelectorAll('[data-waitlist-close]').forEach(el => el.addEventListener('click', close));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
-    // don't let the hero pager advance on scroll while the modal is open
-    ['wheel','touchmove'].forEach(ev => modal.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
-    if (formEl) formEl.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const wallet = document.getElementById('wlWallet').value.trim();
-      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet)) {
-        if (errBox) { errBox.textContent = 'That doesn’t look like a Solana address — please double-check.'; errBox.classList.remove('hidden'); }
-        return;
-      }
-      if (errBox) errBox.classList.add('hidden');
-      formBox.classList.add('hidden'); success.classList.remove('hidden');
-    });
-  }
-
-  // institutional form: reveal the free-text field when "Other" is ticked
-  const other = document.getElementById('intOther');
-  const otherText = document.getElementById('intOtherText');
-  if (other && otherText) other.addEventListener('change', () => otherText.classList.toggle('hidden', !other.checked));
-});
 </script>
+
+<script src="forms.js" defer></script>
 
 <!-- ============ WAITLIST MODAL ============ -->
 <div id="waitlistModal" class="hidden fixed inset-0 z-[200] flex items-center justify-center px-6">
