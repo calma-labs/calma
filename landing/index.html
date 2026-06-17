@@ -99,18 +99,6 @@ tailwind.config = {
   /* Sticky nav blur after scroll */
   .nav-scrolled { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid #E6EBF5; }
 
-  /* hero phase transition — promote each phase layer to its own GPU layer so Chrome composites
-     opacity/transform without repainting. Eliminates ghost-frame + scroll stutter on Chrome. */
-  #heroContent,
-  #heroMini {
-    will-change: opacity, transform;
-    transform: translateZ(0);
-    -webkit-backface-visibility: hidden;
-            backface-visibility: hidden;
-  }
-  #heroMini { opacity: 0; }
-  /* canvas fills the pin like a video would */
-  #heroCanvas { display: block; width: 100%; height: 100%; object-fit: cover; }
 
   @media (prefers-reduced-motion: reduce) {
     .fade-up { opacity: 1; transform: none; transition: none; }
@@ -196,7 +184,6 @@ tailwind.config = {
     <nav class="hidden md:flex items-center gap-8 text-sm text-soft">
       <a href="#why" class="hover:text-fg transition-colors">Why Calma</a>
       <a href="#institutions" class="hover:text-fg transition-colors">Institutions</a>
-      <a href="#whales" class="hover:text-fg transition-colors">Whales</a>
       <a href="#how" class="hover:text-fg transition-colors">How it works</a>
       <a href="#products" class="hover:text-fg transition-colors">Products</a>
     </nav>
@@ -214,7 +201,6 @@ tailwind.config = {
     <div class="px-6 py-4 flex flex-col gap-4 text-soft">
       <a href="#why" class="py-1">Why Calma</a>
       <a href="#institutions" class="py-1">Institutions</a>
-      <a href="#whales" class="py-1">Whales</a>
       <a href="#how" class="py-1">How it works</a>
       <a href="#products" class="py-1">Products</a>
       <a href="#beta" class="mt-2 inline-flex justify-center bg-accent text-base px-4 py-2 rounded-md text-sm font-medium">Join closed beta</a>
@@ -226,10 +212,9 @@ tailwind.config = {
 
 <!-- ============ HERO (V2 — parallax video pin, bottom-left text, blend-mode auto invert) ============ -->
 <section id="heroWrap" class="relative h-screen">
-  <div id="heroPin" class="sticky top-0 h-screen w-full overflow-hidden bg-base">
-    <!-- Background animation: image-sequence player on a canvas. Way more performant than scroll-
-         scrubbed <video> on Chrome/Firefox (no per-frame decode). Frames live in media/frames/. -->
-    <canvas id="heroCanvas" class="absolute inset-0 w-full h-full object-cover" aria-hidden="true"></canvas>
+  <div id="heroPin" class="relative h-screen w-full overflow-hidden bg-base">
+    <!-- Static hero background: first frame only. Scroll animation disabled per client request. -->
+    <img src="media/frames/frame_001.jpg" alt="" class="absolute inset-0 w-full h-full object-cover" aria-hidden="true">
 
     <!-- Hero content: centered.
          Strategy: each element decides its own blending.
@@ -255,43 +240,6 @@ tailwind.config = {
           For Institutions
         </a>
       </div>
-    </div>
-
-    <!-- PHASE 2 — compact panel bottom-left, white background. Fades IN once the symbol appears. -->
-    <div id="heroMini" class="absolute bottom-8 left-8 md:bottom-10 md:left-10 max-w-md bg-white rounded-xl px-6 py-5 pointer-events-none border border-rule" style="box-shadow: 0 8px 32px rgba(10,14,23,0.08);">
-      <h2 class="text-xl md:text-2xl font-semibold tracking-tighter text-black leading-snug">
-        Lending optimized for TradFi,<br>available to everyone.
-      </h2>
-      <p class="mt-2 text-sm text-soft">
-        Institutional-grade lending built for capital efficiency. Powered by Solana.
-      </p>
-      <div class="mt-4 flex gap-2 pointer-events-auto">
-        <button type="button" data-waitlist class="inline-flex items-center gap-1.5 bg-black text-white px-3 py-1.5 rounded-md text-xs font-medium hover:opacity-90 transition-opacity">
-          Join waitlist
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-        </button>
-        <a href="#institutions" class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-black/20 text-black hover:border-black transition-colors">
-          For Institutions
-        </a>
-      </div>
-    </div>
-
-    <!-- scroll indicator: bottom-right corner, also blend-mode inverted -->
-    <div id="heroScrollHint" class="absolute bottom-6 right-6 z-20 flex flex-col items-center gap-2 text-white text-[10px] font-mono uppercase tracking-wider" style="mix-blend-mode: difference;">
-      <span>Scroll</span>
-      <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="1.5">
-        <rect x="1" y="1" width="10" height="18" rx="5"/>
-        <line x1="6" y1="6" x2="6" y2="10">
-          <animate attributeName="y2" values="6;12;6" dur="1.8s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="1;0.3;1" dur="1.8s" repeatCount="indefinite"/>
-        </line>
-      </svg>
-    </div>
-
-    <!-- progress bar at bottom of hero (also blend mode) -->
-    <div class="absolute bottom-0 left-0 right-0 h-[3px] z-20" style="mix-blend-mode: difference;">
-      <div class="h-full w-full bg-white/30"></div>
-      <div id="heroProgress" class="h-full bg-white absolute top-0 left-0" style="width: 0%"></div>
     </div>
   </div>
 </section>
@@ -622,7 +570,7 @@ tailwind.config = {
     </div>
 
     <!-- Institutional waitlist form -->
-    <div id="beta" class="mt-20 grid lg:grid-cols-2 gap-10 items-start fade-up">
+    <div id="beta" class="mt-20 scroll-mt-28 grid lg:grid-cols-2 gap-10 items-start fade-up">
       <div>
         <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">Institutional program</div>
         <h3 class="text-2xl md:text-3xl font-semibold tracking-tighter">Tell us what you'd build with Calma.</h3>
@@ -679,91 +627,6 @@ tailwind.config = {
   </div>
 </section>
 
-<!-- ============ SECTION 3 — FOR WHALES ============ -->
-<section id="whales" class="py-24 border-t border-rule">
-  <div class="max-w-page mx-auto px-6">
-    <div class="max-w-3xl">
-      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For whales</div>
-      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Don't let capital sit idle. Use it fully.</h2>
-      <p class="mt-5 text-soft text-lg fade-up">
-        Your capital is your edge. The best yields come from capital that's fully deployed, efficiently utilized, and always earning. Calma is the best place for your capital to work.
-      </p>
-    </div>
-
-    <div class="mt-16 grid md:grid-cols-3 gap-6" data-gsap-stagger>
-      <div class="rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold mb-4">Better rates, across the board</div>
-        <ul class="space-y-2.5 text-sm text-soft">
-          <li class="flex gap-2"><span class="text-accent">→</span> Lend and earn more on the same capital</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Borrow at lower cost, deeper liquidity</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Fixed rates coming — lock in yield, reduce variance</li>
-        </ul>
-      </div>
-      <div class="rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold mb-4">Closed beta access</div>
-        <ul class="space-y-2.5 text-sm text-soft">
-          <li class="flex gap-2"><span class="text-accent">→</span> Join while mechanisms are being shaped</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Live leaderboard, see your rank</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Your capital helps build the most efficient market</li>
-        </ul>
-      </div>
-      <div class="rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold mb-4">Referral network</div>
-        <ul class="space-y-2.5 text-sm text-soft">
-          <li class="flex gap-2"><span class="text-accent">→</span> Invite 5 people OR hit 1M USD volume</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Whichever comes first unlocks beta</li>
-          <li class="flex gap-2"><span class="text-accent">→</span> Every referral strengthens the ecosystem</li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- Leaderboard mock -->
-    <div class="mt-12 fade-up rounded-xl border border-rule bg-ink overflow-hidden">
-      <div class="px-6 py-4 border-b border-rule flex items-center justify-between">
-        <div>
-          <div class="text-xs text-muted font-mono uppercase tracking-wider">Closed beta leaderboard</div>
-          <div class="text-fg font-medium mt-0.5">Top contributors — last 24h</div>
-        </div>
-        <div class="text-xs text-muted font-mono">SIMULATED</div>
-      </div>
-      <div class="divide-y divide-rule" data-gsap-rows>
-        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
-          <div class="col-span-1 text-accent font-mono tabular">01</div>
-          <div class="col-span-5 font-mono text-sm text-fg">0xA9...8E4F</div>
-          <div class="col-span-3 text-soft text-sm">RWA looping</div>
-          <div class="col-span-3 text-right font-mono tabular text-fg">$12.4M</div>
-        </div>
-        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
-          <div class="col-span-1 text-soft font-mono tabular">02</div>
-          <div class="col-span-5 font-mono text-sm text-fg">0x73...2B1C</div>
-          <div class="col-span-3 text-soft text-sm">Stable lending</div>
-          <div class="col-span-3 text-right font-mono tabular text-fg">$8.9M</div>
-        </div>
-        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
-          <div class="col-span-1 text-soft font-mono tabular">03</div>
-          <div class="col-span-5 font-mono text-sm text-fg">0x55...9F02</div>
-          <div class="col-span-3 text-soft text-sm">Leverage long</div>
-          <div class="col-span-3 text-right font-mono tabular text-fg">$6.2M</div>
-        </div>
-        <div class="px-6 py-3 grid grid-cols-12 items-center gap-4">
-          <div class="col-span-1 text-soft font-mono tabular">04</div>
-          <div class="col-span-5 font-mono text-sm text-fg">0x21...77AD</div>
-          <div class="col-span-3 text-soft text-sm">Delta hedge</div>
-          <div class="col-span-3 text-right font-mono tabular text-fg">$4.8M</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="mt-10 flex flex-col sm:flex-row sm:items-center gap-4 fade-up">
-      <a href="#" class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-8 py-3.5 rounded-md font-medium transition-colors self-start">
-        Join closed beta
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-      </a>
-      <span class="text-xs text-muted font-mono">5-MINUTE SETUP · BEST RATES AVAILABLE</span>
-    </div>
-  </div>
-</section>
-
 <!-- ============ SECTION 4 — HOW IT WORKS ============ -->
 <section id="how" class="py-24 border-t border-rule">
   <div class="max-w-page mx-auto px-6">
@@ -783,10 +646,6 @@ tailwind.config = {
         <p class="text-soft mb-5">When everyone wants their money out at once, lending breaks. Lenders panic, rates spike, systems crisis.</p>
         <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
         <p class="text-soft mb-5">Instead of race conditions, we use a queue. You request a withdrawal, it processes in order. Predictable. Fair. No front-running.</p>
-        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
-          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
-          <p class="text-fg text-sm leading-relaxed">You deposit <span class="font-mono tabular">$1M</span> at <span class="font-mono tabular">10% APY</span>. Market stress hits. Instead of "is my money still there?" you know: <em class="text-accent2">"I'm #47 in queue, I withdraw in 2 days guaranteed."</em></p>
-        </div>
       </div>
 
       <!-- Mechanism 2 -->
@@ -799,10 +658,6 @@ tailwind.config = {
         <p class="text-soft mb-5">Static interest curves don't adapt to real demand. Utilization spikes, but rates stay the same. Capital locks in inefficient markets.</p>
         <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
         <p class="text-soft mb-5">Our curve moves in real-time. More demand → rates rise smoothly. Less demand → rates drop. Supply and demand, always balanced.</p>
-        <div class="rounded-lg border border-rule bg-base p-4 mt-6">
-          <div class="text-xs text-accent font-mono uppercase tracking-wider mb-2">Real example</div>
-          <p class="text-fg text-sm leading-relaxed">Your <span class="font-mono tabular">$5M</span> is deployed. As leverage traders borrow, utilization rises. Your rates increase <em class="text-accent2">automatically</em> — earning more on the same capital. When leverage unwinds, rates adjust back.</p>
-        </div>
       </div>
     </div>
   </div>
@@ -917,32 +772,6 @@ tailwind.config = {
 
 </main>
 
-<!-- ============ FLOATING VERSION SWITCHER ============ -->
-<div id="versionSwitcher" class="fixed bottom-5 right-5 z-[100]">
-  <div id="vMenu" class="hidden mb-3 rounded-xl border border-rule bg-base shadow-lg overflow-hidden min-w-[200px]">
-    <div class="px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-muted border-b border-rule">Page version</div>
-    <a href="index.html" data-vlink="v1" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors">
-      <div>
-        <div class="text-fg text-sm font-medium">Version 1</div>
-        <div class="text-muted text-xs">Clean · monochrome</div>
-      </div>
-      <span data-vactive="v1" class="hidden text-fg text-lg">●</span>
-    </a>
-    <a href="v2.html" data-vlink="v2" class="flex items-center justify-between px-4 py-3 hover:bg-ink transition-colors border-t border-rule">
-      <div>
-        <div class="text-fg text-sm font-medium">Version 2</div>
-        <div class="text-muted text-xs">Work in progress</div>
-      </div>
-      <span data-vactive="v2" class="hidden text-fg text-lg">●</span>
-    </a>
-  </div>
-  <button id="vToggle" class="flex items-center gap-2 bg-fg text-base px-4 py-3 rounded-full shadow-lg hover:opacity-90 transition-opacity">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-    <span id="vLabel" class="text-xs font-mono uppercase tracking-wider">v1</span>
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="vChev"><path d="M6 9l6 6 6-6"/></svg>
-  </button>
-</div>
-
 <!-- ============ FOOTER ============ -->
 <footer class="border-t border-rule bg-base">
   <div class="max-w-page mx-auto px-6 py-16">
@@ -1023,264 +852,9 @@ document.querySelectorAll('.fade-up').forEach(el => io.observe(el));
 // Fallback — ensure everything is visible after 1.2s in case observer is suppressed (headless screenshots etc.)
 setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el => el.classList.add('is-in')), 1200);
 
-// ===== Hero image-sequence player (replaces video) =====
-// Pre-renders frames to <img> objects, then on scroll progress draws the appropriate frame
-// into a canvas. This is the Apple-style approach and runs identically fast on every browser
-// because there is no per-frame video decode — just a cached image swap.
-(function(){
-  if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
-  gsap.registerPlugin(ScrollTrigger);
-
-  const wrap    = document.getElementById('heroWrap');
-  const canvas  = document.getElementById('heroCanvas');
-  const content = document.getElementById('heroContent');
-  const progressBar = document.getElementById('heroProgress');
-  const hint    = document.getElementById('heroScrollHint');
-  if (!wrap || !canvas) return;
-
-  const ctx = canvas.getContext('2d');
-  const FRAME_COUNT = 85;
-  const PAD = (n) => String(n).padStart(3, '0');
-  const frames = [];
-  let lastDrawn = -1;
-  let canvasSized = false;
-
-  // Preload every frame. Browsers cache them so re-draws are instant.
-  for (let i = 1; i <= FRAME_COUNT; i++) {
-    const img = new Image();
-    img.src = `media/frames/frame_${PAD(i)}.jpg`;
-    frames.push(img);
-  }
-
-  function sizeCanvas(img) {
-    if (canvasSized) return;
-    canvas.width  = img.naturalWidth;
-    canvas.height = img.naturalHeight;
-    canvasSized = true;
-  }
-
-  function drawFrame(idx) {
-    if (idx === lastDrawn) return;
-    const img = frames[idx];
-    if (!img || !img.complete || img.naturalWidth === 0) return;
-    sizeCanvas(img);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    lastDrawn = idx;
-  }
-
-  // Draw first frame as soon as it's available so the canvas isn't blank at load.
-  if (frames[0].complete) drawFrame(0);
-  else frames[0].addEventListener('load', () => drawFrame(0), { once: true });
-
-  const mini = document.getElementById('heroMini');
-
-  // ===== Triggered segment pager (replaces 1:1 scroll-scrubbing) =====
-  // Each scroll gesture plays exactly ONE segment of the sequence with an
-  // ease-in/ease-out tween at a fixed speed — independent of how hard the user
-  // scrolls. The hero is pinned (page scroll locked) until the final stop is
-  // reached; scrolling back up replays segments in reverse.
-  // Stops land on the key "money shots" of the sequence:
-  //   0 = frame 1  (hero text, light)  |  1 = frame 28 (Calma symbol, light)
-  //   2 = frame 63 (Solana logo, black) |  3 = frame 85 (end → auto-glide to next section)
-  const LAST         = FRAME_COUNT - 1;        // 84
-  const STOP_FRAMES  = [0, 27, 62, LAST];      // frame indices: 1, 28, 63, 85
-  const LAST_STOP    = STOP_FRAMES.length - 1; // 3
-  // Duration is proportional to how many frames a segment spans, so the on-screen
-  // motion speed stays constant across segments. (A fixed duration made the longest
-  // segment — 28→63 — look fast because it crammed more frames into the same time.)
-  const FRAMES_PER_SEC   = 18;                 // pacing → ~1.5s for the opening segment
-  const MIN_SEG_DURATION = 0.6;                // floor for tiny jumps
-  const SEG_EASE         = 'power3.inOut';     // pronounced ease-in / ease-out (gentle start + stop)
-  const segDuration = (target) =>
-    Math.max(MIN_SEG_DURATION, Math.abs(STOP_FRAMES[target] - STOP_FRAMES[currentStop]) / FRAMES_PER_SEC);
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  const playState = { f: 0 };
-  let currentStop   = 0;
-  let animating     = false;
-  let heroActive    = false;
-  let releasing     = false;
-  let cooldownUntil = 0;
-
-  const html = document.documentElement;
-  const lockScroll   = () => { html.style.overflow = 'hidden'; };
-  const unlockScroll = () => { html.style.overflow = ''; };
-
-  const setProgress = (frame) => {
-    if (progressBar) progressBar.style.width = ((frame / LAST) * 100).toFixed(2) + '%';
-  };
-
-  // Header (logo + menu) flips to white while the frame behind it is black.
-  const nav = document.getElementById('nav');
-  const NAV_DARK_FROM = 59;   // frame index from which the top of the canvas is black (frame 60+)
-  const updateNavTheme = (frameIdx) => {
-    if (nav) nav.classList.toggle('nav-on-dark', frameIdx >= NAV_DARK_FROM);
-  };
-
-  // Fade the centered hero text / bottom-left card based on the target stop.
-  function applyPhase(target) {
-    if (content) {
-      if (target >= 1) {
-        content.style.pointerEvents = 'none';
-        gsap.to(content, { opacity: 0, y: -30, scale: 0.97, duration: 0.4, ease: 'power2.out', overwrite: true });
-      } else {
-        gsap.to(content, { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: 'power2.out', overwrite: true,
-                           onComplete: () => content.style.pointerEvents = 'auto' });
-      }
-    }
-    if (mini) {
-      if (target >= 2) {
-        gsap.to(mini, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out', overwrite: true,
-                        onComplete: () => mini.style.pointerEvents = 'auto' });
-      } else {
-        mini.style.pointerEvents = 'none';
-        gsap.to(mini, { opacity: 0, y: 30, duration: 0.4, ease: 'power2.out', overwrite: true });
-      }
-    }
-  }
-
-  // Smoothly play to a stop with ease-in/ease-out.
-  function goToStop(target, onDone) {
-    if (animating || target < 0 || target > LAST_STOP || target === currentStop) { if (onDone) onDone(); return; }
-    animating = true;
-    if (hint) gsap.to(hint, { opacity: 0, duration: 0.3, overwrite: true });
-    applyPhase(target);
-    const dur = segDuration(target);
-    gsap.to(canvas, { scale: 1 + 0.12 * (target / LAST_STOP), duration: dur, ease: SEG_EASE, overwrite: true });
-    gsap.to(playState, {
-      f: STOP_FRAMES[target],
-      duration: dur,
-      ease: SEG_EASE,
-      onUpdate: () => { const fr = Math.round(playState.f); drawFrame(fr); setProgress(fr); updateNavTheme(fr); },
-      onComplete: () => {
-        currentStop = target;
-        animating = false;
-        cooldownUntil = performance.now() + 300;
-        // Final segment finished → gently glide on to the next section (no extra scroll needed).
-        if (target === LAST_STOP) setTimeout(releaseDown, 350);
-        if (onDone) onDone();
-      }
-    });
-  }
-
-  // One scroll down plays the WHOLE sequence in stages: advance a stop, dwell ~1s,
-  // advance the next, dwell ~1s, reach the final stop, then auto-glide to the next section.
-  let autoPlaying = false;
-  const STAGE_DWELL = 1000; // ms pause between stages
-  function autoPlay() {
-    if (autoPlaying || animating) return;
-    autoPlaying = true;
-    const next = (target) => {
-      goToStop(target, () => {
-        if (target < LAST_STOP) setTimeout(() => next(target + 1), STAGE_DWELL);
-        else autoPlaying = false; // releaseDown already scheduled inside goToStop
-      });
-    };
-    next(currentStop + 1);
-  }
-
-  // Snap instantly to a stop (re-entry / reduced motion) — no tween.
-  function jumpToStop(target) {
-    gsap.killTweensOf([playState, canvas]);
-    currentStop = target;
-    playState.f = STOP_FRAMES[target];
-    drawFrame(STOP_FRAMES[target]);
-    setProgress(STOP_FRAMES[target]);
-    updateNavTheme(STOP_FRAMES[target]);
-    gsap.set(canvas, { scale: 1 + 0.12 * (target / LAST_STOP) });
-    applyPhase(target);
-  }
-
-  function activateHero(atStop) {
-    heroActive = true;
-    lockScroll();
-    window.scrollTo(0, 0);
-    jumpToStop(atStop);
-  }
-
-  // Eased programmatic scroll — native 'smooth' is too fast and not tunable.
-  function smoothScrollTo(targetY, duration, onDone) {
-    const startY = window.scrollY;
-    const dist   = targetY - startY;
-    const t0     = performance.now();
-    const ease   = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2); // easeInOutCubic
-    (function step(now) {
-      const p = Math.min(1, (now - t0) / duration);
-      window.scrollTo(0, startY + dist * ease(p));
-      if (p < 1) requestAnimationFrame(step);
-      else if (onDone) onDone();
-    })(t0);
-  }
-
-  function releaseDown() {
-    if (!heroActive) return;
-    heroActive = false;
-    releasing  = true;
-    unlockScroll();
-    // Keep the header white during the glide (the black hero is still behind it),
-    // then flip back to dark once the light next section sits under the header.
-    smoothScrollTo(wrap.offsetHeight, 1100, () => { if (nav) nav.classList.remove('nav-on-dark'); });
-  }
-
-  // dir: +1 = forward/down, -1 = back/up
-  function handleIntent(dir) {
-    if (!heroActive || animating || autoPlaying || performance.now() < cooldownUntil) return;
-    if (dir > 0) {
-      // one scroll down kicks off the whole staged animation, then glides to the next section
-      currentStop < LAST_STOP ? autoPlay() : releaseDown();
-    } else if (currentStop > 0) {
-      goToStop(0);   // scroll up = one continuous rewind straight to the start
-    }
-    // dir < 0 at stop 0 → already at page top, nothing to do
-  }
-
-  window.addEventListener('wheel', (e) => {
-    if (!heroActive) return;
-    e.preventDefault();                       // we own the scroll while the hero is pinned
-    if (Math.abs(e.deltaY) < 4) return;
-    handleIntent(e.deltaY > 0 ? 1 : -1);
-  }, { passive: false });
-
-  let touchStartY = null;
-  window.addEventListener('touchstart', (e) => {
-    if (heroActive) touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-  window.addEventListener('touchmove', (e) => {
-    if (!heroActive || touchStartY === null) return;
-    e.preventDefault();
-    const dy = e.touches[0].clientY - touchStartY;
-    if (Math.abs(dy) < 24) return;
-    handleIntent(dy < 0 ? 1 : -1);            // swipe up = forward
-    touchStartY = null;
-  }, { passive: false });
-  window.addEventListener('touchend', () => { touchStartY = null; }, { passive: true });
-
-  window.addEventListener('keydown', (e) => {
-    if (!heroActive) return;
-    if (['ArrowDown', 'PageDown', ' ', 'Spacebar'].includes(e.key)) { e.preventDefault(); handleIntent(1); }
-    else if (['ArrowUp', 'PageUp'].includes(e.key))                 { e.preventDefault(); handleIntent(-1); }
-  });
-
-  // Re-pin the hero (at its end state) when the user scrolls all the way back to the top.
-  window.addEventListener('scroll', () => {
-    if (releasing) { if (window.scrollY > 10) releasing = false; return; }
-    if (heroActive || reduceMotion) return;
-    if (window.scrollY <= 1) activateHero(LAST_STOP);
-  }, { passive: true });
-
-  // In-page anchor links must escape the pin so they can scroll freely.
-  document.querySelectorAll('a[href^="#"]').forEach((a) => {
-    a.addEventListener('click', () => { if (heroActive) { heroActive = false; releasing = true; unlockScroll(); } });
-  });
-
-  if (reduceMotion) {
-    // Accessibility: no scroll-jacking. Static hero, page scrolls normally.
-    unlockScroll();
-    jumpToStop(0);
-  } else {
-    activateHero(0);
-  }
-})();
+// ===== Hero =====
+// Animation disabled per client request — hero shows only the static first frame
+// (media/frames/frame_001.jpg), rendered as a plain <img>. No scroll-jacking / pin.
 
 // ===== GSAP scroll-driven animations for all sections =====
 // IMPORTANT: hero is position:sticky inside a full-height (h-screen) wrapper. ScrollTrigger can
@@ -1402,18 +976,6 @@ setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el =>
     });
   }
 
-  // 7) Whales CTA — small spring lift
-  const whalesCta = document.querySelector('#whales a[href="#"]');
-  if (whalesCta) {
-    gsap.fromTo(whalesCta, { y: 20 }, {
-      y: 0,
-      duration: 0.7,
-      ease: 'back.out(1.4)',
-      immediateRender: false,
-      scrollTrigger: { ...baseST, trigger: whalesCta, start: 'top 95%' },
-    });
-  }
-
   // 8) Footer reveal — small stagger
   const footer = document.querySelector('footer');
   if (footer) {
@@ -1515,29 +1077,6 @@ setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el =>
   requestAnimationFrame(step);
 })();
 
-// ===== Version switcher =====
-(function(){
-  const path = location.pathname.split('/').pop() || 'index.html';
-  const currentVersion = path.startsWith('v2') ? 'v2' : 'v1';
-  document.getElementById('vLabel').textContent = currentVersion;
-  const activeMark = document.querySelector(`[data-vactive="${currentVersion}"]`);
-  if (activeMark) activeMark.classList.remove('hidden');
-
-  const toggle = document.getElementById('vToggle');
-  const menu = document.getElementById('vMenu');
-  const chev = document.getElementById('vChev');
-  let open = false;
-  function setOpen(state){
-    open = state;
-    menu.classList.toggle('hidden', !open);
-    chev.style.transform = open ? 'rotate(180deg)' : '';
-  }
-  toggle.addEventListener('click', (e) => { e.stopPropagation(); setOpen(!open); });
-  document.addEventListener('click', (e) => {
-    if (!document.getElementById('versionSwitcher').contains(e.target)) setOpen(false);
-  });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
-})();
 </script>
 
 <script src="forms.js" defer></script>
