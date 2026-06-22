@@ -143,7 +143,7 @@ pub fn borrow_with_hedge_handler<'a>(
 
     // ── 1. Compute upfront fixed fee ──────────────────────────────────────────
     let fixed_rate_bps = ctx.accounts.rate_hedge_offer.load()?.fixed_rate_bps;
-    let upfront_fee = jbl_math::compute_interest(amount, fixed_rate_bps as u32, duration)
+    let upfront_fee = math::compute_interest(amount, fixed_rate_bps as u32, duration)
         .ok_or(ErrorCode::MathOverflow)?;
     require!(upfront_fee > 0, ErrorCode::InvalidAmount);
     let total_debt_amount = amount
@@ -170,7 +170,7 @@ pub fn borrow_with_hedge_handler<'a>(
     let state_bump = ctx.bumps.state;
     let new_shares = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = jbl_math::Core::new(pool.market)
+        let mut core = math::Core::new(pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
@@ -181,7 +181,7 @@ pub fn borrow_with_hedge_handler<'a>(
                 ctx.accounts.transfer_lend_to_user(amt, state_bump)
             })
             .map_err(|e| match e {
-                jbl_math::MathError::Transfer(e) => e,
+                math::MathError::Transfer(e) => e,
                 e => ErrorCode::from(e).into(),
             })?;
         pool.market = core.market;

@@ -17,7 +17,7 @@ pub struct Market {
     _pad: [u8; 7],
 }
 
-impl jbl_math::Market for Market {
+impl math::Market for Market {
     fn total_supply_assets(&self) -> u64 {
         self.total_supply_assets
     }
@@ -96,7 +96,7 @@ pub struct Pool {
 
 impl Pool {
     pub fn calculate_utilization(&self) -> u64 {
-        jbl_math::utilization_bps(
+        math::utilization_bps(
             self.market.total_supply_assets,
             self.market.total_borrow_assets,
             self.market.assets_in_queue,

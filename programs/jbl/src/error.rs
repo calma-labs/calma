@@ -1,2 +1,2 @@
-// Re-exported — original definition is in crates/jbl-state/src/error.rs
-pub use jbl_state::error::ErrorCode;
+// Re-exported — original definition is in crates/state/src/error.rs
+pub use state::error::ErrorCode;

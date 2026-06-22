@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_irm::IrmState;
+use irm_state::IrmState;
 
 #[derive(Accounts)]
 pub struct BorrowRate<'info> {

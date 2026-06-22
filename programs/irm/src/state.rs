@@ -1,1 +1,1 @@
-pub use jbl_irm::IrmState;
+pub use irm_state::IrmState;

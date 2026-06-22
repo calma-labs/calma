@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_irm::{IrmState, DEFAULT_POOL_FEE_BPS};
+use irm_state::{IrmState, DEFAULT_POOL_FEE_BPS};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {

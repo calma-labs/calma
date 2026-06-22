@@ -90,7 +90,7 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     let current_index = load_current_index_checked(&sysvar_info)? as usize;
 
     let fee =
-        jbl_math::flash_fee(amount, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
+        math::flash_fee(amount, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = amount.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     let pool_key = ctx.accounts.pool.key();
 

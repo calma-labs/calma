@@ -1,4 +1,4 @@
-//! Integration tests that build the `jbl-wasm` WASM module, load it via
+//! Integration tests that build the `bindings` WASM module, load it via
 //! `wasmtime`, copy serialised account bytes into WASM linear memory, invoke
 //! the exported parse functions, read the decoded struct back from memory, and
 //! assert field-level round-trip fidelity.
@@ -10,7 +10,7 @@
 
 use anchor_lang::prelude::Pubkey;
 use bytemuck::{bytes_of, Pod, Zeroable};
-use jbl_state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
+use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 // ── WASM linear-memory layout ─────────────────────────────────────────────────
@@ -46,7 +46,7 @@ fn build_and_load() -> (Store<()>, Instance) {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let workspace = manifest_dir.parent().unwrap().parent().unwrap();
 
-    const CRATE_NAME: &str = "jbl-wasm";
+    const CRATE_NAME: &str = "bindings";
 
     let status = std::process::Command::new("cargo")
         .args([

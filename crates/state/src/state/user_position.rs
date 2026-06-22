@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_math::Position;
+use math::Position;
 
 /// Tracks a user's collateral deposit and any open borrow position.
 /// Created on first collateral deposit; borrow fields populated when the user borrows.

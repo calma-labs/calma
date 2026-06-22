@@ -5,7 +5,7 @@ pub struct OracleState {
     pub price: u64,
 }
 
-impl jbl_math::Oracle for OracleState {
+impl math::Oracle for OracleState {
     fn price(&self) -> u64 {
         self.price
     }

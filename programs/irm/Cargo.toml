@@ -22,7 +22,7 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.0.2"
-jbl-irm = { path = "../../crates/jbl-irm" }
+irm-state = { path = "../../crates/irm-state" }
 bytemuck = "1"
 
 

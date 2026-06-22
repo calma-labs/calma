@@ -113,7 +113,7 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     let state_bump = ctx.bumps.state;
     let lp_to_mint = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = jbl_math::Core::new(pool.market);
+        let mut core = math::Core::new(pool.market);
         let lp = core
             .deposit_lent(
                 amount,

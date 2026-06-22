@@ -193,7 +193,7 @@ pub fn settle_rate_hedge_match_handler<'a>(
     let state_bump = ctx.bumps.state;
     let current_value = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = jbl_math::Core::new(pool.market)
+        let mut core = math::Core::new(pool.market)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
             .accrue_interest()

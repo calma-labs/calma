@@ -21,8 +21,8 @@ custom-panic = []
 
 
 [dependencies]
-jbl-math = { path = "../../crates/jbl-math" }
-jbl-state = { path = "../../crates/jbl-state" }
+math = { path = "../../crates/math" }
+state = { path = "../../crates/state" }
 feed = { path = "../feed", features = ["cpi"] }
 guard = { path = "../guard", features = ["cpi"] }
 irm = { path = "../irm", features = ["cpi"] }

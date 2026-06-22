@@ -6,7 +6,7 @@ use anchor_lang::prelude::*;
 
 pub use error::ErrorCode;
 pub use instructions::*;
-pub use jbl_irm::*;
+pub use irm_state::*;
 
 declare_id!("irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk");
 

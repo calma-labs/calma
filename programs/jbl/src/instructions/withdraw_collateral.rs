@@ -121,7 +121,7 @@ pub fn withdraw_collateral_handler<'a>(
     let state_bump = ctx.bumps.state;
     let remaining = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = jbl_math::Core::new(pool.market)
+        let mut core = math::Core::new(pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
@@ -132,7 +132,7 @@ pub fn withdraw_collateral_handler<'a>(
                 ctx.accounts.transfer_collateral_to_user(amt, state_bump)
             })
             .map_err(|e| match e {
-                jbl_math::MathError::Transfer(e) => e,
+                math::MathError::Transfer(e) => e,
                 e => crate::error::ErrorCode::from(e).into(),
             })?;
         pool.market = core.market;

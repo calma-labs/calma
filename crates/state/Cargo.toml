@@ -1,11 +1,11 @@
 [package]
-name = "jbl-state"
+name = "state"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-jbl-math = { path = "../jbl-math" }
-jbl-irm = { path = "../jbl-irm" }
+math = { path = "../math" }
+irm-state = { path = "../irm-state" }
 anchor-lang = { version = "1.0.2", default-features = false }
 bytemuck = "1"
 

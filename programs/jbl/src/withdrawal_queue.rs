@@ -1,2 +1,2 @@
-// Re-exported — original definition is in crates/jbl-state/src/withdrawal_queue.rs
-pub use jbl_state::withdrawal_queue::*;
+// Re-exported — original definition is in crates/state/src/withdrawal_queue.rs
+pub use state::withdrawal_queue::*;

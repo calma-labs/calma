@@ -1,4 +1,4 @@
-//! Zero-copy deserialization of Anchor account bytes into `jbl_state` types.
+//! Zero-copy deserialization of Anchor account bytes into `state` types.
 //!
 //! Each `parse_*` function expects the full raw account bytes as transmitted
 //! by the server (8-byte Anchor discriminator included).  It strips the
@@ -9,8 +9,8 @@
 //! byte-swapping is required.
 
 use bytemuck::Pod;
-use jbl_irm::IrmState;
-use jbl_state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
+use irm_state::IrmState;
+use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
 use wasm_bindgen::prelude::*;
 
 const DISCRIMINATOR: usize = 8;
@@ -226,22 +226,22 @@ impl UserPositionAccount {
 
     /// Raw debt amount in lend-token base units, derived from shares and pool totals.
     /// Returns 0 when `total_debt_shares` is 0.
-    /// Delegates to `jbl_math::shares_to_amount` (ceiling division).
+    /// Delegates to `math::shares_to_amount` (ceiling division).
     pub fn debt_amount(&self, total_borrowed: u64, total_debt_shares: u64) -> u64 {
-        jbl_math::shares_to_amount(self.0.debt_shares, total_borrowed, total_debt_shares)
+        math::shares_to_amount(self.0.debt_shares, total_borrowed, total_debt_shares)
             .unwrap_or(0)
     }
 
     /// Maximum borrowable amount in raw lend-token units.
-    /// Delegates to `jbl_math::max_borrowable` — same formula as the on-chain LTV check.
+    /// Delegates to `math::max_borrowable` — same formula as the on-chain LTV check.
     pub fn max_borrowable(&self, ltv_percent: u8) -> u64 {
-        jbl_math::max_borrowable(self.0.collateral_deposited, ltv_percent)
+        math::max_borrowable(self.0.collateral_deposited, ltv_percent)
     }
 
     /// Compute Loan-to-Value (LTV) ratio in basis points.
     pub fn ltv(&self, total_borrowed: u64, total_debt_shares: u64) -> Option<u32> {
         let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        jbl_math::compute_ltv(debt, self.0.collateral_deposited)
+        math::compute_ltv(debt, self.0.collateral_deposited)
     }
 
     /// Compute Health Factor in basis points (1.0 = 10,000).
@@ -252,7 +252,7 @@ impl UserPositionAccount {
         ltv_percent: u8,
     ) -> Option<u32> {
         let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        jbl_math::compute_health_factor(self.0.collateral_deposited, ltv_percent, debt)
+        math::compute_health_factor(self.0.collateral_deposited, ltv_percent, debt)
     }
 
     /// Compute Liquidation "Price" (ratio) in basis points.
@@ -263,7 +263,7 @@ impl UserPositionAccount {
         ltv_percent: u8,
     ) -> Option<u32> {
         let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        jbl_math::compute_liquidation_threshold(debt, self.0.collateral_deposited, ltv_percent)
+        math::compute_liquidation_threshold(debt, self.0.collateral_deposited, ltv_percent)
     }
 
     /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
@@ -675,7 +675,7 @@ mod tests {
     /// `rate_bps` (curve 0: a=0, b=rate_bps, a2=0, kink=0, enabled=1).
     /// All other curves are disabled.
     fn irm_wire_flat(rate_bps: i64) -> Vec<u8> {
-        let mut v = account_bytes::<jbl_irm::IrmState>();
+        let mut v = account_bytes::<irm_state::IrmState>();
         // LinearSegment 0: a=0 (i64), b=rate_bps (i64), a2=0 (i64), kink=0 (u64),
         //                  enabled=1 (u8), _pad=[0;7]
         let curve_base = DISCRIMINATOR + IRM_CURVE0_OFFSET;

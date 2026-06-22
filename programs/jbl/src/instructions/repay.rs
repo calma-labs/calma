@@ -84,7 +84,7 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
     )?;
     let (repay_amount, shares_to_burn) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = jbl_math::Core::new(pool.market)
+        let mut core = math::Core::new(pool.market)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
             .accrue_interest()

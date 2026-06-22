@@ -1,13 +1,13 @@
 use anchor_lang::prelude::*;
 
-impl From<jbl_math::MathError<Error>> for ErrorCode {
-    fn from(e: jbl_math::MathError<Error>) -> Self {
+impl From<math::MathError<Error>> for ErrorCode {
+    fn from(e: math::MathError<Error>) -> Self {
         match e {
-            jbl_math::MathError::Arithmetic => ErrorCode::MathOverflow,
-            jbl_math::MathError::Undercollateralized => ErrorCode::Undercollateralized,
-            jbl_math::MathError::InsufficientBalance => ErrorCode::InsufficientFunds,
-            jbl_math::MathError::AmountTooSmall => ErrorCode::InvalidAmount,
-            jbl_math::MathError::Transfer(_) => ErrorCode::MathOverflow,
+            math::MathError::Arithmetic => ErrorCode::MathOverflow,
+            math::MathError::Undercollateralized => ErrorCode::Undercollateralized,
+            math::MathError::InsufficientBalance => ErrorCode::InsufficientFunds,
+            math::MathError::AmountTooSmall => ErrorCode::InvalidAmount,
+            math::MathError::Transfer(_) => ErrorCode::MathOverflow,
         }
     }
 }

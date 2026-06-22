@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use jbl_irm::{IrmState, LinearSegment};
+use irm_state::{IrmState, LinearSegment};
 
 use crate::error::ErrorCode;
 

@@ -105,7 +105,7 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
 
     let borrowed = borrowed_amount.ok_or(ErrorCode::FlashBorrowMissing)?;
     let fee =
-        jbl_math::flash_fee(borrowed, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
+        math::flash_fee(borrowed, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = borrowed.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     require!(amount >= min_repay, ErrorCode::FlashLoanFeeNotCovered);
 

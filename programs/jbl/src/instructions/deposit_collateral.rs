@@ -90,7 +90,7 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
         } else {
             *ctx.accounts.user_position.load()?
         };
-        let mut core = jbl_math::Core::new(pool.market).with_position(starting_position);
+        let mut core = math::Core::new(pool.market).with_position(starting_position);
         core.deposit_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_vault(amt))
             .map_err(crate::error::ErrorCode::from)?;
         pool.market = core.market;

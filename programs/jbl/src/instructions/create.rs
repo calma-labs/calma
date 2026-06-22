@@ -141,7 +141,7 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
     {
-        let core = jbl_math::Core::new(pool.market)
+        let core = math::Core::new(pool.market)
             .with_irm(irm)
             .accrue_interest()
             .ok_or(crate::error::ErrorCode::MathOverflow)?;

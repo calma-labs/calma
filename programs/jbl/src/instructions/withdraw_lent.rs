@@ -126,7 +126,7 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     let (immediate, lend_for_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
-        let mut core = jbl_math::Core::new(pool.market);
+        let mut core = math::Core::new(pool.market);
         let lend_for_shares = core
             .calc_lend_for_shares(shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
