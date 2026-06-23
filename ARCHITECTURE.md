@@ -16,9 +16,9 @@ graph TD
 
     subgraph CARGO["Cargo Workspace"]
         PROGRAM["programs/jbl\nAnchor smart contract"]
-        MATH["crates/jbl-math\nPure Rust math library"]
-        STATE["crates/jbl-state\nAccount type definitions"]
-        WASM_CRATE["crates/jbl-wasm\nwasm-bindgen bindings"]
+        MATH["crates/math\nPure Rust math library"]
+        STATE["crates/state\nAccount type definitions"]
+        WASM_CRATE["crates/bindings\nwasm-bindgen bindings"]
     end
 
     WASM_CRATE -->|"wasm-pack build"| WASM_PKG
@@ -48,12 +48,12 @@ graph LR
     end
 
     subgraph Shared["Shared Rust Logic"]
-        JBL_MATH["jbl-math\nInterest · Shares · LTV"]
-        JBL_STATE["jbl-state\nPool · UserPosition\nWithdrawalQueue · Fees"]
+        JBL_MATH["math\nInterest · Shares · LTV"]
+        JBL_STATE["state\nPool · UserPosition\nWithdrawalQueue · Fees"]
     end
 
     subgraph WASM["WASM Bridge"]
-        JBL_WASM["jbl-wasm\nExposes math + state\nto JavaScript"]
+        JBL_WASM["bindings\nExposes math + state\nto JavaScript"]
         WASM_LIB["@jbl/wasm-lib\nGenerated npm package"]
     end
 
@@ -86,9 +86,9 @@ sequenceDiagram
     WASM-->>React: estimated debt shares
     React->>RPC: send borrow transaction
     RPC->>Program: borrow_handler(ctx, amount)
-    Program->>Program: accrue_interest() via jbl-math
-    Program->>Program: validate max_borrowable() via jbl-math
-    Program->>Program: amount_to_shares() via jbl-math
+    Program->>Program: accrue_interest() via math
+    Program->>Program: validate max_borrowable() via math
+    Program->>Program: amount_to_shares() via math
     Program->>Program: update UserPosition.debt_shares
     Program->>Program: transfer lend tokens to user
     Program-->>RPC: transaction confirmed
@@ -102,9 +102,9 @@ sequenceDiagram
 
 ```mermaid
 graph BT
-    MATH["jbl-math\n─────────\ncompute_interest()\namount_to_shares()\nshares_to_amount()\nmax_borrowable()"]
-    STATE["jbl-state\n─────────\nPool (41 KB, zero-copy)\nUserPosition (88 B)\nRateHedgeOffer\nWithdrawalQueue"]
-    WASM["jbl-wasm\n─────────\n#[wasm_bindgen]\nexports"]
+    MATH["math\n─────────\ncompute_interest()\namount_to_shares()\nshares_to_amount()\nmax_borrowable()"]
+    STATE["state\n─────────\nPool (41 KB, zero-copy)\nUserPosition (88 B)\nRateHedgeOffer\nWithdrawalQueue"]
+    WASM["bindings\n─────────\n#[wasm_bindgen]\nexports"]
     PROG["programs/jbl\n─────────\n13 instructions"]
 
     STATE --> MATH
@@ -219,9 +219,9 @@ erDiagram
 
 ```mermaid
 flowchart LR
-    MATH_SRC["crates/jbl-math\n(Rust source)"]
-    STATE_SRC["crates/jbl-state\n(Rust source)"]
-    WASM_SRC["crates/jbl-wasm\n(Rust source)"]
+    MATH_SRC["crates/math\n(Rust source)"]
+    STATE_SRC["crates/state\n(Rust source)"]
+    WASM_SRC["crates/bindings\n(Rust source)"]
     APP_SRC["app/src\n(TypeScript source)"]
 
     ANCHOR_BUILD["anchor build\n→ programs/jbl .so"]
