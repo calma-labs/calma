@@ -31,8 +31,8 @@ export function MultiplyDetailPage() {
   const { data: poolData, isLoading } = useLendingAccount(poolPubKey);
 
   const pool = useMemo(
-    () => (poolData ? poolDataToDisplayPool(poolData) : null),
-    [poolData],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
+    [poolData, poolPubKey],
   );
 
   const chartSeed = useMemo(
@@ -148,7 +148,7 @@ export function MultiplyDetailPage() {
                     Compounded exposure
                   </p>
                   <p className="text-xs text-[#efe0f7]/35 leading-relaxed">
-                    One atomic transaction, up to {pool.ltv}% LTV. Net APY =
+                    One atomic transaction, up to {pool.account.ltv_percent}% LTV. Net APY =
                     supply yield × leverage − borrow cost.
                   </p>
                 </div>

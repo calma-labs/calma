@@ -196,7 +196,7 @@ export function PoolStatsBar({ pool }: PoolStatsBarProps) {
           isCost
           last
         />
-        <StatItem label="Max LTV" value={`${pool.ltv}%`} />
+        <StatItem label="Max LTV" value={`${pool.account.ltv_percent}%`} />
       </div>
     </div>
   );

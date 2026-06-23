@@ -2,16 +2,16 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "app dev",
+			"label": "frontend dev",
 			"type": "shell",
-			"command": "cd app && npm run dev",
+			"command": "npm run app:dev",
 			"isBackground": true,
 			"problemMatcher": []
 		},
 		{
-			"label": "npm install app",
+			"label": "npm install",
 			"type": "shell",
-			"command": "cd app && npm install"
+			"command": "npm install"
 		},
 	]
 }

@@ -2,7 +2,7 @@ import { useValidLendingAccounts } from "@/hooks/program/useValidLendingAccounts
 import { useFaucet, useFaucetAll } from "@/hooks/useFaucet";
 import { getPoolMeta } from "@/config/poolRegistry";
 import { cn } from "@/lib/utils";
-import type { PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { Droplets, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -69,13 +69,13 @@ export function FaucetMenu() {
     const mintMeta = new Map<string, { mint: PublicKey; symbol: string; icon: string }>();
     for (const p of pools) {
       const meta = getPoolMeta(p.publicKey.toBase58());
-      mintMeta.set(p.collateralMint.toBase58(), {
-        mint: p.collateralMint,
+      mintMeta.set(new PublicKey(p.account.collateral_mint).toBase58(), {
+        mint: new PublicKey(p.account.collateral_mint),
         symbol: meta.collateralSymbol,
         icon: meta.collateralIcon,
       });
-      mintMeta.set(p.lendMint.toBase58(), {
-        mint: p.lendMint,
+      mintMeta.set(new PublicKey(p.account.lend_mint).toBase58(), {
+        mint: new PublicKey(p.account.lend_mint),
         symbol: meta.lendSymbol,
         icon: meta.lendIcon,
       });

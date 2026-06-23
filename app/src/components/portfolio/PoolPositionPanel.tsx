@@ -1,4 +1,4 @@
-import { type PoolData } from "@/hooks/program/useLendingAccount";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
@@ -210,7 +210,7 @@ type ModalState =
 
 interface PoolPositionPanelProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   connected: boolean;
 }
 
@@ -243,49 +243,45 @@ export function PoolPositionPanel({
     poolPubKey,
     walletPubKey,
   );
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint ?? null);
-  const lpWalletBalance = useTokenBalance(poolData.lpMint ?? null);
-  const lendWalletBalance = useTokenBalance(poolData.lendMint ?? null);
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
+  const lpWalletBalance = useTokenBalance(new PublicKey(poolData.lp_mint));
+  const lendWalletBalance = useTokenBalance(new PublicKey(poolData.lend_mint));
 
   const repayMutation = useRepay();
 
-  // Compute on-chain amounts as human-readable numbers
+  // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    if (poolData.totalDebtShares === 0n) return 0;
-    const rawDebt =
-      (userPosition.debtShares * poolData.totalBorrowed) /
-      poolData.totalDebtShares;
-    return Number(rawDebt) / 10 ** lendDecimals;
+    return Number(userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares)) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
   const hasLp = (lpWalletBalance?.uiAmount ?? 0) > 0;
-  const hasDebt = userPosition != null && userPosition.debtShares > 0n;
+  const hasDebt = userPosition != null && userPosition.has_debt();
 
   const lendPos: WithdrawPosition | null = hasLp
     ? {
-        asset: pool.lendSymbol,
-        icon: pool.lendIcon,
-        supplied: lpWalletBalance?.uiAmount ?? 0,
-        apy: pool.supplyAPY,
-        collateralEnabled: true,
-      }
+      asset: pool.lendSymbol,
+      icon: pool.lendIcon,
+      supplied: lpWalletBalance?.uiAmount ?? 0,
+      apy: pool.supplyAPY,
+      collateralEnabled: true,
+    }
     : null;
 
   const borrowPos: RepayPosition | null = hasDebt
     ? {
-        collateralAsset: pool.collateralSymbol,
-        collateralIcon: pool.collateralIcon,
-        borrowedAsset: pool.lendSymbol,
-        borrowedIcon: pool.lendIcon,
-        debtAmount: debtUiAmount ?? 0,
-        rawDebtAmount: userPosition && poolData && lendDecimals != null && poolData.totalDebtShares > 0n
-          ? ((userPosition.debtShares * poolData.totalBorrowed) / poolData.totalDebtShares).toString()
-          : undefined,
-        borrowAPY: pool.borrowAPY,
-        walletBalance: lendWalletBalance?.uiAmount ?? undefined,
-      }
+      collateralAsset: pool.collateralSymbol,
+      collateralIcon: pool.collateralIcon,
+      borrowedAsset: pool.lendSymbol,
+      borrowedIcon: pool.lendIcon,
+      debtAmount: debtUiAmount ?? 0,
+      rawDebtAmount: userPosition && poolData && lendDecimals != null
+        ? userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares).toString()
+        : undefined,
+      borrowAPY: pool.borrowAPY,
+      walletBalance: lendWalletBalance?.uiAmount ?? undefined,
+    }
     : null;
 
   async function handleRepay(amount: number, rawAmountStr?: string) {
@@ -294,7 +290,7 @@ export function PoolPositionPanel({
     const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (lendDecimals ?? 6)));
     await repayMutation.mutateAsync({
       pool: poolPubKey,
-      lendMint: poolData.lendMint,
+      lendMint: new PublicKey(poolData.lend_mint),
       amount: rawAmount,
     });
   }

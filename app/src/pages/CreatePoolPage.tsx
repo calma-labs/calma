@@ -232,12 +232,6 @@ export function CreatePoolPage() {
     if (hasErrors || !connected) return;
 
     const params: CreatePoolParams = {
-      feeConfig: {
-        m1: Number(form.m1),
-        c1: Number(form.c1),
-        m2: Number(form.m2),
-        c2: Number(form.c2),
-      },
       ltvPercent: Number(form.ltvPercent),
     };
 

@@ -57,24 +57,24 @@ export function PoolDetailPage() {
   const { data: poolData, isLoading } = useLendingAccount(poolPubKey);
   const { data: userPosition } = useUserPosition(poolPubKey, walletPubKey);
   const { data: collateralDecimals } = useMintDecimals(
-    poolData?.collateralMint ?? null,
+    poolData ? new PublicKey(poolData.collateral_mint) : null,
   );
   const withdrawMutation = useWithdraw();
 
   const pool = useMemo(
-    () => (poolData ? poolDataToDisplayPool(poolData) : null),
-    [poolData],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
+    [poolData, poolPubKey],
   );
 
   const withdrawPosition = useMemo<WithdrawPosition | null>(() => {
-    if (!pool || !userPosition || userPosition.collateralDeposited === 0n)
+    if (!pool || !userPosition || userPosition.collateral_deposited === 0n)
       return null;
     const decimals = collateralDecimals ?? 9;
     return {
       asset: pool.collateralSymbol,
       icon: pool.collateralIcon,
-      supplied: Number(userPosition.collateralDeposited) / 10 ** decimals,
-      rawSupplied: userPosition.collateralDeposited.toString(),
+      supplied: Number(userPosition.collateral_deposited) / 10 ** decimals,
+      rawSupplied: userPosition.collateral_deposited.toString(),
       apy: pool.supplyAPY,
       collateralEnabled: true,
     };
@@ -85,12 +85,12 @@ export function PoolDetailPage() {
     // Use raw amount if provided (for max withdrawal), otherwise calculate from UI amount
     const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (collateralDecimals ?? 9)));
     const userTokenAccount = getAssociatedTokenAddressSync(
-      poolData.collateralMint,
+      new PublicKey(poolData.collateral_mint),
       walletPubKey,
     );
     await withdrawMutation.mutateAsync({
       pool: poolPubKey,
-      collateralMint: poolData.collateralMint,
+      collateralMint: new PublicKey(poolData.collateral_mint),
       userTokenAccount,
       amount: rawAmount,
     });

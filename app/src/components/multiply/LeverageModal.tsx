@@ -3,7 +3,7 @@ import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { MAX_MULTIPLY } from "@/hooks/useMultiply";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -22,7 +22,7 @@ import { useMemo, useState } from "react";
 
 interface LeverageModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -49,11 +49,11 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
     }
   }, [wallet]);
 
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
+  const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
   const decimals = collateralDecimals ?? 6;
 
   // User's collateral wallet balance (the token they deposit)
-  const collateralBalance = useTokenBalance(poolData.collateralMint);
+  const collateralBalance = useTokenBalance(new PublicKey(poolData.collateral_mint));
   const walletBalance = collateralBalance?.uiAmount ?? 0;
 
   const openMutation = useOpenMultiply();
@@ -90,19 +90,19 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
 
     const poolPubKey = new PublicKey(pool.address);
     const userCollateralAta = getAssociatedTokenAddressSync(
-      poolData.collateralMint,
+      new PublicKey(poolData.collateral_mint),
       walletPubKey,
     );
     const userLendAta = getAssociatedTokenAddressSync(
-      poolData.lendMint,
+      new PublicKey(poolData.lend_mint),
       walletPubKey,
     );
     const amountRaw = new BN(Math.floor(amountNum * 10 ** decimals));
 
     await openMutation.mutateAsync({
       pool: poolPubKey,
-      lendMint: poolData.lendMint,
-      collateralMint: poolData.collateralMint,
+      lendMint: new PublicKey(poolData.lend_mint),
+      collateralMint: new PublicKey(poolData.collateral_mint),
       userCollateralAta,
       userLendAta,
       amountRaw,

@@ -1,0 +1,18 @@
+[package]
+name = "bindings"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+math = { path = "../math" }
+state = { path = "../state" }
+irm-state = { path = "../irm-state" }
+wasm-bindgen = "0.2"
+bytemuck = "1.14"
+
+[dev-dependencies]
+anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
+wasmtime = "28"

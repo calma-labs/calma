@@ -1,6 +1,7 @@
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
+use bytemuck::Zeroable;
 
 #[derive(Accounts)]
 pub struct DepositCollateral<'info> {
@@ -34,14 +35,30 @@ pub struct DepositCollateral<'info> {
     #[account(
         init_if_needed,
         payer = authority,
-        space = 8 + UserPosition::INIT_SPACE,
+        space = 8 + std::mem::size_of::<UserPosition>(),
         seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
         bump,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
+}
+
+impl<'info> DepositCollateral<'info> {
+    pub fn transfer_collateral_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_token_account.to_account_info(),
+                    to: self.collateral_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
 }
 
 pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {
@@ -56,51 +73,38 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
         );
     }
 
-    // Transfer collateral tokens from user to the pool's collateral vault.
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_token_account.to_account_info(),
-                to: ctx.accounts.collateral_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
-
-    // Update pool's raw collateral total.
-    let total_collateral = {
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_collateral_deposited = pool
-            .total_collateral_deposited
-            .checked_add(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.total_collateral_deposited
+    let needs_init = {
+        let account_info = ctx.accounts.user_position.to_account_info();
+        let data = account_info.try_borrow_data()?;
+        data.len() >= 8 && data[..8].iter().all(|&b| b == 0)
     };
 
-    // Initialize or accumulate into the user position PDA.
-    let position = &mut ctx.accounts.user_position;
-    if position.authority == Pubkey::default() {
-        **position = UserPosition {
-            authority: ctx.accounts.authority.key(),
-            pool: ctx.accounts.pool.key(),
-            collateral_deposited: amount,
-            debt_shares: 0,
-            bump: ctx.bumps.user_position,
+    // Transfer + update position via Core.
+    // For new positions use a zeroed starting value — load_init() in Anchor 1.0
+    // doesn't write the discriminator until AccountsExit, so calling load() on the
+    // same account in the same handler would fail with discriminator mismatch.
+    {
+        let mut pool = ctx.accounts.pool.load_mut()?;
+        let starting_position = if needs_init {
+            UserPosition::zeroed()
+        } else {
+            *ctx.accounts.user_position.load()?
         };
-    } else {
-        position.collateral_deposited = position
-            .collateral_deposited
-            .checked_add(amount)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let mut core = math::Core::new(pool.market).with_position(starting_position);
+        core.deposit_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_vault(amt))
+            .map_err(crate::error::ErrorCode::from)?;
+        pool.market = core.market;
+        if needs_init {
+            let mut position = ctx.accounts.user_position.load_init()?;
+            position.authority = ctx.accounts.authority.key();
+            position.pool = ctx.accounts.pool.key();
+            position.collateral_deposited = core.position.collateral_deposited;
+            position.bump = ctx.bumps.user_position;
+        } else {
+            ctx.accounts.user_position.load_mut()?.collateral_deposited =
+                core.position.collateral_deposited;
+        }
     }
-
-    msg!(
-        "Deposited {} collateral tokens. Total collateral in pool: {}",
-        amount,
-        total_collateral,
-    );
 
     Ok(())
 }

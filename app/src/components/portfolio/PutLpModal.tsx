@@ -1,15 +1,16 @@
 // import { usePutLp } from "@/hooks/program/usePutLp";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
+import { PublicKey } from "@solana/web3.js";
 import { Info, Layers, Loader2, Wallet, X } from "lucide-react";
 import { useState } from "react";
 
 interface PutLpModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -17,8 +18,8 @@ export function PutLpModal({ poolData, onClose }: PutLpModalProps) {
   const [amount, setAmount] = useState("");
   const { wallet } = useWalletConnection();
 
-  // const { data: lpDecimals } = useMintDecimals(poolData.lpMint);
-  const lpBalance = useTokenBalance(poolData.lpMint);
+  // const { data: lpDecimals } = useMintDecimals(new PublicKey(poolData.lp_mint));
+  const lpBalance = useTokenBalance(new PublicKey(poolData.lp_mint));
 
   // const putLpMutation = usePutLp();
   // const isPending = putLpMutation.isPending;

@@ -64,6 +64,39 @@ pub struct WithdrawLent<'info> {
     pub system_program: Program<'info, System>,
 }
 
+impl<'info> WithdrawLent<'info> {
+    pub fn burn_lp(&self, shares: u64) -> Result<()> {
+        anchor_spl::token::burn(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                Burn {
+                    mint: self.lp_mint.to_account_info(),
+                    from: self.user_lp_token_account.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            shares,
+        )
+    }
+
+    pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
+        let seeds = &[b"state" as &[u8], &[state_bump]];
+        let signer = &[&seeds[..]];
+        anchor_spl::token::transfer(
+            CpiContext::new_with_signer(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.lend_vault.to_account_info(),
+                    to: self.user_lend_token_account.to_account_info(),
+                    authority: self.state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )
+    }
+}
+
 pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<()> {
     require!(shares > 0, crate::error::ErrorCode::InvalidAmount);
     require!(
@@ -79,105 +112,55 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             crate::error::ErrorCode::InvalidAmount
         );
         require!(
-            pool.total_lp_issued > 0,
+            pool.market.total_supply_shares > 0,
             crate::error::ErrorCode::InvalidAmount
         );
     }
 
     // ── 1. Burn LP tokens from user (always) ─────────────────────────────────
-    // Burning here prevents double-use while the request sits in the queue.
-    // `total_lp_issued` is NOT decremented yet — queued shares keep accruing
-    // proportional value relative to the lend vault balance until processed.
-    anchor_spl::token::burn(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            Burn {
-                mint: ctx.accounts.lp_mint.to_account_info(),
-                from: ctx.accounts.user_lp_token_account.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        shares,
-    )?;
+    ctx.accounts.burn_lp(shares)?;
 
-    // ── 2. Decide: immediate withdrawal or enqueue ────────────────────────────
-    // We go immediate only when the queue is empty AND the lend vault holds
-    // enough tokens to cover the shares' full proportional value (based on
-    // total_lend_deposited, not just the current vault balance).
+    // ── 2. Compute token amount and update market ─────────────────────────────
     let vault_balance = ctx.accounts.lend_vault.amount;
-
-    let immediate = {
-        let pool = ctx.accounts.pool.load()?;
+    let state_bump = ctx.bumps.state;
+    let (immediate, lend_for_shares) = {
+        let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
-        // Proportional lend tokens for `shares` based on full deposited amount.
-        let lend_for_shares = (shares as u128)
-            .checked_mul(pool.total_lend_deposited as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)?
-            .checked_div(pool.total_lp_issued as u128)
-            .ok_or(crate::error::ErrorCode::MathOverflow)? as u64;
-        queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0
+        let mut core = math::Core::new(pool.market);
+        let lend_for_shares = core
+            .calc_lend_for_shares(shares)
+            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+        let immediate = queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0;
+        if immediate {
+            core.withdraw_lent_immediate(shares, |amt| {
+                ctx.accounts.transfer_lend_to_user(amt, state_bump)
+            })
+            .map_err(crate::error::ErrorCode::from)?;
+        } else {
+            core.withdraw_lent_queued(shares)
+                .ok_or(crate::error::ErrorCode::MathOverflow)?;
+            pool.withdrawal_queue.push(WithdrawalQueueEntry::new(
+                ctx.accounts.authority.key(),
+                lend_for_shares,
+            ))?;
+        }
+        pool.market = core.market;
+        (immediate, lend_for_shares)
     };
 
     if immediate {
-        // ── 3a. Immediate: convert LP → lend tokens and transfer ─────────────
-        let withdraw_amount = {
-            let pool = ctx.accounts.pool.load()?;
-            (shares as u128)
-                .checked_mul(pool.total_lend_deposited as u128)
-                .ok_or(crate::error::ErrorCode::MathOverflow)?
-                .checked_div(pool.total_lp_issued as u128)
-                .ok_or(crate::error::ErrorCode::MathOverflow)? as u64
-        };
-
-        // Decrement total_lp_issued and total_lend_deposited on immediate path.
-        {
-            let mut pool = ctx.accounts.pool.load_mut()?;
-            pool.total_lp_issued = pool
-                .total_lp_issued
-                .checked_sub(shares)
-                .ok_or(crate::error::ErrorCode::MathOverflow)?;
-            pool.total_lend_deposited = pool
-                .total_lend_deposited
-                .checked_sub(withdraw_amount.min(pool.total_lend_deposited))
-                .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        }
-
-        let state_bump = ctx.bumps.state;
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *ctx.accounts.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: ctx.accounts.lend_vault.to_account_info(),
-                    to: ctx.accounts.user_lend_token_account.to_account_info(),
-                    authority: ctx.accounts.state.to_account_info(),
-                },
-                signer,
-            ),
-            withdraw_amount,
-        )?;
-
         msg!(
-            "Leave: burned {} LP, withdrew {} lend tokens immediately. total_lp_issued: {}",
+            "Leave: burned {} LP, withdrew {} lend tokens immediately. total_supply_shares: {}",
             shares,
-            withdraw_amount,
-            ctx.accounts.pool.load()?.total_lp_issued,
+            lend_for_shares,
+            ctx.accounts.pool.load()?.market.total_supply_shares,
         );
     } else {
-        // ── 3b. Queued: store shares in queue; totals unchanged ───────────────
-        // Conversion to lend tokens happens when the queue entry is processed,
-        // so the shares continue to reflect their accrued value at that time.
-        let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.withdrawal_queue.push(WithdrawalQueueEntry {
-            requester: ctx.accounts.authority.key(),
-            amount: shares,
-        })?;
         msg!(
-            "Leave: burned {} LP, enqueued for later withdrawal. total_lp_issued: {}",
+            "Leave: burned {} LP, enqueued {} lend tokens for later withdrawal. total_supply_shares: {}",
             shares,
-            pool.total_lp_issued,
+            lend_for_shares,
+            ctx.accounts.pool.load()?.market.total_supply_shares,
         );
     }
 

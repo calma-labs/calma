@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import { getMint } from "@solana/spl-token";
 import { connection } from "./program";
 import { MINTER_PUBKEY } from "../store/wallet.store";
-import type { PoolData } from "../types/lending";
+import type { PoolAccountWithKey } from "../hooks/program/useLendingAccounts";
 
 /**
  * Hardcoded blacklist of token mint addresses.
@@ -42,13 +42,13 @@ export async function isTokenValid(mint: PublicKey): Promise<boolean> {
  * 
  * Also filters out pools with LTV <= 75%.
  */
-export async function isPoolValid(pool: PoolData): Promise<boolean> {
+export async function isPoolValid(pool: PoolAccountWithKey): Promise<boolean> {
   if (POOL_BLACKLIST.has(pool.publicKey.toBase58())) return false;
-  if (pool.ltvPercent <= 75) return false;
+  if (pool.account.ltv_percent <= 75) return false;
 
   const [collateralValid, lendValid] = await Promise.all([
-    isTokenValid(pool.collateralMint),
-    isTokenValid(pool.lendMint),
+    isTokenValid(new PublicKey(pool.account.collateral_mint)),
+    isTokenValid(new PublicKey(pool.account.lend_mint)),
   ]);
 
   return collateralValid && lendValid;
@@ -60,13 +60,13 @@ export async function isPoolValid(pool: PoolData): Promise<boolean> {
  * 
  * Also filters out pools with LTV <= 75%.
  */
-export async function isMultiplyPoolValid(pool: PoolData): Promise<boolean> {
+export async function isMultiplyPoolValid(pool: PoolAccountWithKey): Promise<boolean> {
   if (POOL_BLACKLIST.has(pool.publicKey.toBase58())) return false;
-  if (pool.ltvPercent <= 75) return false;
+  if (pool.account.ltv_percent <= 75) return false;
 
   const [collateralValid, lendValid] = await Promise.all([
-    isTokenValid(pool.collateralMint),
-    isTokenValid(pool.lendMint),
+    isTokenValid(new PublicKey(pool.account.collateral_mint)),
+    isTokenValid(new PublicKey(pool.account.lend_mint)),
   ]);
 
   return collateralValid || lendValid;

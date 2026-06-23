@@ -1,14 +1,16 @@
 import { isTokenValid, POOL_BLACKLIST } from '@/lib/validation'
-import type { PoolData } from '@/types/lending'
+import { PublicKey } from '@solana/web3.js'
 import { useEffect, useState } from 'react'
-import { useLendingAccounts } from './useLendingAccounts'
+import { type PoolAccountWithKey, useLendingAccounts } from './useLendingAccounts'
 
-async function poolHasValidMinter(pool: PoolData): Promise<boolean> {
+export type { PoolAccountWithKey }
+
+async function poolHasValidMinter(pool: PoolAccountWithKey): Promise<boolean> {
     if (POOL_BLACKLIST.has(pool.publicKey.toBase58())) return false
-    if (pool.ltvPercent <= 75) return false
+    if (pool.account.ltv_percent <= 75) return false
     const [collateralValid, lendValid] = await Promise.all([
-        isTokenValid(pool.collateralMint),
-        isTokenValid(pool.lendMint),
+        isTokenValid(new PublicKey(pool.account.collateral_mint)),
+        isTokenValid(new PublicKey(pool.account.lend_mint)),
     ])
     return collateralValid || lendValid
 }
@@ -19,7 +21,7 @@ async function poolHasValidMinter(pool: PoolData): Promise<boolean> {
  */
 export function useValidLendingAccounts() {
     const { data: poolsData = [], isLoading, error } = useLendingAccounts()
-    const [validPools, setValidPools] = useState<PoolData[]>([])
+    const [validPools, setValidPools] = useState<PoolAccountWithKey[]>([])
     const [isValidating, setIsValidating] = useState(false)
 
     useEffect(() => {

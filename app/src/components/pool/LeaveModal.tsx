@@ -2,16 +2,17 @@ import { useLeave } from "@/hooks/program/useLeave";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
+import { PublicKey } from "@solana/web3.js";
 import { useWalletConnection } from "@solana/react-hooks";
 import { AlertTriangle, Info, Layers, Loader2, Wallet, X } from "lucide-react";
 import { useState } from "react";
 
 interface LeaveModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -19,11 +20,11 @@ export function LeaveModal({ pool, poolData, onClose }: LeaveModalProps) {
   const [amount, setAmount] = useState("");
   const { wallet } = useWalletConnection();
 
-  const { data: lpDecimals } = useMintDecimals(poolData.lpMint);
+  const { data: lpDecimals } = useMintDecimals(new PublicKey(poolData.lp_mint));
   const decimals = lpDecimals ?? 6;
 
   // LP token wallet balance — this is what the user can redeem
-  const lpWalletBalance = useTokenBalance(poolData.lpMint);
+  const lpWalletBalance = useTokenBalance(new PublicKey(poolData.lp_mint));
   const limit = lpWalletBalance?.uiAmount ?? 0;
 
   const leaveMutation = useLeave();
@@ -40,8 +41,8 @@ export function LeaveModal({ pool, poolData, onClose }: LeaveModalProps) {
     const rawShares = new BN(Math.floor(numAmount * 10 ** decimals));
 
     await leaveMutation.mutateAsync({
-      pool: poolData.publicKey,
-      lendMint: poolData.lendMint,
+      pool: new PublicKey(pool.address),
+      lendMint: new PublicKey(poolData.lend_mint),
       shares: rawShares,
     });
 

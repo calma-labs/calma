@@ -2,7 +2,7 @@ import { useParticipate } from "@/hooks/program/useParticipate";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -13,7 +13,7 @@ import { useState } from "react";
 
 interface ParticipateModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -25,8 +25,8 @@ export function ParticipateModal({
   const [amount, setAmount] = useState("");
   const { wallet } = useWalletConnection();
 
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
-  const lendBalance = useTokenBalance(poolData.lendMint);
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
+  const lendBalance = useTokenBalance(new PublicKey(poolData.lend_mint));
 
   const displaySymbol = pool.lendSymbol;
   const displayIcon = pool.lendIcon;
@@ -48,13 +48,13 @@ export function ParticipateModal({
     const decimals = lendDecimals ?? 6;
     const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
     const userLendTokenAccount = getAssociatedTokenAddressSync(
-      poolData.lendMint,
+      new PublicKey(poolData.lend_mint),
       authority,
     );
 
     await participateMutation.mutateAsync({
-      pool: poolData.publicKey,
-      lendMint: poolData.lendMint,
+      pool: new PublicKey(pool.address),
+      lendMint: new PublicKey(poolData.lend_mint),
       userLendTokenAccount,
       amount: rawAmount,
     });

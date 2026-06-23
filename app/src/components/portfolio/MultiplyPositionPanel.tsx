@@ -1,6 +1,6 @@
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -35,7 +35,7 @@ type ModalState =
 
 interface MultiplyPositionPanelProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   connected: boolean;
 }
 
@@ -73,30 +73,26 @@ export function MultiplyPositionPanel({
     poolPubKey,
     walletPubKey,
   );
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
-  const { data: lendDecimals } = useMintDecimals(poolData.lendMint);
+  const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
 
   // Derive human-readable amounts and position metrics
   const position = useMemo(() => {
     if (!userPosition) return null;
 
-    const hasCollateral = userPosition.collateralDeposited > 0n;
-    const hasDebt = userPosition.debtShares > 0n;
-
     // A multiply position has both collateral and debt
-    if (!hasCollateral || !hasDebt) return null;
+    if (!userPosition.has_collateral() || !userPosition.has_debt()) return null;
 
     const colDec = collateralDecimals ?? 6;
     const lndDec = lendDecimals ?? 6;
 
     const collateralUi =
-      Number(userPosition.collateralDeposited) / 10 ** colDec;
+      Number(userPosition.collateral_deposited) / 10 ** colDec;
 
-    const debtRaw =
-      poolData.totalDebtShares > 0n
-        ? (userPosition.debtShares * poolData.totalBorrowed) /
-          poolData.totalDebtShares
-        : 0n;
+    const debtRaw = userPosition.debt_amount(
+      poolData.total_borrow_assets,
+      poolData.total_borrow_shares,
+    );
     const debtUi = Number(debtRaw) / 10 ** lndDec;
 
     const leverage = computeLeverage(collateralUi, debtUi);
@@ -111,6 +107,12 @@ export function MultiplyPositionPanel({
       debtRaw,
       leverage,
       netAPY,
+      collateralFormatted: userPosition.format_collateral(colDec),
+      debtFormatted: userPosition.format_debt(
+        poolData.total_borrow_assets,
+        poolData.total_borrow_shares,
+        lndDec,
+      ),
     };
   }, [userPosition, collateralDecimals, lendDecimals, poolData, pool]);
 
@@ -194,9 +196,7 @@ export function MultiplyPositionPanel({
               Collateral
             </span>
             <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
-              {position.collateralUi.toLocaleString("en-US", {
-                maximumFractionDigits: 4,
-              })}{" "}
+              {position.collateralFormatted}{" "}
               <span className="text-xs text-[#efe0f7]/40">
                 {pool.collateralSymbol}
               </span>
@@ -207,9 +207,7 @@ export function MultiplyPositionPanel({
           <div className="flex flex-col min-w-[100px]">
             <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Debt</span>
             <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
-              {position.debtUi.toLocaleString("en-US", {
-                maximumFractionDigits: 4,
-              })}{" "}
+              {position.debtFormatted}{" "}
               <span className="text-xs text-[#efe0f7]/40">
                 {pool.lendSymbol}
               </span>

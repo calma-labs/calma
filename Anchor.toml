@@ -5,8 +5,17 @@ package_manager = "bun"
 resolution = true
 skip-lint = false
 
+[programs.devnet]
+feed = "qEcT6kscwv9csBQiGCFfFN7CvkCsCrjpN6yKhSqt1gE"
+guard = "Eh7DNVfuTopDS8othdeF9tj2nYFKjLUcayAituAqN6Cg"
+irm = "FYGf57wHLgHwKpMwza56WBXtt93N7fJ6e4ut16zdpoti"
+jbl = "c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8"
+
 [programs.localnet]
-jbl = "zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ"
+feed = "orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4"
+guard = "grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt"
+irm = "irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk"
+jbl = "c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8"
 
 [provider]
 cluster = "localnet"

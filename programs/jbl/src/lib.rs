@@ -1,6 +1,6 @@
 pub mod constants;
 pub mod error;
-pub mod fees;
+pub mod hooks;
 pub mod instructions;
 pub mod math;
 pub mod state;
@@ -10,33 +10,35 @@ use anchor_lang::prelude::*;
 
 pub use constants::*;
 pub use error::ErrorCode;
-pub use fees::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("zTXtKnfRov21zv9VzywG9p3vNFTF1445wCch5oqqBBZ");
+declare_id!("c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8");
 
 #[program]
 pub mod jbl {
     use super::*;
 
-    pub fn create(ctx: Context<Create>, m1: u64, c1: i64, m2: u64, c2: i64, ltv_percent: u8) -> Result<()> {
-        create_handler(ctx, m1, c1, m2, c2, ltv_percent)
+    pub fn create(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+        create_handler(ctx, ltv_percent)
     }
 
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {
         deposit_collateral_handler(ctx, amount)
     }
 
-    pub fn borrow(ctx: Context<Borrow>, amount: u64) -> Result<()> {
+    pub fn borrow<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
         borrow_handler(ctx, amount)
     }
 
-    pub fn repay(ctx: Context<Repay>, amount: u64) -> Result<()> {
+    pub fn repay<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
         repay_handler(ctx, amount)
     }
 
-    pub fn withdraw_collateral(ctx: Context<WithdrawCollateral>, amount: u64) -> Result<()> {
+    pub fn withdraw_collateral<'a>(
+        ctx: Context<'a, WithdrawCollateral<'a>>,
+        amount: u64,
+    ) -> Result<()> {
         withdraw_collateral_handler(ctx, amount)
     }
 
@@ -52,19 +54,15 @@ pub mod jbl {
         withdraw_lent_handler(ctx, shares)
     }
 
-    pub fn process_vault_queue_entry(ctx: Context<ProcessVaultQueueEntry>) -> Result<()> {
-        process_vault_queue_entry_handler(ctx)
-    }
-
-    pub fn borrow_with_hedge(
-        ctx: Context<BorrowWithHedge>,
+    pub fn borrow_with_hedge<'a>(
+        ctx: Context<'a, BorrowWithHedge<'a>>,
         amount: u64,
         duration: u64,
     ) -> Result<()> {
         borrow_with_hedge_handler(ctx, amount, duration)
     }
 
-    pub fn settle_rate_hedge_match(ctx: Context<SettleRateHedgeMatch>) -> Result<()> {
+    pub fn settle_rate_hedge_match<'a>(ctx: Context<'a, SettleRateHedgeMatch<'a>>) -> Result<()> {
         settle_rate_hedge_match_handler(ctx)
     }
 

@@ -1,0 +1,1 @@
+- [Project Architecture](project-architecture.md) — Monorepo structure, crate roles, WASM pipeline, APY calculation gap, and account types

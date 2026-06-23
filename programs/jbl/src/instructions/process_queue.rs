@@ -38,11 +38,11 @@ pub struct ProcessQueueEntry<'info> {
             pool.key().as_ref(),
             user_token_account.owner.as_ref(),
         ],
-        bump = user_position.bump,
-        constraint = user_position.pool == pool.key()
+        bump = user_position.load()?.bump,
+        constraint = user_position.load()?.pool == pool.key()
             @ crate::error::ErrorCode::QueueEntryMismatch,
     )]
-    pub user_position: Account<'info, UserPosition>,
+    pub user_position: AccountLoader<'info, UserPosition>,
 
     /// The pool's token vault (source of funds).
     #[account(
@@ -98,7 +98,7 @@ pub fn process_queue_entry_handler(_ctx: Context<ProcessQueueEntry>) -> Result<(
     //             .checked_sub(amount)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?;
     //         let max_borrowable = remaining_deposit
-    //             .checked_mul(pool.ltv_percent as u64)
+    //             .checked_mul(pool.market.ltv_percent as u64)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?
     //             .checked_div(100)
     //             .ok_or(crate::error::ErrorCode::MathOverflow)?;

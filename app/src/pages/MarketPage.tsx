@@ -45,7 +45,7 @@ export function MarketPage() {
   const allPools = useMemo<Pool[]>(
     () => lendingAccounts
       .filter(pool => validPoolIds.has(pool.publicKey.toBase58()))
-      .map(poolDataToDisplayPool),
+      .map(pd => poolDataToDisplayPool(pd.publicKey, pd.account)),
     [lendingAccounts, validPoolIds],
   );
 
@@ -71,7 +71,9 @@ export function MarketPage() {
         })
         .sort((a, b) => {
           const mult = sortDir === "asc" ? 1 : -1;
-          return mult * ((a[sortKey] as number) - (b[sortKey] as number));
+          const val = (p: Pool) =>
+            sortKey === "ltv" ? p.account.ltv_percent : (p[sortKey] as number);
+          return mult * (val(a) - val(b));
         }),
     [allPools, search, categoryFilter, sortKey, sortDir],
   );

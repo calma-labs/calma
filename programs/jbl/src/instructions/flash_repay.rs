@@ -4,7 +4,8 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at_checked};
 use solana_sdk_ids::sysvar::instructions::ID as SYSVAR_INSTRUCTIONS_ID;
 
-use super::flash_borrow::{flash_fee, FLASH_BORROW_DISCRIMINATOR};
+use super::flash_borrow::FLASH_BORROW_DISCRIMINATOR;
+use crate::FLASH_LOAN_FEE_BPS;
 
 #[derive(Accounts)]
 pub struct FlashRepay<'info> {
@@ -42,6 +43,22 @@ pub struct FlashRepay<'info> {
     pub sysvar_instructions: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
+}
+
+impl<'info> FlashRepay<'info> {
+    pub fn transfer_repayment_to_vault(&self, amount: u64) -> Result<()> {
+        anchor_spl::token::transfer(
+            CpiContext::new(
+                *self.token_program.to_account_info().key,
+                anchor_spl::token::Transfer {
+                    from: self.user_source.to_account_info(),
+                    to: self.lend_vault.to_account_info(),
+                    authority: self.authority.to_account_info(),
+                },
+            ),
+            amount,
+        )
+    }
 }
 
 pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> {
@@ -87,7 +104,8 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     }
 
     let borrowed = borrowed_amount.ok_or(ErrorCode::FlashBorrowMissing)?;
-    let fee = flash_fee(borrowed).ok_or(ErrorCode::MathOverflow)?;
+    let fee =
+        math::flash_fee(borrowed, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = borrowed.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     require!(amount >= min_repay, ErrorCode::FlashLoanFeeNotCovered);
 
@@ -98,17 +116,7 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     );
 
     // ── 3. Transfer repayment from user to lend vault ─────────────────────────
-    anchor_spl::token::transfer(
-        CpiContext::new(
-            *ctx.accounts.token_program.to_account_info().key,
-            anchor_spl::token::Transfer {
-                from: ctx.accounts.user_source.to_account_info(),
-                to: ctx.accounts.lend_vault.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        amount,
-    )?;
+    ctx.accounts.transfer_repayment_to_vault(amount)?;
 
     // ── 4. Update pool accounting ─────────────────────────────────────────────
     //
@@ -116,8 +124,9 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     // The net effect vs the flash_borrow is +fee for depositors.
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.total_lend_deposited = pool
-            .total_lend_deposited
+        pool.market.total_supply_assets = pool
+            .market
+            .total_supply_assets
             .checked_add(amount)
             .ok_or(ErrorCode::MathOverflow)?;
     }

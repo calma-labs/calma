@@ -9,7 +9,7 @@ import { BrowserRouter, Route, Routes } from "react-router";
 
 function App() {
   return (
-    <BrowserRouter basename="/jbl">
+    <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASENAME ?? "/"}>
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<MarketPage />} />

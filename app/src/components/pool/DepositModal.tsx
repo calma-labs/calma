@@ -2,7 +2,7 @@ import { useDeposit } from "@/hooks/program/useDeposit";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolData } from "@/types/lending";
+import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -13,7 +13,7 @@ import { useState } from "react";
 
 interface DepositModalProps {
   pool: Pool;
-  poolData: PoolData;
+  poolData: PoolWithIrm;
   onClose: () => void;
 }
 
@@ -21,8 +21,8 @@ export function DepositModal({ pool, poolData, onClose }: DepositModalProps) {
   const [amount, setAmount] = useState("");
   const { wallet } = useWalletConnection();
 
-  const collateralBalance = useTokenBalance(poolData.collateralMint);
-  const { data: collateralDecimals } = useMintDecimals(poolData.collateralMint);
+  const collateralBalance = useTokenBalance(new PublicKey(poolData.collateral_mint));
+  const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
 
   const depositMutation = useDeposit();
   const isPending = depositMutation.isPending;
@@ -41,13 +41,13 @@ export function DepositModal({ pool, poolData, onClose }: DepositModalProps) {
     const decimals = collateralDecimals ?? 9;
     const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
     const userTokenAccount = getAssociatedTokenAddressSync(
-      poolData.collateralMint,
+      new PublicKey(poolData.collateral_mint),
       authority,
     );
 
     await depositMutation.mutateAsync({
-      pool: poolData.publicKey,
-      collateralMint: poolData.collateralMint,
+      pool: new PublicKey(pool.address),
+      collateralMint: new PublicKey(poolData.collateral_mint),
       userTokenAccount,
       amount: rawAmount,
     });
@@ -153,7 +153,7 @@ export function DepositModal({ pool, poolData, onClose }: DepositModalProps) {
                 LTV
               </span>
               <span className="text-xs font-semibold text-[#efe0f7]/60">
-                {poolData.ltvPercent}%
+                {poolData.ltv_percent}%
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
