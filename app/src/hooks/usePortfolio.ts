@@ -1,5 +1,6 @@
 import { getPoolMeta } from '@/config/poolRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
+import { leveragedNetAPY } from '@/lib/multiplyMath'
 import type {
     BorrowPosition,
     LendPosition,
@@ -92,24 +93,15 @@ export function useBorrowPositions(enabled = true) {
             const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
-            const totalBorrowed = pool.account.total_borrow_assets
-            const totalDebtShares = pool.account.total_borrow_shares
+            const nowTs = BigInt(Math.floor(Date.now() / 1000))
 
-            const debtRaw = pos.debt_amount(totalBorrowed, totalDebtShares)
+            const debtRaw = pool.account.debt_amount(pos, nowTs) ?? 0n
             const debtAmount = Number(debtRaw) / DECIMALS_FACTOR
             const collateralAmount = Number(pos.collateral_deposited) / DECIMALS_FACTOR
 
-            const ltvBps = pos.ltv(totalBorrowed, totalDebtShares)
-            const healthFactorBps = pos.health_factor(
-                totalBorrowed,
-                totalDebtShares,
-                pool.account.ltv_percent
-            )
-            const liqPriceBps = pos.liq_price(
-                totalBorrowed,
-                totalDebtShares,
-                pool.account.ltv_percent
-            )
+            const ltvBps = pool.account.ltv(pos, nowTs)
+            const healthFactorBps = pool.account.health_factor(pos, nowTs)
+            const liqPriceBps = pool.account.liq_price(pos, nowTs)
 
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
@@ -123,6 +115,7 @@ export function useBorrowPositions(enabled = true) {
                 borrowedIcon: meta.lendIcon,
                 debtAmount,
                 borrowAPY: pool.account.borrow_apy_bps() / 100,
+                supplyAPY: pool.account.supply_apy_bps() / 100,
                 ltv: ltvBps != null ? ltvBps / 100 : null,
                 liqPrice: liqPriceBps != null ? liqPriceBps / 10000 : null,
                 healthFactor: healthFactorBps != null ? healthFactorBps / 10000 : null,
@@ -148,7 +141,7 @@ export function useMultiplyPositions(enabled = true) {
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            const netAPY = Math.max(0, multiplier * 3 - (multiplier - 1) * pos.borrowAPY)
+            const netAPY = leveragedNetAPY(multiplier, pos.supplyAPY, pos.borrowAPY)
 
             return {
                 id: pos.id,

@@ -35,15 +35,6 @@ pub fn utilization_bps(
         .unwrap_or(0) as u64
 }
 
-pub fn flash_fee(amount: u64, fee_bps: u32) -> Option<u64> {
-    u64::try_from(
-        (amount as u128)
-            .checked_mul(fee_bps as u128)?
-            .checked_div(10_000)?,
-    )
-    .ok()
-}
-
 pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -> Option<u64> {
     if elapsed_secs == 0 || rate_bps == 0 || total_borrowed == 0 {
         return Some(0);

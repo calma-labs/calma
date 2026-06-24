@@ -1,5 +1,6 @@
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
+import { leveragedNetAPY, positionLeverage } from "@/lib/multiplyMath";
 import type { PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -12,19 +13,6 @@ import {
   ManagePositionModal,
   type ManageMultiplyPosition,
 } from "./ManagePositionModal";
-
-// ─── Leverage math ─────────────────────────────────────────────────────────────
-
-/**
- * Computes effective leverage from on-chain collateral and debt.
- * Formula: leverage = collateral / (collateral − debt × price), price = 1.
- * Returns 1 when there is no debt.
- */
-function computeLeverage(collateral: number, debt: number): number {
-  const equity = collateral - debt;
-  if (equity <= 0 || collateral <= 0) return 1;
-  return collateral / equity;
-}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -89,17 +77,12 @@ export function MultiplyPositionPanel({
     const collateralUi =
       Number(userPosition.collateral_deposited) / 10 ** colDec;
 
-    const debtRaw = userPosition.debt_amount(
-      poolData.total_borrow_assets,
-      poolData.total_borrow_shares,
-    );
+    const nowTs = BigInt(Math.floor(Date.now() / 1000));
+    const debtRaw = poolData.debt_amount(userPosition, nowTs) ?? 0n;
     const debtUi = Number(debtRaw) / 10 ** lndDec;
 
-    const leverage = computeLeverage(collateralUi, debtUi);
-    const netAPY = Math.max(
-      0,
-      leverage * pool.supplyAPY - (leverage - 1) * pool.borrowAPY,
-    );
+    const leverage = positionLeverage(collateralUi, debtUi);
+    const netAPY = leveragedNetAPY(leverage, pool.supplyAPY, pool.borrowAPY);
 
     return {
       collateralUi,
@@ -108,11 +91,7 @@ export function MultiplyPositionPanel({
       leverage,
       netAPY,
       collateralFormatted: userPosition.format_collateral(colDec),
-      debtFormatted: userPosition.format_debt(
-        poolData.total_borrow_assets,
-        poolData.total_borrow_shares,
-        lndDec,
-      ),
+      debtFormatted: poolData.format_debt(userPosition, nowTs, lndDec),
     };
   }, [userPosition, collateralDecimals, lendDecimals, poolData, pool]);
 

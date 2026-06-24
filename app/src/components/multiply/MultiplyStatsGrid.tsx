@@ -1,4 +1,5 @@
 import { MAX_MULTIPLY } from "@/hooks/useMultiply";
+import { leveragedNetAPY } from "@/lib/multiplyMath";
 import { formatUSD } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
@@ -34,10 +35,7 @@ interface MultiplyStatsGridProps {
 }
 
 export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
-  const maxNetAPY = Math.max(
-    0,
-    MAX_MULTIPLY * pool.supplyAPY - (MAX_MULTIPLY - 1) * pool.borrowAPY,
-  );
+  const maxNetAPY = leveragedNetAPY(MAX_MULTIPLY, pool.supplyAPY, pool.borrowAPY);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

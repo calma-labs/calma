@@ -1,5 +1,6 @@
 import { useValidLendingAccounts } from "@/hooks/program/useValidLendingAccounts";
 import { poolDataToDisplayPool } from "@/lib/poolDisplay";
+import { leveragedNetAPY } from "@/lib/multiplyMath";
 import type { MultiplyMeta, Pool } from "@/types/pool";
 import { useMemo } from "react";
 
@@ -15,10 +16,7 @@ export interface MultiplyStrategy extends Pool {
  * Max net APY is computed at full leverage: L×supplyAPY − (L−1)×borrowAPY.
  */
 export function buildMultiplyMeta(pool: Pool): MultiplyMeta {
-  const maxNetAPY = Math.max(
-    0,
-    MAX_MULTIPLY * pool.supplyAPY - (MAX_MULTIPLY - 1) * pool.borrowAPY,
-  );
+  const maxNetAPY = leveragedNetAPY(MAX_MULTIPLY, pool.supplyAPY, pool.borrowAPY);
   return {
     maxMultiplier: MAX_MULTIPLY,
     maxNetAPY,

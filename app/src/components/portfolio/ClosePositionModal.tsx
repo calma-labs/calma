@@ -2,6 +2,7 @@ import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
 import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
+import { flash_fee } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -47,10 +48,10 @@ export function ClosePositionModal({
   const closeMutation = useCloseMultiply();
   const isPending = closeMutation.isPending;
 
-  // Raw debt derived from debt shares via WASM
+  // Raw debt derived from debt shares via WASM (interest accrued to now)
   const debtRaw = useMemo(
-    () => userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares),
-    [userPosition, poolData.total_borrow_assets, poolData.total_borrow_shares],
+    () => poolData.debt_amount(userPosition, BigInt(Math.floor(Date.now() / 1000))) ?? 0n,
+    [userPosition, poolData],
   );
 
   const collateralRaw = userPosition.collateral_deposited;
@@ -59,7 +60,7 @@ export function ClosePositionModal({
   const debtUi = Number(debtRaw) / 10 ** (lendDecimals ?? 6);
   const collateralUi = Number(collateralRaw) / 10 ** (collateralDecimals ?? 6);
   const flashFee =
-    Math.floor((Number(debtRaw) * 9) / 10_000) / 10 ** (lendDecimals ?? 6);
+    Number(flash_fee(debtRaw) ?? 0n) / 10 ** (lendDecimals ?? 6);
   const estimatedReturn = Math.max(0, collateralUi - debtUi - flashFee);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
@@ -146,7 +147,7 @@ export function ClosePositionModal({
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="text-xs text-[#efe0f7]/40">Debt to repay</span>
               <span className="text-xs font-semibold tabular-nums text-[#d45677]">
-                {userPosition.format_debt(poolData.total_borrow_assets, poolData.total_borrow_shares, lendDecimals ?? 6)}{" "}
+                {poolData.format_debt(userPosition, BigInt(Math.floor(Date.now() / 1000)), lendDecimals ?? 6)}{" "}
                 {pool.lendSymbol}
               </span>
             </div>

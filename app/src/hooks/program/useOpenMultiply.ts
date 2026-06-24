@@ -6,10 +6,11 @@ import { connection, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { MINTER_KEYPAIR, useWalletBalancesStore } from '../../store/wallet.store'
+import { flash_fee } from '@jbl/wasm-lib'
 
-/** 9 bps flash fee — mirrors the on-chain constant. */
+/** Flash fee via the shared wasm math (mirrors the on-chain fee exactly). */
 function computeFlashFee(amount: anchor.BN): anchor.BN {
-    return amount.muln(9).divn(10_000)
+    return new anchor.BN((flash_fee(BigInt(amount.toString())) ?? 0n).toString())
 }
 
 export interface OpenMultiplyParams {
