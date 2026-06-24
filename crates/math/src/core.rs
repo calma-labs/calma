@@ -5,6 +5,20 @@ use crate::{
     MathError, Oracle, Position, PRICE_SCALE,
 };
 
+/// Flash loan fee in basis points (9 bps = 0.09%). Single source of truth shared
+/// by the on-chain program and the client bindings.
+pub const FLASH_LOAN_FEE_BPS: u64 = 9;
+
+/// Flash-loan fee owed on `amount` at the protocol flash-fee rate.
+pub fn flash_fee(amount: u64) -> Option<u64> {
+    u64::try_from(
+        (amount as u128)
+            .checked_mul(FLASH_LOAN_FEE_BPS as u128)?
+            .checked_div(10_000)?,
+    )
+    .ok()
+}
+
 pub struct NotAccrued;
 pub struct Accrued;
 

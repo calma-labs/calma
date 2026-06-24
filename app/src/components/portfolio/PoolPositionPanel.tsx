@@ -252,7 +252,8 @@ export function PoolPositionPanel({
   // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    return Number(userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares)) / 10 ** lendDecimals;
+    const nowTs = BigInt(Math.floor(Date.now() / 1000));
+    return Number(poolData.debt_amount(userPosition, nowTs) ?? 0n) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
@@ -277,7 +278,7 @@ export function PoolPositionPanel({
       borrowedIcon: pool.lendIcon,
       debtAmount: debtUiAmount ?? 0,
       rawDebtAmount: userPosition && poolData && lendDecimals != null
-        ? userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares).toString()
+        ? (poolData.debt_amount(userPosition, BigInt(Math.floor(Date.now() / 1000))) ?? 0n).toString()
         : undefined,
       borrowAPY: pool.borrowAPY,
       walletBalance: lendWalletBalance?.uiAmount ?? undefined,

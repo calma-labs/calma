@@ -23,6 +23,7 @@ export interface BorrowPosition {
   borrowedIcon: string;
   debtAmount: number;
   borrowAPY: number;
+  supplyAPY: number;
   ltv: number | null;
   liqPrice: number | null;
   healthFactor: number | null;
