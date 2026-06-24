@@ -10,6 +10,7 @@
 
 use bytemuck::Pod;
 use irm_state::IrmState;
+use math::Core;
 use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
 use wasm_bindgen::prelude::*;
 
@@ -358,6 +359,37 @@ impl FeedAccount {
     }
 }
 
+// ── Core adapters ───────────────────────────────────────────────────────────
+//
+// Client-side equivalents of the program's `hooks::oracle::OracleState` and
+// `hooks::irm::IrmState`. They expose the *real* on-chain inputs — the price
+// read straight from the feed account, and the borrow rate evaluated from the
+// IRM model at the pool's current utilization — so replaying a `Core` operation
+// reproduces the on-chain result exactly. `current_ts` is the caller's
+// wall-clock time, mirroring `Clock::get()` on-chain.
+
+impl math::Oracle for FeedAccount {
+    fn price(&self) -> u64 {
+        self.value
+    }
+}
+
+/// Evaluates the real `IrmState` model at a fixed utilization to produce the
+/// borrow rate `Core::accrue_interest` consumes.
+struct IrmRateView {
+    irm: IrmState,
+    utilization: u64,
+    current_ts: i64,
+}
+impl math::IrmRate for IrmRateView {
+    fn rate_bps(&self) -> u32 {
+        self.irm.model.get_fee_bps(self.utilization)
+    }
+    fn current_ts(&self) -> i64 {
+        self.current_ts
+    }
+}
+
 /// Wasm-exposed struct that combines a `Pool` account with its associated
 /// `IrmState` and `Feed` accounts so that APY figures can be derived
 /// client-side without an additional CPI or on-chain computation.
@@ -368,6 +400,29 @@ pub struct PoolWithIrm {
     pool: PoolAccount,
     irm: IrmConfigAccount,
     feed: FeedAccount,
+}
+
+impl PoolWithIrm {
+    /// Effective utilization in basis points, matching the on-chain
+    /// `Pool::calculate_utilization` used to query the borrow rate.
+    fn utilization(&self) -> u64 {
+        let m = &self.pool.0.market;
+        math::utilization_bps(
+            m.total_supply_assets,
+            m.total_borrow_assets,
+            m.assets_in_queue,
+        )
+    }
+
+    /// Real IRM rate source for `Core`: the live model evaluated at the pool's
+    /// current utilization, timestamped at `current_ts`.
+    fn irm_rate(&self, current_ts: i64) -> IrmRateView {
+        IrmRateView {
+            irm: self.irm.0,
+            utilization: self.utilization(),
+            current_ts,
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -396,6 +451,70 @@ impl PoolWithIrm {
     /// value copy — no heap allocation.
     pub fn pool(&self) -> PoolAccount {
         PoolAccount(self.pool.0)
+    }
+
+    // ── Core replays ──────────────────────────────────────────────────────────
+    //
+    // Each method builds a `Core` from the real pool/position/feed/IRM state and
+    // replays the matching on-chain operation, returning the value `Core` itself
+    // computes. No share/amount formula is duplicated here.
+
+    /// Interest that accrues on the pool's borrow balance up to `current_ts`,
+    /// using the live borrow rate from the IRM model. Replays
+    /// `Core::accrue_interest` and returns the change in total borrowed.
+    pub fn accrued_interest(&self, current_ts: i64) -> Option<u64> {
+        let market = self.pool.0.market;
+        let before = market.total_borrow_assets;
+        let core = Core::new(market)
+            .with_irm(self.irm_rate(current_ts))
+            .accrue_interest()?;
+        core.market.total_borrow_assets.checked_sub(before)
+    }
+
+    /// Debt shares minted if `position` borrows `amount` at `current_ts`.
+    /// Replays `Core::borrow`, so the result is `None` when the borrow would be
+    /// undercollateralized — exactly the on-chain LTV check.
+    pub fn borrow_shares(
+        &self,
+        position: &UserPositionAccount,
+        amount: u64,
+        current_ts: i64,
+    ) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_oracle(self.feed)
+            .with_irm(self.irm_rate(current_ts))
+            .accrue_interest()?;
+        core.borrow(amount, |_| Ok::<(), ()>(())).ok()
+    }
+
+    /// Debt shares burned if `position` repays `amount` at `current_ts`.
+    /// Replays `Core::repay`.
+    pub fn repay_shares(
+        &self,
+        position: &UserPositionAccount,
+        amount: u64,
+        current_ts: i64,
+    ) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_irm(self.irm_rate(current_ts))
+            .accrue_interest()?;
+        core.repay(amount, |_| Ok::<(), ()>(()))
+            .ok()
+            .map(|(_, burned)| burned)
+    }
+
+    /// Current debt owed by `position` at `current_ts`, after interest accrual.
+    /// Replays a full `Core::repay` and returns the amount that clears it.
+    pub fn debt_amount(&self, position: &UserPositionAccount, current_ts: i64) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_irm(self.irm_rate(current_ts))
+            .accrue_interest()?;
+        core.repay(u64::MAX, |_| Ok::<(), ()>(()))
+            .ok()
+            .map(|(amount, _)| amount)
     }
 
     /// Borrow APY in basis points derived from the IRM fee curve at the
