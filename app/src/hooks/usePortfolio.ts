@@ -42,12 +42,9 @@ export function useLendPositions(enabled = true) {
             const lpToken = balances.tokens.find((t) => t.mint.equals(new PublicKey(pool.account.lp_mint)))
             if (!lpToken || lpToken.amount === 0n) return []
 
-            const totalLpIssued = Number(pool.account.total_supply_shares)
-            if (totalLpIssued === 0) return []
-
-            const lpShare = Number(lpToken.amount) / totalLpIssued
-            // totalLendRaw = totalLendDeposited + totalBorrowed (full supply including lent-out)
-            const supplied = (lpShare * Number(pool.account.total_supply_assets)) / DECIMALS_FACTOR
+            const suppliedRaw = pool.account.lend_for_shares(lpToken.amount)
+            if (suppliedRaw == null) return []
+            const supplied = Number(suppliedRaw) / DECIMALS_FACTOR
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).

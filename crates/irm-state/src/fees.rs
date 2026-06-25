@@ -48,6 +48,12 @@ pub struct PiecewiseLinearModel {
     pub curves: [LinearSegment; 4],
 }
 
+impl math::FeeModel for PiecewiseLinearModel {
+    fn fee_bps(&self, utilization_bps: u64) -> u32 {
+        self.get_fee_bps(utilization_bps)
+    }
+}
+
 impl PiecewiseLinearModel {
     pub fn get_fee_bps(&self, utilization_bps: u64) -> u32 {
         let max_y = self

@@ -423,6 +423,58 @@ impl PoolWithIrm {
         core.market.total_borrow_assets.checked_sub(before)
     }
 
+    /// Underlying lend tokens redeemable for `shares` LP tokens at the current
+    /// pool ratio. Replays `Core::calc_lend_for_shares` — returns `None` when
+    /// the pool has no LP supply yet.
+    pub fn lend_for_shares(&self, shares: u64) -> Option<u64> {
+        Core::new(self.pool.0.market).calc_lend_for_shares(shares)
+    }
+
+    /// Oracle price from the feed account wired into this pool via `with_oracle`.
+    /// Denominated in lend-raw units per collateral-raw unit, scaled by
+    /// `PRICE_SCALE` (1_000_000). Divide by 1_000_000 to get the display-unit
+    /// exchange rate when both tokens share the same decimal count.
+    #[wasm_bindgen(getter)]
+    pub fn oracle_price(&self) -> u64 {
+        Core::new(self.pool.0.market)
+            .with_oracle(self.feed)
+            .oracle_price()
+    }
+
+    /// Projected LTV in bps after depositing `added_collateral_raw` more
+    /// collateral tokens into `position`. Uses interest accrued to `current_ts`.
+    /// Returns `None` when debt is zero (no active borrow) or arithmetic overflows.
+    pub fn projected_ltv_after_deposit(
+        &self,
+        position: &UserPositionAccount,
+        added_collateral_raw: u64,
+        current_ts: i64,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(position, current_ts)?;
+        let new_collateral = position
+            .0
+            .collateral_deposited
+            .checked_add(added_collateral_raw)?;
+        math::compute_ltv(debt, new_collateral)
+    }
+
+    /// Projected health factor in bps after depositing `added_collateral_raw`
+    /// more collateral tokens into `position`. Uses interest accrued to `current_ts`.
+    /// Returns `None` when debt is zero (no active borrow).
+    pub fn projected_health_factor_after_deposit(
+        &self,
+        position: &UserPositionAccount,
+        added_collateral_raw: u64,
+        current_ts: i64,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(position, current_ts)?;
+        let new_collateral = position
+            .0
+            .collateral_deposited
+            .checked_add(added_collateral_raw)?;
+        math::compute_health_factor(new_collateral, self.pool.0.market.ltv_percent, debt)
+    }
+
     /// Debt shares minted if `position` borrows `amount` at `current_ts`.
     /// Replays `Core::borrow`, so the result is `None` when the borrow would be
     /// undercollateralized — exactly the on-chain LTV check.

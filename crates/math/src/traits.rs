@@ -30,3 +30,8 @@ pub trait IrmRate {
 pub trait Oracle {
     fn price(&self) -> u64;
 }
+
+/// Any IRM implementation that can compute a borrow rate from utilization.
+pub trait FeeModel {
+    fn fee_bps(&self, utilization_bps: u64) -> u32;
+}

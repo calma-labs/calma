@@ -335,6 +335,12 @@ impl<M: Market, I, P: Position, O> Core<M, I, P, O, Accrued> {
 
 // ── Methods available after accrual, requiring oracle ─────────────────────────
 
+impl<M: Market, I, P, O: Oracle, S> Core<M, I, P, O, S> {
+    pub fn oracle_price(&self) -> u64 {
+        self.oracle.price()
+    }
+}
+
 impl<M: Market, I, P: Position, O: Oracle> Core<M, I, P, O, Accrued> {
     pub fn borrow<E, F>(&mut self, amount: u64, transfer: F) -> Result<u64, MathError<E>>
     where
