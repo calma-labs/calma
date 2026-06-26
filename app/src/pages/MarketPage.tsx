@@ -5,9 +5,11 @@ import {
   type SortKey,
 } from "@/components/market/MarketTable";
 import { useLendingAccounts } from "@/hooks/program/useLendingAccounts";
+import { useMintDecimalsMap } from "@/hooks/useMintDecimals";
 import { poolDataToDisplayPool } from "@/lib/poolDisplay";
 import type { Category, Pool } from "@/types/pool";
 import { BarChart3 } from "lucide-react";
+import { PublicKey } from "@solana/web3.js";
 import { useEffect, useMemo, useState } from "react";
 import { isPoolValid } from "@/lib/validation";
 
@@ -42,11 +44,20 @@ export function MarketPage() {
 
   const isLoading = isLoadingPools || isCheckingMints;
 
+  const lendMints = useMemo(
+    () => lendingAccounts.map((pd) => new PublicKey(pd.account.lend_mint)),
+    [lendingAccounts],
+  );
+  const decimalsMap = useMintDecimalsMap(lendMints);
+
   const allPools = useMemo<Pool[]>(
     () => lendingAccounts
       .filter(pool => validPoolIds.has(pool.publicKey.toBase58()))
-      .map(pd => poolDataToDisplayPool(pd.publicKey, pd.account)),
-    [lendingAccounts, validPoolIds],
+      .map(pd => {
+        const lendDecimals = decimalsMap.get(new PublicKey(pd.account.lend_mint).toBase58()) ?? 6;
+        return poolDataToDisplayPool(pd.publicKey, pd.account, lendDecimals);
+      }),
+    [lendingAccounts, validPoolIds, decimalsMap],
   );
 
   function handleSort(key: SortKey) {

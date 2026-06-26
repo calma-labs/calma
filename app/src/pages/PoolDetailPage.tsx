@@ -59,11 +59,14 @@ export function PoolDetailPage() {
   const { data: collateralDecimals } = useMintDecimals(
     poolData ? new PublicKey(poolData.collateral_mint) : null,
   );
+  const { data: lendDecimals } = useMintDecimals(
+    poolData ? new PublicKey(poolData.lend_mint) : null,
+  );
   const withdrawMutation = useWithdraw();
 
   const pool = useMemo(
-    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
-    [poolData, poolPubKey],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData, lendDecimals ?? 6) : null),
+    [poolData, poolPubKey, lendDecimals],
   );
 
   const withdrawPosition = useMemo<WithdrawPosition | null>(() => {

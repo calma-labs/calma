@@ -1,7 +1,8 @@
 import { useValidLendingAccounts } from "@/hooks/program/useValidLendingAccounts";
+import { useMintDecimalsMap } from "@/hooks/useMintDecimals";
 import { poolDataToDisplayPool } from "@/lib/poolDisplay";
-import { leveragedNetAPY } from "@/lib/multiplyMath";
 import type { MultiplyMeta, Pool } from "@/types/pool";
+import { PublicKey } from "@solana/web3.js";
 import { useMemo } from "react";
 
 export const MAX_MULTIPLY = 30;
@@ -16,7 +17,7 @@ export interface MultiplyStrategy extends Pool {
  * Max net APY is computed at full leverage: L×supplyAPY − (L−1)×borrowAPY.
  */
 export function buildMultiplyMeta(pool: Pool): MultiplyMeta {
-  const maxNetAPY = leveragedNetAPY(MAX_MULTIPLY, pool.supplyAPY, pool.borrowAPY);
+  const maxNetAPY = pool.account.leveraged_net_apy(MAX_MULTIPLY);
   return {
     maxMultiplier: MAX_MULTIPLY,
     maxNetAPY,
@@ -30,13 +31,20 @@ export function buildMultiplyMeta(pool: Pool): MultiplyMeta {
 export function useMultiplyStrategies() {
   const { data: poolsData = [], isLoading } = useValidLendingAccounts();
 
+  const lendMints = useMemo(
+    () => poolsData.map((pd) => new PublicKey(pd.account.lend_mint)),
+    [poolsData],
+  );
+  const decimalsMap = useMintDecimalsMap(lendMints);
+
   const strategies = useMemo<MultiplyStrategy[]>(
     () =>
       poolsData.map((pd) => {
-        const pool = poolDataToDisplayPool(pd.publicKey, pd.account);
+        const lendDecimals = decimalsMap.get(new PublicKey(pd.account.lend_mint).toBase58()) ?? 6;
+        const pool = poolDataToDisplayPool(pd.publicKey, pd.account, lendDecimals);
         return { ...pool, meta: buildMultiplyMeta(pool) };
       }),
-    [poolsData],
+    [poolsData, decimalsMap],
   );
 
   return { data: strategies, isLoading };

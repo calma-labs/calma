@@ -705,6 +705,7 @@ dependencies = [
  "anchor-lang",
  "bytemuck",
  "irm-state",
+ "js-sys",
  "math",
  "state",
  "wasm-bindgen",

@@ -6,6 +6,7 @@ import { MultiplyHero } from "@/components/multiply/MultiplyHero";
 import { MultiplyStatsGrid } from "@/components/multiply/MultiplyStatsGrid";
 import { MultiplyPositionPanel } from "@/components/portfolio/MultiplyPositionPanel";
 import { useLendingAccount } from "@/hooks/program/useLendingAccount";
+import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { poolDataToDisplayPool } from "@/lib/poolDisplay";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -29,10 +30,11 @@ export function MultiplyDetailPage() {
   }, [address]);
 
   const { data: poolData, isLoading } = useLendingAccount(poolPubKey);
+  const { data: lendDecimals } = useMintDecimals(poolData ? new PublicKey(poolData.lend_mint) : null);
 
   const pool = useMemo(
-    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData) : null),
-    [poolData, poolPubKey],
+    () => (poolData && poolPubKey ? poolDataToDisplayPool(poolPubKey, poolData, lendDecimals ?? 6) : null),
+    [poolData, poolPubKey, lendDecimals],
   );
 
   const chartSeed = useMemo(

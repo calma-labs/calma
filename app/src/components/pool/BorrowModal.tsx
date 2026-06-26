@@ -46,8 +46,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   // Current debt (to subtract from borrow power)
   const currentDebtUi = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0;
-    const nowTs = BigInt(Math.floor(Date.now() / 1000));
-    return Number(poolData.debt_amount(userPosition, nowTs) ?? 0n) / 10 ** lendDecimals;
+    return Number(poolData.debt_amount(userPosition) ?? 0n) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // Remaining borrow power, capped by pool available liquidity

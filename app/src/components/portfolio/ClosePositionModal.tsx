@@ -50,7 +50,7 @@ export function ClosePositionModal({
 
   // Raw debt derived from debt shares via WASM (interest accrued to now)
   const debtRaw = useMemo(
-    () => poolData.debt_amount(userPosition, BigInt(Math.floor(Date.now() / 1000))) ?? 0n,
+    () => poolData.debt_amount(userPosition) ?? 0n,
     [userPosition, poolData],
   );
 
@@ -147,7 +147,7 @@ export function ClosePositionModal({
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="text-xs text-[#efe0f7]/40">Debt to repay</span>
               <span className="text-xs font-semibold tabular-nums text-[#d45677]">
-                {poolData.format_debt(userPosition, BigInt(Math.floor(Date.now() / 1000)), lendDecimals ?? 6)}{" "}
+                {poolData.format_debt(userPosition, lendDecimals ?? 6)}{" "}
                 {pool.lendSymbol}
               </span>
             </div>

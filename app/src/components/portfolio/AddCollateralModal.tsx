@@ -39,18 +39,16 @@ export function AddCollateralModal({
   const numAmount = parseFloat(amount) || 0;
   const walletBalance = position.walletBalance;
 
-  const nowTs = BigInt(Math.floor(Date.now() / 1000));
-
   const { projectedLTV, projectedHF } = useMemo(() => {
     if (numAmount <= 0) return { projectedLTV: null, projectedHF: null };
     const addedRaw = BigInt(Math.round(numAmount * 10 ** collateralDecimals));
-    const ltvBps = poolData.projected_ltv_after_deposit(userPosition, addedRaw, nowTs);
-    const hfBps = poolData.projected_health_factor_after_deposit(userPosition, addedRaw, nowTs);
+    const ltvBps = poolData.projected_ltv_after_deposit(userPosition, addedRaw);
+    const hfBps = poolData.projected_health_factor_after_deposit(userPosition, addedRaw);
     return {
       projectedLTV: ltvBps != null ? ltvBps / 100 : null,
       projectedHF: hfBps != null ? hfBps / 10_000 : null,
     };
-  }, [numAmount, collateralDecimals, poolData, userPosition, nowTs]);
+  }, [numAmount, collateralDecimals, poolData, userPosition]);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();

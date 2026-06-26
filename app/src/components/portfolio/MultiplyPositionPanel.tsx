@@ -1,7 +1,6 @@
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { leveragedNetAPY, positionLeverage } from "@/lib/multiplyMath";
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import { position_leverage_bps, type PoolWithIrm } from "@jbl/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -77,12 +76,11 @@ export function MultiplyPositionPanel({
     const collateralUi =
       Number(userPosition.collateral_deposited) / 10 ** colDec;
 
-    const nowTs = BigInt(Math.floor(Date.now() / 1000));
-    const debtRaw = poolData.debt_amount(userPosition, nowTs) ?? 0n;
+    const debtRaw = poolData.debt_amount(userPosition) ?? 0n;
     const debtUi = Number(debtRaw) / 10 ** lndDec;
 
-    const leverage = positionLeverage(collateralUi, debtUi);
-    const netAPY = leveragedNetAPY(leverage, pool.supplyAPY, pool.borrowAPY);
+    const leverage = position_leverage_bps(userPosition.collateral_deposited, debtRaw) / 10_000;
+    const netAPY = poolData.leveraged_net_apy(leverage);
 
     return {
       collateralUi,
@@ -91,7 +89,7 @@ export function MultiplyPositionPanel({
       leverage,
       netAPY,
       collateralFormatted: userPosition.format_collateral(colDec),
-      debtFormatted: poolData.format_debt(userPosition, nowTs, lndDec),
+      debtFormatted: poolData.format_debt(userPosition, lndDec),
     };
   }, [userPosition, collateralDecimals, lendDecimals, poolData, pool]);
 

@@ -22,6 +22,10 @@ pub trait Position {
     fn debt_shares_mut(&mut self) -> &mut u64;
 }
 
+pub trait Clock {
+    fn current_ts(&self) -> i64;
+}
+
 pub trait IrmRate {
     fn rate_bps(&self) -> u32;
     fn current_ts(&self) -> i64;

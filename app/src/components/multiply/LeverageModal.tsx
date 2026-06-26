@@ -1,7 +1,6 @@
 import { useOpenMultiply } from "@/hooks/program/useOpenMultiply";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { MAX_MULTIPLY } from "@/hooks/useMultiply";
-import { leveragedNetAPY } from "@/lib/multiplyMath";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
 import type { PoolWithIrm } from "@jbl/wasm-lib";
@@ -64,7 +63,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   const amountNum = parseFloat(amount) || 0;
   const positionSize = amountNum * leverage;
   const borrowAmount = amountNum * (leverage - 1);
-  const netAPY = leveragedNetAPY(leverage, pool.supplyAPY, pool.borrowAPY);
+  const netAPY = poolData.leveraged_net_apy(leverage);
   const sliderPct = ((leverage - 1) / (MAX_MULTIPLY - 1)) * 100;
 
   const liquidationRisk =

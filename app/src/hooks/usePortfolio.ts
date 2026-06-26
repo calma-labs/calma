@@ -1,6 +1,6 @@
 import { getPoolMeta } from '@/config/poolRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
-import { leveragedNetAPY } from '@/lib/multiplyMath'
+import { leveraged_net_apy_bps } from '@jbl/wasm-lib'
 import type {
     BorrowPosition,
     LendPosition,
@@ -13,9 +13,8 @@ import { PublicKey } from '@solana/web3.js'
 import { useMemo } from 'react'
 import { useUserPositionsByAuthority } from './program/useUserPosition'
 import { useValidLendingAccounts } from './program/useValidLendingAccounts'
+import { useMintDecimalsMap } from './useMintDecimals'
 import { useWalletBalances } from './useWalletBalances'
-
-const DECIMALS_FACTOR = 10 ** 6
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -35,6 +34,9 @@ export function useLendPositions(enabled = true) {
     const { data: pools = [], isLoading: poolsLoading } = useValidLendingAccounts()
     const { data: balances, isLoading: balancesLoading } = useWalletBalances()
 
+    const lendMints = useMemo(() => pools.map((p) => new PublicKey(p.account.lend_mint)), [pools])
+    const decimalsMap = useMintDecimalsMap(lendMints)
+
     const data = useMemo<LendPosition[]>(() => {
         if (!enabled || !pools.length || !balances?.tokens.length) return []
 
@@ -44,7 +46,8 @@ export function useLendPositions(enabled = true) {
 
             const suppliedRaw = pool.account.lend_for_shares(lpToken.amount)
             if (suppliedRaw == null) return []
-            const supplied = Number(suppliedRaw) / DECIMALS_FACTOR
+            const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
+            const supplied = Number(suppliedRaw) / 10 ** lendDecimals
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).
@@ -67,7 +70,7 @@ export function useLendPositions(enabled = true) {
                 collateralEnabled: true,
             } satisfies LendPosition]
         })
-    }, [enabled, pools, balances])
+    }, [enabled, pools, balances, decimalsMap])
 
     return { data, isLoading: enabled && (poolsLoading || balancesLoading) }
 }
@@ -81,6 +84,12 @@ export function useBorrowPositions(enabled = true) {
     const { data: userPositions = [], isLoading: positionsLoading } =
         useUserPositionsByAuthority(enabled ? authority : null)
 
+    const allMints = useMemo(() => [
+        ...pools.map((p) => new PublicKey(p.account.lend_mint)),
+        ...pools.map((p) => new PublicKey(p.account.collateral_mint)),
+    ], [pools])
+    const decimalsMap = useMintDecimalsMap(allMints)
+
     const data = useMemo<BorrowPosition[]>(() => {
         if (!enabled || !userPositions.length || !pools.length) return []
 
@@ -90,15 +99,15 @@ export function useBorrowPositions(enabled = true) {
             const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
-            const nowTs = BigInt(Math.floor(Date.now() / 1000))
+            const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
+            const collateralDecimals = decimalsMap.get(new PublicKey(pool.account.collateral_mint).toBase58()) ?? 6
+            const debtRaw = pool.account.debt_amount(pos) ?? 0n
+            const debtAmount = Number(debtRaw) / 10 ** lendDecimals
+            const collateralAmount = Number(pos.collateral_deposited) / 10 ** collateralDecimals
 
-            const debtRaw = pool.account.debt_amount(pos, nowTs) ?? 0n
-            const debtAmount = Number(debtRaw) / DECIMALS_FACTOR
-            const collateralAmount = Number(pos.collateral_deposited) / DECIMALS_FACTOR
-
-            const ltvBps = pool.account.ltv(pos, nowTs)
-            const healthFactorBps = pool.account.health_factor(pos, nowTs)
-            const liqPriceBps = pool.account.liq_price(pos, nowTs)
+            const ltvBps = pool.account.ltv(pos)
+            const healthFactorBps = pool.account.health_factor(pos)
+            const liqPriceBps = pool.account.liq_price(pos)
 
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
@@ -118,7 +127,7 @@ export function useBorrowPositions(enabled = true) {
                 healthFactor: healthFactorBps != null ? healthFactorBps / 10000 : null,
             } satisfies BorrowPosition]
         })
-    }, [enabled, userPositions, pools])
+    }, [enabled, userPositions, pools, decimalsMap])
 
     return { data, isLoading: enabled && (poolsLoading || positionsLoading) }
 }
@@ -138,7 +147,11 @@ export function useMultiplyPositions(enabled = true) {
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            const netAPY = leveragedNetAPY(multiplier, pos.supplyAPY, pos.borrowAPY)
+            const netAPY = leveraged_net_apy_bps(
+                Math.round(multiplier * 10_000),
+                Math.round(pos.supplyAPY * 100),
+                Math.round(pos.borrowAPY * 100),
+            ) / 100
 
             return {
                 id: pos.id,
