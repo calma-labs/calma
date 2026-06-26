@@ -3,27 +3,17 @@ pub mod state;
 
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -> Option<u64> {
-    math::compute_interest(total_borrowed, rate_bps, elapsed_secs)
+pub(crate) struct BrowserClock;
+
+impl math::Clock for BrowserClock {
+    fn current_ts(&self) -> i64 {
+        (js_sys::Date::now() / 1000.0) as i64
+    }
 }
 
+/// Flash-loan fee owed on `amount` at the protocol flash-fee rate.
+/// Mirrors the on-chain `flash_borrow`/`flash_repay` fee exactly.
 #[wasm_bindgen]
-pub fn amount_to_shares(amount: u64, total_borrowed: u64, total_debt_shares: u64) -> Option<u64> {
-    math::amount_to_shares(amount, total_borrowed, total_debt_shares)
-}
-
-#[wasm_bindgen]
-pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64) -> Option<u64> {
-    math::shares_to_amount(shares, total_borrowed, total_debt_shares)
-}
-
-#[wasm_bindgen]
-pub fn amount_to_shares_burned(
-    repay_amount: u64,
-    total_borrowed: u64,
-    total_debt_shares: u64,
-    max_shares: u64,
-) -> Option<u64> {
-    math::amount_to_shares_burned(repay_amount, total_borrowed, total_debt_shares, max_shares)
+pub fn flash_fee(amount: u64) -> Option<u64> {
+    math::flash_fee(amount)
 }

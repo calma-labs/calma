@@ -40,13 +40,13 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   // On-chain: max_borrowable = collateral_raw * ltv / 100 (raw lend units)
   const userBorrowPower = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0;
-    return Number(userPosition.max_borrowable(poolData.ltv_percent)) / 10 ** lendDecimals;
-  }, [userPosition, lendDecimals, poolData.ltv_percent]);
+    return Number(poolData.max_borrowable(userPosition)) / 10 ** lendDecimals;
+  }, [userPosition, lendDecimals, poolData]);
 
   // Current debt (to subtract from borrow power)
   const currentDebtUi = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0;
-    return Number(userPosition.debt_amount(poolData.total_borrow_assets, poolData.total_borrow_shares)) / 10 ** lendDecimals;
+    return Number(poolData.debt_amount(userPosition) ?? 0n) / 10 ** lendDecimals;
   }, [userPosition, poolData, lendDecimals]);
 
   // Remaining borrow power, capped by pool available liquidity

@@ -1,4 +1,4 @@
-use crate::{error::ErrorCode, state::Pool, FLASH_LOAN_FEE_BPS};
+use crate::{error::ErrorCode, state::Pool};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 use solana_instructions_sysvar::{load_current_index_checked, load_instruction_at_checked};
@@ -89,8 +89,7 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     let sysvar_info = ctx.accounts.sysvar_instructions.to_account_info();
     let current_index = load_current_index_checked(&sysvar_info)? as usize;
 
-    let fee =
-        math::flash_fee(amount, FLASH_LOAN_FEE_BPS as u32).ok_or(ErrorCode::MathOverflow)?;
+    let fee = math::flash_fee(amount).ok_or(ErrorCode::MathOverflow)?;
     let min_repay = amount.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
     let pool_key = ctx.accounts.pool.key();
 

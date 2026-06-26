@@ -1,52 +1,54 @@
 import { cn } from "@/lib/utils";
+import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
 import { AlertTriangle, Info, Wallet, X } from "lucide-react";
-import { useState } from "react";
-
-const MOCK_WALLET_COLLATERAL_BALANCE = 8.5; // in collateral token units
+import { useMemo, useState } from "react";
 
 export interface AddCollateralPosition {
   collateralAsset: string;
   collateralIcon: string;
   borrowedAsset: string;
-  debtAmount: number;
+  /** Current LTV in percent (e.g. 45.2) — displayed as the "before" value. */
   ltv: number;
   liqPrice: number;
+  /** Current health factor (e.g. 2.1) — displayed as the "before" value. */
   healthFactor: number;
+  /** Wallet balance of the collateral token in display units. */
+  walletBalance: number;
 }
 
 interface AddCollateralModalProps {
   position: AddCollateralPosition;
+  poolData: PoolWithIrm;
+  userPosition: UserPositionAccount;
+  /** Decimal count of the collateral token (used to convert display → raw). */
+  collateralDecimals: number;
   onClose: () => void;
-  /** future: pass onAddCollateral(amount: number) => Promise<void> */
   onAddCollateral?: (amount: number) => Promise<void>;
 }
 
 export function AddCollateralModal({
   position,
+  poolData,
+  userPosition,
+  collateralDecimals,
   onClose,
   onAddCollateral,
 }: AddCollateralModalProps) {
   const [amount, setAmount] = useState("");
 
   const numAmount = parseFloat(amount) || 0;
-  const walletBalance = MOCK_WALLET_COLLATERAL_BALANCE;
+  const walletBalance = position.walletBalance;
 
-  // Approximate: adding collateral lowers LTV and improves HF
-  // Using rough mock: each unit of collateral at some mock price ($160) reduces LTV
-  const MOCK_COLLATERAL_PRICE = 160;
-  const addedUSD = numAmount * MOCK_COLLATERAL_PRICE;
-  const currentCollateralUSD = (position.debtAmount / position.ltv) * 100;
-  const newCollateralUSD = currentCollateralUSD + addedUSD;
-  const newLTV =
-    newCollateralUSD > 0
-      ? (position.debtAmount / newCollateralUSD) * 100
-      : position.ltv;
-  const newHF =
-    position.healthFactor *
-    (currentCollateralUSD / Math.max(newCollateralUSD, 0.01));
-  const projectedHF =
-    numAmount > 0 ? Math.max(newHF, 0) : position.healthFactor;
-  const projectedLTV = numAmount > 0 ? Math.max(newLTV, 0) : position.ltv;
+  const { projectedLTV, projectedHF } = useMemo(() => {
+    if (numAmount <= 0) return { projectedLTV: null, projectedHF: null };
+    const addedRaw = BigInt(Math.round(numAmount * 10 ** collateralDecimals));
+    const ltvBps = poolData.projected_ltv_after_deposit(userPosition, addedRaw);
+    const hfBps = poolData.projected_health_factor_after_deposit(userPosition, addedRaw);
+    return {
+      projectedLTV: ltvBps != null ? ltvBps / 100 : null,
+      projectedHF: hfBps != null ? hfBps / 10_000 : null,
+    };
+  }, [numAmount, collateralDecimals, poolData, userPosition]);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();
@@ -161,7 +163,7 @@ export function AddCollateralModal({
                 <span className="text-xs tabular-nums text-[#efe0f7]/40">
                   {position.ltv.toFixed(1)}%
                 </span>
-                {numAmount > 0 && (
+                {projectedLTV != null && (
                   <>
                     <span className="text-[#efe0f7]/20">→</span>
                     <span className="text-xs font-semibold tabular-nums text-[#34d399]">
@@ -198,7 +200,7 @@ export function AddCollateralModal({
                 >
                   {position.healthFactor.toFixed(2)}
                 </span>
-                {numAmount > 0 && (
+                {projectedHF != null && (
                   <>
                     <span className="text-[#efe0f7]/20">→</span>
                     <span

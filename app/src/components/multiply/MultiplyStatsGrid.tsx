@@ -34,10 +34,7 @@ interface MultiplyStatsGridProps {
 }
 
 export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
-  const maxNetAPY = Math.max(
-    0,
-    MAX_MULTIPLY * pool.supplyAPY - (MAX_MULTIPLY - 1) * pool.borrowAPY,
-  );
+  const maxNetAPY = pool.account.leveraged_net_apy(MAX_MULTIPLY);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

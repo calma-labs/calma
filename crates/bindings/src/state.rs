@@ -10,6 +10,7 @@
 
 use bytemuck::Pod;
 use irm_state::IrmState;
+use math::{Clock, Core};
 use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
 use wasm_bindgen::prelude::*;
 
@@ -148,17 +149,12 @@ impl PoolAccount {
     }
 
     /// Effective utilization in basis points (0..10_000), including pending withdrawals.
+    /// Uses the shared `math::utilization_bps` (same formula as the on-chain
+    /// `Pool::calculate_utilization`), capped at 10_000 for display.
     pub fn utilization_bps(&self) -> u16 {
-        let total_lend = self.0.market.total_supply_assets;
-        if total_lend == 0 {
-            return 0;
-        }
-        let effective_borrowed = self
-            .0
-            .market
-            .total_borrow_assets
-            .saturating_add(self.pending_withdrawals());
-        ((effective_borrowed as u128 * 10_000 / total_lend as u128).min(10_000)) as u16
+        let m = &self.0.market;
+        math::utilization_bps(m.total_supply_assets, m.total_borrow_assets, m.assets_in_queue)
+            .min(10_000) as u16
     }
 
     /// Available liquidity in raw token units (lend deposited minus effective borrowed).
@@ -224,60 +220,17 @@ impl UserPositionAccount {
         self.0.debt_shares > 0
     }
 
-    /// Raw debt amount in lend-token base units, derived from shares and pool totals.
-    /// Returns 0 when `total_debt_shares` is 0.
-    /// Delegates to `math::shares_to_amount` (ceiling division).
-    pub fn debt_amount(&self, total_borrowed: u64, total_debt_shares: u64) -> u64 {
-        math::shares_to_amount(self.0.debt_shares, total_borrowed, total_debt_shares)
-            .unwrap_or(0)
-    }
-
-    /// Maximum borrowable amount in raw lend-token units.
-    /// Delegates to `math::max_borrowable` — same formula as the on-chain LTV check.
-    pub fn max_borrowable(&self, ltv_percent: u8) -> u64 {
-        math::max_borrowable(self.0.collateral_deposited, ltv_percent)
-    }
-
-    /// Compute Loan-to-Value (LTV) ratio in basis points.
-    pub fn ltv(&self, total_borrowed: u64, total_debt_shares: u64) -> Option<u32> {
-        let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        math::compute_ltv(debt, self.0.collateral_deposited)
-    }
-
-    /// Compute Health Factor in basis points (1.0 = 10,000).
-    pub fn health_factor(
-        &self,
-        total_borrowed: u64,
-        total_debt_shares: u64,
-        ltv_percent: u8,
-    ) -> Option<u32> {
-        let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        math::compute_health_factor(self.0.collateral_deposited, ltv_percent, debt)
-    }
-
-    /// Compute Liquidation "Price" (ratio) in basis points.
-    pub fn liq_price(
-        &self,
-        total_borrowed: u64,
-        total_debt_shares: u64,
-        ltv_percent: u8,
-    ) -> Option<u32> {
-        let debt = self.debt_amount(total_borrowed, total_debt_shares);
-        math::compute_liquidation_threshold(debt, self.0.collateral_deposited, ltv_percent)
-    }
-
     /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
     /// Trailing zeros are trimmed; at most 6 decimal places are shown.
     pub fn format_collateral(&self, decimals: u8) -> String {
         format_token_amount(self.0.collateral_deposited, decimals)
     }
 
-    /// Human-readable debt amount as a decimal string.
-    /// Shares are resolved against `total_borrowed` / `total_debt_shares` first.
-    pub fn format_debt(&self, total_borrowed: u64, total_debt_shares: u64, decimals: u8) -> String {
-        let amount = self.debt_amount(total_borrowed, total_debt_shares);
-        format_token_amount(amount, decimals)
-    }
+    // NOTE: debt-derived metrics (debt amount, LTV, health factor, liquidation
+    // price, formatted debt) require interest accrual, so they live on
+    // `PoolWithIrm` (which carries the IRM) and are computed by replaying `Core`
+    // — see `PoolWithIrm::debt_amount`, `ltv`, `health_factor`, `liq_price`,
+    // `max_borrowable`, `format_debt`.
 }
 
 #[wasm_bindgen]
@@ -358,6 +311,37 @@ impl FeedAccount {
     }
 }
 
+// ── Core adapters ───────────────────────────────────────────────────────────
+//
+// Client-side equivalents of the program's `hooks::oracle::OracleState` and
+// `hooks::irm::IrmState`. They expose the *real* on-chain inputs — the price
+// read straight from the feed account, and the borrow rate evaluated from the
+// IRM model at the pool's current utilization — so replaying a `Core` operation
+// reproduces the on-chain result exactly. `current_ts` is sourced from
+// `BrowserClock`, mirroring `Clock::get()` on-chain.
+
+impl math::Oracle for FeedAccount {
+    fn price(&self) -> u64 {
+        self.value
+    }
+}
+
+/// Evaluates the real `IrmState` model at a fixed utilization to produce the
+/// borrow rate `Core::accrue_interest` consumes.
+struct IrmRateView {
+    irm: IrmState,
+    utilization: u64,
+    current_ts: i64,
+}
+impl math::IrmRate for IrmRateView {
+    fn rate_bps(&self) -> u32 {
+        self.irm.model.get_fee_bps(self.utilization)
+    }
+    fn current_ts(&self) -> i64 {
+        self.current_ts
+    }
+}
+
 /// Wasm-exposed struct that combines a `Pool` account with its associated
 /// `IrmState` and `Feed` accounts so that APY figures can be derived
 /// client-side without an additional CPI or on-chain computation.
@@ -368,6 +352,29 @@ pub struct PoolWithIrm {
     pool: PoolAccount,
     irm: IrmConfigAccount,
     feed: FeedAccount,
+}
+
+impl PoolWithIrm {
+    /// Effective utilization in basis points, matching the on-chain
+    /// `Pool::calculate_utilization` used to query the borrow rate.
+    fn utilization(&self) -> u64 {
+        let m = &self.pool.0.market;
+        math::utilization_bps(
+            m.total_supply_assets,
+            m.total_borrow_assets,
+            m.assets_in_queue,
+        )
+    }
+
+    /// Real IRM rate source for `Core`: the live model evaluated at the pool's
+    /// current utilization, timestamped at `current_ts`.
+    fn irm_rate(&self, current_ts: i64) -> IrmRateView {
+        IrmRateView {
+            irm: self.irm.0,
+            utilization: self.utilization(),
+            current_ts,
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -398,6 +405,167 @@ impl PoolWithIrm {
         PoolAccount(self.pool.0)
     }
 
+    // ── Core replays ──────────────────────────────────────────────────────────
+    //
+    // Each method builds a `Core` from the real pool/position/feed/IRM state and
+    // replays the matching on-chain operation, returning the value `Core` itself
+    // computes. No share/amount formula is duplicated here.
+
+    /// Interest that accrues on the pool's borrow balance up to now,
+    /// using the live borrow rate from the IRM model. Replays
+    /// `Core::accrue_interest` and returns the change in total borrowed.
+    pub fn accrued_interest(&self) -> Option<u64> {
+        let market = self.pool.0.market;
+        let before = market.total_borrow_assets;
+        let core = Core::new(market)
+            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .accrue_interest()?;
+        core.market.total_borrow_assets.checked_sub(before)
+    }
+
+    /// Underlying lend tokens redeemable for `shares` LP tokens at the current
+    /// pool ratio. Replays `Core::calc_lend_for_shares` — returns `None` when
+    /// the pool has no LP supply yet.
+    pub fn lend_for_shares(&self, shares: u64) -> Option<u64> {
+        Core::new(self.pool.0.market).calc_lend_for_shares(shares)
+    }
+
+    /// Oracle price from the feed account wired into this pool via `with_oracle`.
+    /// Denominated in lend-raw units per collateral-raw unit, scaled by
+    /// `PRICE_SCALE` (1_000_000). Divide by 1_000_000 to get the display-unit
+    /// exchange rate when both tokens share the same decimal count.
+    #[wasm_bindgen(getter)]
+    pub fn oracle_price(&self) -> u64 {
+        Core::new(self.pool.0.market)
+            .with_oracle(self.feed)
+            .oracle_price()
+    }
+
+    /// Projected LTV in bps after depositing `added_collateral_raw` more
+    /// collateral tokens into `position`. Uses interest accrued to now.
+    /// Returns `None` when debt is zero (no active borrow) or arithmetic overflows.
+    pub fn projected_ltv_after_deposit(
+        &self,
+        position: &UserPositionAccount,
+        added_collateral_raw: u64,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(position)?;
+        let new_collateral = position
+            .0
+            .collateral_deposited
+            .checked_add(added_collateral_raw)?;
+        math::compute_ltv(debt, new_collateral)
+    }
+
+    /// Projected health factor in bps after depositing `added_collateral_raw`
+    /// more collateral tokens into `position`. Uses interest accrued to now.
+    /// Returns `None` when debt is zero (no active borrow).
+    pub fn projected_health_factor_after_deposit(
+        &self,
+        position: &UserPositionAccount,
+        added_collateral_raw: u64,
+    ) -> Option<u32> {
+        let debt = self.debt_amount(position)?;
+        let new_collateral = position
+            .0
+            .collateral_deposited
+            .checked_add(added_collateral_raw)?;
+        math::compute_health_factor(new_collateral, self.pool.0.market.ltv_percent, debt)
+    }
+
+    /// Debt shares minted if `position` borrows `amount` now.
+    /// Replays `Core::borrow`, so the result is `None` when the borrow would be
+    /// undercollateralized — exactly the on-chain LTV check.
+    pub fn borrow_shares(
+        &self,
+        position: &UserPositionAccount,
+        amount: u64,
+    ) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_oracle(self.feed)
+            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .accrue_interest()?;
+        core.borrow(amount, |_| Ok::<(), ()>(())).ok()
+    }
+
+    /// Debt shares burned if `position` repays `amount` now.
+    /// Replays `Core::repay`.
+    pub fn repay_shares(
+        &self,
+        position: &UserPositionAccount,
+        amount: u64,
+    ) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .accrue_interest()?;
+        core.repay(amount, |_| Ok::<(), ()>(()))
+            .ok()
+            .map(|(_, burned)| burned)
+    }
+
+    /// Current debt owed by `position`, after interest accrued to now.
+    /// Replays a full `Core::repay` and returns the amount that clears it.
+    pub fn debt_amount(&self, position: &UserPositionAccount) -> Option<u64> {
+        let mut core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .accrue_interest()?;
+        core.repay(u64::MAX, |_| Ok::<(), ()>(()))
+            .ok()
+            .map(|(amount, _)| amount)
+    }
+
+    /// Maximum borrowable amount (raw lend units) for `position` at the pool's
+    /// LTV — same formula as the on-chain borrow check.
+    pub fn max_borrowable(&self, position: &UserPositionAccount) -> u64 {
+        math::max_borrowable(
+            position.0.collateral_deposited,
+            self.pool.0.market.ltv_percent,
+        )
+    }
+
+    /// Loan-to-Value of `position` in basis points, using accrued debt.
+    pub fn ltv(&self, position: &UserPositionAccount) -> Option<u32> {
+        let debt = self.debt_amount(position)?;
+        math::compute_ltv(debt, position.0.collateral_deposited)
+    }
+
+    /// Health Factor of `position` in basis points (1.0 = 10_000), using accrued debt.
+    pub fn health_factor(&self, position: &UserPositionAccount) -> Option<u32> {
+        let debt = self.debt_amount(position)?;
+        math::compute_health_factor(
+            position.0.collateral_deposited,
+            self.pool.0.market.ltv_percent,
+            debt,
+        )
+    }
+
+    /// Liquidation "price" (ratio) of `position` in basis points, using accrued debt.
+    pub fn liq_price(&self, position: &UserPositionAccount) -> Option<u32> {
+        let debt = self.debt_amount(position)?;
+        math::compute_liquidation_threshold(
+            debt,
+            position.0.collateral_deposited,
+            self.pool.0.market.ltv_percent,
+        )
+    }
+
+    /// Human-readable debt of `position` as a decimal string, using accrued debt.
+    pub fn format_debt(&self, position: &UserPositionAccount, decimals: u8) -> String {
+        let amount = self.debt_amount(position).unwrap_or(0);
+        format_token_amount(amount, decimals)
+    }
+
+    /// Net APY of a leveraged position at the given `leverage` multiple, in percent.
+    /// `max(0, L × supplyAPY − (L−1) × borrowAPY)`.
+    pub fn leveraged_net_apy(&self, leverage: f64) -> f64 {
+        let supply_apy = self.supply_apy_bps() as f64 / 100.0;
+        let borrow_apy = self.borrow_apy_bps() as f64 / 100.0;
+        f64::max(0.0, leverage * supply_apy - (leverage - 1.0) * borrow_apy)
+    }
+
     /// Borrow APY in basis points derived from the IRM fee curve at the
     /// pool's current utilization.
     ///
@@ -423,17 +591,12 @@ impl PoolWithIrm {
     /// lend-token base units on top of the current pool state.
     /// Returns 0 when total supply is 0.
     pub fn projected_borrow_apy_bps(&self, additional_raw: u64) -> u32 {
-        let total_supply = self.pool.0.market.total_supply_assets;
-        if total_supply == 0 {
+        let m = &self.pool.0.market;
+        if m.total_supply_assets == 0 {
             return 0;
         }
-        let new_borrow = self
-            .pool
-            .0
-            .market
-            .total_borrow_assets
-            .saturating_add(additional_raw);
-        let util_bps = ((new_borrow as u128 * 10_000 / total_supply as u128).min(10_000)) as u64;
+        let new_borrow = m.total_borrow_assets.saturating_add(additional_raw);
+        let util_bps = math::utilization_bps(m.total_supply_assets, new_borrow, m.assets_in_queue);
         self.irm.0.model.get_fee_bps(util_bps)
     }
 
@@ -520,6 +683,17 @@ impl PoolWithIrm {
     pub fn available_liquidity(&self) -> u64 {
         self.pool.available_liquidity()
     }
+
+    /// Net APY in basis points for a leveraged position at the given leverage.
+    /// `leverage_bps`: leverage × 10_000 (e.g. 1.5× → 15_000, 30× → 300_000).
+    /// Formula: `max(0, leverage × supply_apy_bps − (leverage−1) × borrow_apy_bps)`.
+    pub fn leveraged_net_apy_bps(&self, leverage_bps: u32) -> u32 {
+        let supply = self.supply_apy_bps() as i64;
+        let borrow = self.borrow_apy_bps() as i64;
+        let lev = leverage_bps as i64;
+        let net = (lev * supply - (lev - 10_000) * borrow) / 10_000;
+        net.max(0) as u32
+    }
 }
 
 impl RateHedgeOfferAccount {
@@ -532,6 +706,19 @@ impl RateHedgeMatchAccount {
     pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
         parse(account_data).map(Self)
     }
+}
+
+// ── standalone display helpers ────────────────────────────────────────────────
+
+/// Effective leverage of a position in basis points: `collateral / (collateral − debt) × 10_000`.
+/// Returns 10_000 (= 1×) when equity ≤ 0 or collateral is 0.
+#[wasm_bindgen]
+pub fn position_leverage_bps(collateral: u64, debt: u64) -> u32 {
+    if collateral == 0 || debt >= collateral {
+        return 10_000;
+    }
+    let equity = collateral - debt;
+    ((collateral as u128 * 10_000) / equity as u128).min(u32::MAX as u128) as u32
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────

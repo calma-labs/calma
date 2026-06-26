@@ -1,5 +1,6 @@
 import { getPoolMeta } from '@/config/poolRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
+import { leveraged_net_apy_bps } from '@jbl/wasm-lib'
 import type {
     BorrowPosition,
     LendPosition,
@@ -12,9 +13,8 @@ import { PublicKey } from '@solana/web3.js'
 import { useMemo } from 'react'
 import { useUserPositionsByAuthority } from './program/useUserPosition'
 import { useValidLendingAccounts } from './program/useValidLendingAccounts'
+import { useMintDecimalsMap } from './useMintDecimals'
 import { useWalletBalances } from './useWalletBalances'
-
-const DECIMALS_FACTOR = 10 ** 6
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -34,6 +34,9 @@ export function useLendPositions(enabled = true) {
     const { data: pools = [], isLoading: poolsLoading } = useValidLendingAccounts()
     const { data: balances, isLoading: balancesLoading } = useWalletBalances()
 
+    const lendMints = useMemo(() => pools.map((p) => new PublicKey(p.account.lend_mint)), [pools])
+    const decimalsMap = useMintDecimalsMap(lendMints)
+
     const data = useMemo<LendPosition[]>(() => {
         if (!enabled || !pools.length || !balances?.tokens.length) return []
 
@@ -41,12 +44,10 @@ export function useLendPositions(enabled = true) {
             const lpToken = balances.tokens.find((t) => t.mint.equals(new PublicKey(pool.account.lp_mint)))
             if (!lpToken || lpToken.amount === 0n) return []
 
-            const totalLpIssued = Number(pool.account.total_supply_shares)
-            if (totalLpIssued === 0) return []
-
-            const lpShare = Number(lpToken.amount) / totalLpIssued
-            // totalLendRaw = totalLendDeposited + totalBorrowed (full supply including lent-out)
-            const supplied = (lpShare * Number(pool.account.total_supply_assets)) / DECIMALS_FACTOR
+            const suppliedRaw = pool.account.lend_for_shares(lpToken.amount)
+            if (suppliedRaw == null) return []
+            const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
+            const supplied = Number(suppliedRaw) / 10 ** lendDecimals
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).
@@ -69,7 +70,7 @@ export function useLendPositions(enabled = true) {
                 collateralEnabled: true,
             } satisfies LendPosition]
         })
-    }, [enabled, pools, balances])
+    }, [enabled, pools, balances, decimalsMap])
 
     return { data, isLoading: enabled && (poolsLoading || balancesLoading) }
 }
@@ -83,6 +84,12 @@ export function useBorrowPositions(enabled = true) {
     const { data: userPositions = [], isLoading: positionsLoading } =
         useUserPositionsByAuthority(enabled ? authority : null)
 
+    const allMints = useMemo(() => [
+        ...pools.map((p) => new PublicKey(p.account.lend_mint)),
+        ...pools.map((p) => new PublicKey(p.account.collateral_mint)),
+    ], [pools])
+    const decimalsMap = useMintDecimalsMap(allMints)
+
     const data = useMemo<BorrowPosition[]>(() => {
         if (!enabled || !userPositions.length || !pools.length) return []
 
@@ -92,24 +99,15 @@ export function useBorrowPositions(enabled = true) {
             const pool = pools.find((p) => p.publicKey.equals(new PublicKey(pos.pool)))
             if (!pool) return []
 
-            const totalBorrowed = pool.account.total_borrow_assets
-            const totalDebtShares = pool.account.total_borrow_shares
+            const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
+            const collateralDecimals = decimalsMap.get(new PublicKey(pool.account.collateral_mint).toBase58()) ?? 6
+            const debtRaw = pool.account.debt_amount(pos) ?? 0n
+            const debtAmount = Number(debtRaw) / 10 ** lendDecimals
+            const collateralAmount = Number(pos.collateral_deposited) / 10 ** collateralDecimals
 
-            const debtRaw = pos.debt_amount(totalBorrowed, totalDebtShares)
-            const debtAmount = Number(debtRaw) / DECIMALS_FACTOR
-            const collateralAmount = Number(pos.collateral_deposited) / DECIMALS_FACTOR
-
-            const ltvBps = pos.ltv(totalBorrowed, totalDebtShares)
-            const healthFactorBps = pos.health_factor(
-                totalBorrowed,
-                totalDebtShares,
-                pool.account.ltv_percent
-            )
-            const liqPriceBps = pos.liq_price(
-                totalBorrowed,
-                totalDebtShares,
-                pool.account.ltv_percent
-            )
+            const ltvBps = pool.account.ltv(pos)
+            const healthFactorBps = pool.account.health_factor(pos)
+            const liqPriceBps = pool.account.liq_price(pos)
 
             const meta = getPoolMeta(pool.publicKey.toBase58())
 
@@ -123,12 +121,13 @@ export function useBorrowPositions(enabled = true) {
                 borrowedIcon: meta.lendIcon,
                 debtAmount,
                 borrowAPY: pool.account.borrow_apy_bps() / 100,
+                supplyAPY: pool.account.supply_apy_bps() / 100,
                 ltv: ltvBps != null ? ltvBps / 100 : null,
                 liqPrice: liqPriceBps != null ? liqPriceBps / 10000 : null,
                 healthFactor: healthFactorBps != null ? healthFactorBps / 10000 : null,
             } satisfies BorrowPosition]
         })
-    }, [enabled, userPositions, pools])
+    }, [enabled, userPositions, pools, decimalsMap])
 
     return { data, isLoading: enabled && (poolsLoading || positionsLoading) }
 }
@@ -148,7 +147,11 @@ export function useMultiplyPositions(enabled = true) {
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            const netAPY = Math.max(0, multiplier * 3 - (multiplier - 1) * pos.borrowAPY)
+            const netAPY = leveraged_net_apy_bps(
+                Math.round(multiplier * 10_000),
+                Math.round(pos.supplyAPY * 100),
+                Math.round(pos.borrowAPY * 100),
+            ) / 100
 
             return {
                 id: pos.id,
