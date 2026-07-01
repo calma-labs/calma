@@ -91,7 +91,13 @@ pub struct Pool {
     _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
-    _reserved: [u64; 4],
+    /// Maximum age (seconds) the oracle's `last_updated_ts` may be behind the
+    /// current clock before borrow / withdraw_collateral / borrow_with_hedge
+    /// reject the price as stale. Set at pool creation; chosen per market based
+    /// on the underlying feed's update cadence.
+    pub max_feed_age_secs: u32,
+    _pad1: [u8; 4], // align _reserved (u64 needs 8-byte alignment)
+    _reserved: [u64; 3],
 }
 
 impl Pool {

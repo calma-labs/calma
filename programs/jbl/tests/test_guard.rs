@@ -119,7 +119,11 @@ fn create_pool_ix(
     };
     Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create { ltv_percent: 75 }.data(),
+        &jbl::instruction::Create {
+            ltv_percent: 75,
+            max_feed_age_secs: 90u32,
+        }
+        .data(),
         jbl::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
@@ -153,7 +157,12 @@ struct PoolSetup {
     irm_config: Pubkey,
 }
 
-fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
+fn prepare_pool(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    collateral_mint: Pubkey,
+    lend_mint: Pubkey,
+) -> PoolSetup {
     let program_id = jbl::id();
     let feed_id = feed::id();
     let irm_id = irm::id();
@@ -175,10 +184,18 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
     // Create feed
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
-        &feed::instruction::Create {}.data(),
+        &feed::instruction::Create {
+            source: feed::state::PriceSource::Manual,
+            collateral_feed_id: [0u8; 32],
+            lend_feed_id: [0u8; 32],
+            max_pyth_age_secs: 0,
+        }
+        .data(),
         feed::accounts::Create {
             feed: feed_pda,
             authority: payer.pubkey(),
+            collateral_mint,
+            lend_mint,
             payer: payer.pubkey(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -186,7 +203,11 @@ fn prepare_pool(svm: &mut LiteSVM, payer: &Keypair) -> PoolSetup {
     );
     let feed_set_value_ix = Instruction::new_with_bytes(
         feed_id,
-        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        &feed::instruction::SetValue {
+            collateral_price: 1_000_000,
+            lend_price: 1_000_000,
+        }
+        .data(),
         feed::accounts::SetValue {
             feed: feed_pda,
             authority: payer.pubkey(),
@@ -244,7 +265,7 @@ fn test_create_with_guard_whitelisted() {
     let guard_pda = create_guard(&mut svm, &payer, &payer);
     guard_add(&mut svm, &guard_pda, &payer, authority.pubkey());
 
-    let setup = prepare_pool(&mut svm, &payer);
+    let setup = prepare_pool(&mut svm, &payer, col_mint_kp.pubkey(), lend_mint_kp.pubkey());
 
     let ix = create_pool_ix(
         jbl::id(),
@@ -275,7 +296,7 @@ fn test_create_with_guard_not_whitelisted() {
     // Create a guard but do NOT add the pool authority to the whitelist.
     let guard_pda = create_guard(&mut svm, &payer, &payer);
 
-    let setup = prepare_pool(&mut svm, &payer);
+    let setup = prepare_pool(&mut svm, &payer, col_mint_kp.pubkey(), lend_mint_kp.pubkey());
 
     let ix = create_pool_ix(
         jbl::id(),

@@ -89,7 +89,16 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+pub fn create_handler(
+    ctx: Context<Create>,
+    ltv_percent: u8,
+    max_feed_age_secs: u32,
+) -> Result<()> {
+    require!(
+        max_feed_age_secs > 0,
+        crate::error::ErrorCode::InvalidMaxFeedAge
+    );
+
     // ── Guard whitelist check ─────────────────────────────────────────────────
     if let (Some(guard_program), Some(guard_state)) =
         (&ctx.accounts.guard_program, &ctx.accounts.guard_state)
@@ -101,10 +110,11 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
         )?;
     }
 
-    // ── CPI to feed::set_value to record the initial oracle price ────────────
+    // ── CPI to feed::get_state to confirm the feed is reachable + fresh. ─────
     let _oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),
         ctx.accounts.feed_state.to_account_info(),
+        max_feed_age_secs as i64,
     )?;
 
     // ── Fetch initial IRM rate before load_init ───────────────────────────────
@@ -138,6 +148,7 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     pool.feed_program = ctx.accounts.feed_program.key();
     pool.feed_state = ctx.accounts.feed_state.key();
     pool.lp_mint_bump = ctx.bumps.lp_mint;
+    pool.max_feed_age_secs = max_feed_age_secs;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
     {

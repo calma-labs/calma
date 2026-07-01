@@ -102,10 +102,14 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     );
 
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
-    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
+    let (utilization, max_feed_age) = {
+        let pool = ctx.accounts.pool.load()?;
+        (pool.calculate_utilization(), pool.max_feed_age_secs as i64)
+    };
     let oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),
         ctx.accounts.feed_state.to_account_info(),
+        max_feed_age,
     )?;
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),

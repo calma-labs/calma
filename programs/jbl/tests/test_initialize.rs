@@ -80,10 +80,18 @@ fn test_create() {
     let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
-        &feed::instruction::Create {}.data(),
+        &feed::instruction::Create {
+            source: feed::state::PriceSource::Manual,
+            collateral_feed_id: [0u8; 32],
+            lend_feed_id: [0u8; 32],
+            max_pyth_age_secs: 0,
+        }
+        .data(),
         feed::accounts::Create {
             feed: feed_pda,
             authority: payer.pubkey(),
+            collateral_mint: collateral_mint_keypair.pubkey(),
+            lend_mint: lend_mint_keypair.pubkey(),
             payer: payer.pubkey(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -94,7 +102,11 @@ fn test_create() {
 
     let feed_set_value_ix = Instruction::new_with_bytes(
         feed_id,
-        &feed::instruction::SetValue { value: 1_000_000 }.data(),
+        &feed::instruction::SetValue {
+            collateral_price: 1_000_000,
+            lend_price: 1_000_000,
+        }
+        .data(),
         feed::accounts::SetValue {
             feed: feed_pda,
             authority: payer.pubkey(),
@@ -140,7 +152,11 @@ fn test_create() {
     // ── Build create instruction ──────────────────────────────────────────────
     let instruction = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create { ltv_percent: 75 }.data(),
+        &jbl::instruction::Create {
+            ltv_percent: 75,
+            max_feed_age_secs: 90u32,
+        }
+        .data(),
         jbl::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,

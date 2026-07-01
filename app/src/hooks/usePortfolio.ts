@@ -143,14 +143,15 @@ export function useMultiplyPositions(enabled = true) {
 
     const data = useMemo<MultiplyPosition[]>(() => {
         return borrowPositions.map((pos) => {
+            const pool = pools.find((p) => p.publicKey.toBase58() === pos.poolId)
             // Effective multiplier: how many times the net equity is leveraged.
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            // Net APY is replayed by the pool view against its real utilization —
-            // no client-side formula (see crates/bindings policy).
-            const pool = pools.find((p) => p.publicKey.toBase58() === pos.poolId)
-            const netAPY = pool ? pool.account.leveraged_net_apy(multiplier) : 0
+            const leverageBps = Math.round(multiplier * 10_000)
+            const netAPY = pool
+                ? pool.account.leveraged_net_apy_bps(leverageBps) / 100
+                : 0
 
             return {
                 id: pos.id,

@@ -8,7 +8,9 @@
 //! Both AMD64 (server) and wasm32 (client) are little-endian, so no
 //! byte-swapping is required.
 
+use anchor_lang::{AccountDeserialize, Discriminator};
 use bytemuck::Pod;
+use feed_state::Feed;
 use irm_state::IrmState;
 use math::{Clock, Core};
 use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
@@ -27,14 +29,9 @@ pub struct UserPositionAccount(pub(crate) UserPosition);
 /// Wasm-exposed wrapper around a parsed `IrmConfig` account from the irm program.
 #[wasm_bindgen]
 pub struct IrmConfigAccount(IrmState);
-/// Wasm-exposed wrapper around a parsed `Feed` account from the feed program.
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
-pub struct FeedAccount {
-    authority: [u8; 32],
-    pub value: u64,
-    pub bump: u8,
-}
+pub struct FeedAccount(pub(crate) Feed);
 pub struct RateHedgeOfferAccount(pub RateHedgeOffer);
 pub struct RateHedgeMatchAccount(pub RateHedgeMatch);
 
@@ -129,6 +126,13 @@ impl PoolAccount {
     #[wasm_bindgen(getter)]
     pub fn lp_mint_bump(&self) -> u8 {
         self.0.lp_mint_bump
+    }
+
+    /// Configured maximum age (seconds) the oracle feed may lag the current
+    /// clock before borrows / withdrawals reject the price as stale.
+    #[wasm_bindgen(getter)]
+    pub fn max_feed_age_secs(&self) -> u32 {
+        self.0.max_feed_age_secs
     }
 
     /// IRM state (IRM config) pubkey as raw 32 bytes.
@@ -288,26 +292,80 @@ impl IrmConfigAccount {
 #[wasm_bindgen]
 impl FeedAccount {
     /// Parse from raw Anchor account bytes (8-byte discriminator included).
-    /// The body must be exactly 41 bytes: 32 (authority) + 8 (value) + 1 (bump).
+    /// Deserializes via Borsh through the shared `feed_state::Feed` type.
     pub fn from_bytes(account_data: &[u8]) -> Option<FeedAccount> {
-        let body = account_data.get(DISCRIMINATOR..)?;
-        if body.len() != 41 {
-            return None;
-        }
-        let authority = body[..32].try_into().ok()?;
-        let value = u64::from_le_bytes(body[32..40].try_into().ok()?);
-        let bump = body[40];
-        Some(FeedAccount {
-            authority,
-            value,
-            bump,
-        })
+        let mut data = account_data;
+        Feed::try_deserialize(&mut data).ok().map(FeedAccount)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn collateral_price(&self) -> u64 {
+        self.0.state.collateral_price
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lend_price(&self) -> u64 {
+        self.0.state.lend_price
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn last_updated_ts(&self) -> i64 {
+        self.0.state.last_updated_ts
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn source(&self) -> u8 {
+        self.0.config.source as u8
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn bump(&self) -> u8 {
+        self.0.config.bump
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_pyth_age_secs(&self) -> u32 {
+        self.0.config.max_pyth_age_secs
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn collateral_decimals(&self) -> u8 {
+        self.0.data.collateral_decimals
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lend_decimals(&self) -> u8 {
+        self.0.data.lend_decimals
     }
 
     /// Authority pubkey as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn authority(&self) -> Vec<u8> {
-        self.authority.to_vec()
+        self.0.config.authority.to_bytes().to_vec()
+    }
+
+    /// Collateral mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
+    #[wasm_bindgen(getter)]
+    pub fn collateral_mint(&self) -> Vec<u8> {
+        self.0.data.collateral_mint.to_bytes().to_vec()
+    }
+
+    /// Lend mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
+    #[wasm_bindgen(getter)]
+    pub fn lend_mint(&self) -> Vec<u8> {
+        self.0.data.lend_mint.to_bytes().to_vec()
+    }
+
+    /// Collateral Pyth feed ID as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn collateral_feed_id(&self) -> Vec<u8> {
+        self.0.config.collateral_feed_id.to_vec()
+    }
+
+    /// Lend Pyth feed ID as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn lend_feed_id(&self) -> Vec<u8> {
+        self.0.config.lend_feed_id.to_vec()
     }
 }
 
@@ -322,7 +380,35 @@ impl FeedAccount {
 
 impl math::Oracle for FeedAccount {
     fn price(&self) -> u64 {
-        self.value
+        if self.0.state.lend_price == 0 {
+            return 0;
+        }
+        let coll_price = self.0.state.collateral_price as u128;
+        let lend_price = self.0.state.lend_price as u128;
+        let coll_dec_pow = match 10u128.checked_pow(self.0.data.collateral_decimals as u32) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let lend_dec_pow = match 10u128.checked_pow(self.0.data.lend_decimals as u32) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let numerator = match coll_price
+            .checked_mul(lend_dec_pow)
+            .and_then(|v| v.checked_mul(math::PRICE_SCALE))
+        {
+            Some(v) => v,
+            None => return 0,
+        };
+        let denominator = match lend_price.checked_mul(coll_dec_pow) {
+            Some(v) if v > 0 => v,
+            _ => return 0,
+        };
+        let ratio_u128 = match numerator.checked_div(denominator) {
+            Some(v) => v,
+            None => return 0,
+        };
+        u64::try_from(ratio_u128).unwrap_or(0)
     }
 }
 
@@ -672,6 +758,11 @@ impl PoolWithIrm {
         self.pool.lp_mint_bump()
     }
 
+    #[wasm_bindgen(getter)]
+    pub fn max_feed_age_secs(&self) -> u32 {
+        self.pool.max_feed_age_secs()
+    }
+
     pub fn pending_withdrawals(&self) -> u64 {
         self.pool.pending_withdrawals()
     }
@@ -819,7 +910,7 @@ mod tests {
 
     /// Build minimal valid wire bytes for a Feed account (all fields zeroed).
     fn feed_wire() -> Vec<u8> {
-        let mut v = vec![0u8; DISCRIMINATOR + 41];
+        let mut v = vec![0u8; DISCRIMINATOR + 224];
         v[..DISCRIMINATOR].fill(0xAA);
         v
     }
