@@ -50,9 +50,28 @@ const closeModal = () => { modal.classList.add('hidden'); if (formEl) formEl.res
 
 document.querySelectorAll('[data-waitlist]').forEach(b => b.addEventListener('click', (e) => { e.preventDefault(); openModal(); }));
 modal.querySelectorAll('[data-waitlist-close]').forEach(el => el.addEventListener('click', closeModal));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
+document.addEventListener('keydown', (e) => {
+  // don't close the waitlist while the privacy modal is stacked on top of it
+  if (e.key === 'Escape' && !modal.classList.contains('hidden') && privacyModal.classList.contains('hidden')) closeModal();
+});
 // prevent hero pager from advancing on scroll while the modal is open
 ['wheel', 'touchmove'].forEach(ev => modal.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+
+// ===== Privacy policy modal (stacks above the waitlist modal) =====
+const privacyModal = document.getElementById('privacyModal');
+const openPrivacy  = () => privacyModal.classList.remove('hidden');
+const closePrivacy = () => privacyModal.classList.add('hidden');
+document.querySelectorAll('[data-privacy-open]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); openPrivacy(); }));
+privacyModal.querySelectorAll('[data-privacy-close]').forEach(el => el.addEventListener('click', closePrivacy));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !privacyModal.classList.contains('hidden')) closePrivacy(); });
+['wheel', 'touchmove'].forEach(ev => privacyModal.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
+
+// ===== Deep link: open the modal when arriving at #waitlist =====
+const openFromHash = () => {
+  if (location.hash.toLowerCase() === '#waitlist') openModal();
+};
+openFromHash();                                      // on initial load
+window.addEventListener('hashchange', openFromHash); // if navigated to while loaded
 
 // reveal the free-text field when "Other" is ticked
 const other     = document.getElementById('intOther');

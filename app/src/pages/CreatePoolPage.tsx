@@ -242,7 +242,7 @@ export function CreatePoolPage() {
   if (result) {
     return (
       <div className="w-full max-w-6xl mx-auto px-4 py-12">
-        <BackButton to="/" label="Back to markets" />
+        <BackButton to="/markets" label="Back to markets" />
 
         <div className="flex w-2/3 mx-auto flex-col justify-center mt-8">
           <div className="mb-8 flex items-center gap-3">
@@ -304,7 +304,7 @@ export function CreatePoolPage() {
   // ── form ──────────────────────────────────────────────────────────────────
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-12">
-      <BackButton to="/" label="Back to markets" />
+      <BackButton to="/markets" label="Back to markets" />
 
       <div className="flex w-2/3 mx-auto flex-col justify-center mt-8">
         {/* Header */}

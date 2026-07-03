@@ -107,11 +107,11 @@ export function PoolDetailPage() {
   if (!poolPubKey) {
     return (
       <div className="w-full max-w-6xl mx-auto px-4 py-12">
-        <BackButton to="/" label="Back to markets" />
+        <BackButton to="/markets" label="Back to markets" />
         <div className="flex flex-col items-center justify-center py-28 gap-4">
           <p className="text-[#efe0f7]/50 text-sm">Invalid pool address.</p>
           <button
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/markets")}
             className="text-xs text-[#c698e5] hover:underline"
           >
             ← Back to markets
@@ -124,7 +124,7 @@ export function PoolDetailPage() {
   if (isLoading || !pool) {
     return (
       <div className="w-full max-w-6xl mx-auto px-4 py-12">
-        <BackButton to="/" label="Back to markets" />
+        <BackButton to="/markets" label="Back to markets" />
         <div className="flex flex-col items-center justify-center py-28 gap-4">
           {isLoading ? (
             <p className="text-[#efe0f7]/30 text-sm">Loading pool…</p>
@@ -132,7 +132,7 @@ export function PoolDetailPage() {
             <>
               <p className="text-[#efe0f7]/50 text-sm">Pool not found.</p>
               <button
-                onClick={() => navigate("/")}
+                onClick={() => navigate("/markets")}
                 className="text-xs text-[#c698e5] hover:underline"
               >
                 ← Back to markets
@@ -177,7 +177,7 @@ export function PoolDetailPage() {
       )}
 
       <div className="w-full max-w-6xl mx-auto px-4 py-12">
-        <BackButton to="/" label="Back to Markets" />
+        <BackButton to="/markets" label="Back to Markets" />
 
         <PoolHero
           pool={pool}

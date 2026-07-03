@@ -2,7 +2,7 @@ import { WalletConnectButton } from "@/components/wallet";
 import { NavLink } from "react-router";
 
 const NAV_LINKS = [
-  { to: "/", end: true, label: "Market" },
+  { to: "/markets", end: true, label: "Market" },
   { to: "/multiply", end: false, label: "Multiply" },
   { to: "/portfolio", end: false, label: "Portfolio" },
   { to: "/pool/create", end: false, label: "Create Pool" },
@@ -12,7 +12,7 @@ export function Header() {
   return (
     <header className="flex items-center justify-between border-b border-[#c698e5]/10 px-6 py-4 backdrop-blur-sm sticky top-0 z-10 bg-[#17081f]/80">
       <NavLink
-        to="/"
+        to="/markets"
         className="text-lg font-semibold tracking-tight text-[#c698e5] hover:text-[#efe0f7] transition-colors"
       >
         JBL

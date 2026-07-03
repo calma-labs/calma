@@ -863,7 +863,7 @@ tailwind.config = {
         <div class="text-fg font-medium mb-4 text-sm">Legal</div>
         <ul class="space-y-2 text-sm text-soft">
           <li><a href="#" class="hover:text-fg transition-colors">Terms of Service</a></li>
-          <li><a href="#" class="hover:text-fg transition-colors">Privacy Policy</a></li>
+          <li><a href="#" data-privacy-open class="hover:text-fg transition-colors">Privacy Policy</a></li>
         </ul>
       </div>
     </div>
@@ -1162,13 +1162,89 @@ setTimeout(() => document.querySelectorAll('.fade-up:not(.is-in)').forEach(el =>
         <p id="wlError" class="hidden text-xs text-red-500"></p>
         <button type="submit" class="w-full bg-accent hover:bg-accent2 text-base py-3 rounded-md font-medium transition-colors">Join waitlist</button>
       </form>
-      <p class="mt-3 text-[11px] text-muted text-center">No spam — only early-access updates.</p>
+      <p class="mt-3 text-[11px] text-muted text-center">No spam — only early-access updates. By joining you agree to our <button type="button" data-privacy-open class="underline underline-offset-2 hover:text-fg transition-colors">Privacy Policy</button>.</p>
     </div>
     <div id="waitlistSuccess" class="hidden text-center py-4">
       <div class="mx-auto w-12 h-12 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent text-xl">✓</div>
       <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">You're on the list.</h3>
       <p class="mt-2 text-soft text-sm">Saved — we'll reach out soon with early access.</p>
       <button type="button" data-waitlist-close class="mt-6 inline-flex items-center justify-center border border-rule hover:border-fg text-fg px-5 py-2.5 rounded-md text-sm font-medium transition-colors">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PRIVACY POLICY MODAL ============ -->
+<div id="privacyModal" class="hidden fixed inset-0 z-[210] flex items-center justify-center px-6">
+  <div data-privacy-close class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+  <div class="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl border border-rule bg-base p-7 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
+    <button type="button" data-privacy-close aria-label="Close" class="absolute top-4 right-4 text-muted hover:text-fg transition-colors">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+
+    <div class="text-xs text-muted font-mono uppercase tracking-wider">Legal</div>
+    <h3 id="privacyTitle" class="mt-2 text-fg font-semibold text-2xl tracking-tight">Privacy Policy</h3>
+    <p class="mt-1 text-sm text-muted">Effective date: October 26, 2025</p>
+
+    <div class="mt-6 space-y-5 text-sm leading-relaxed text-soft">
+      <section>
+        <h4 class="text-fg font-semibold">1. Introduction</h4>
+        <p class="mt-1">We value your privacy and are committed to protecting your personal information. This Privacy Policy explains how we collect, use, and store the information you provide when joining our waitlist.</p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">2. Information we collect</h4>
+        <p class="mt-1">When you join our waitlist, we collect the following information:</p>
+        <ul class="mt-1 ml-5 list-disc space-y-1">
+          <li>Email address (required)</li>
+          <li>Solana wallet address (required)</li>
+        </ul>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">3. How we use your information</h4>
+        <p class="mt-1">We use your information only for the purpose of:</p>
+        <ul class="mt-1 ml-5 list-disc space-y-1">
+          <li>Sending updates and early access information about our platform</li>
+          <li>Notifying you of important announcements or changes related to the waitlist</li>
+          <li>Improving our service based on feedback</li>
+        </ul>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">4. Legal basis for processing (GDPR)</h4>
+        <p class="mt-1">We process your personal data based on your <strong class="text-fg font-semibold">consent</strong>, which you provide when joining our waitlist form. You may withdraw your consent at any time by unsubscribing from emails.</p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">5. Data sharing</h4>
+        <p class="mt-1">We <strong class="text-fg font-semibold">do not sell or share</strong> your personal information with third parties, except when required by law.</p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">6. Data retention</h4>
+        <p class="mt-1">We keep your information only as long as necessary for the purposes outlined above or until you request removal from the waitlist.</p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">7. Your rights</h4>
+        <p class="mt-1">You have the right to:</p>
+        <ul class="mt-1 ml-5 list-disc space-y-1">
+          <li>Request access to your data</li>
+          <li>Request correction or deletion of your data</li>
+          <li>Withdraw consent at any time</li>
+        </ul>
+        <p class="mt-2">To exercise your rights, please contact us at: <a href="mailto:Info.calmaprotocol@gmail.com" class="text-fg underline underline-offset-2 hover:text-accent2 transition-colors">Info.calmaprotocol@gmail.com</a></p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">8. Security</h4>
+        <p class="mt-1">We use industry-standard practices to protect your information from unauthorized access, disclosure, or misuse.</p>
+      </section>
+
+      <section>
+        <h4 class="text-fg font-semibold">9. Contact us</h4>
+        <p class="mt-1">If you have any questions about this Privacy Policy, our practices, or your data, contact us at: <a href="mailto:Info.calmaprotocol@gmail.com" class="text-fg underline underline-offset-2 hover:text-accent2 transition-colors">Info.calmaprotocol@gmail.com</a> — <a href="https://calma.loans" class="text-fg underline underline-offset-2 hover:text-accent2 transition-colors">calma.loans</a></p>
+      </section>
     </div>
   </div>
 </div>
