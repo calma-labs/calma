@@ -13,6 +13,13 @@ export const queryKeys = {
         one: (pool: PublicKey, authority: PublicKey) =>
             ['user-positions', pool.toBase58(), authority.toBase58()] as const,
     },
+    feeds: {
+        byPair: (collateralMint: string, lendMint: string) =>
+            ['feeds', 'pair', collateralMint, lendMint] as const,
+    },
+    guard: {
+        state: (authority: string) => ['guard', 'state', authority] as const,
+    },
     wallet: {
         balances: (address: string) => ['wallet', 'balances', address] as const,
     },

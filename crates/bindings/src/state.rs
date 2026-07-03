@@ -8,7 +8,7 @@
 //! Both AMD64 (server) and wasm32 (client) are little-endian, so no
 //! byte-swapping is required.
 
-use anchor_lang::{AccountDeserialize, Discriminator};
+use anchor_lang::AccountDeserialize;
 use bytemuck::Pod;
 use feed_state::Feed;
 use irm_state::IrmState;
@@ -909,9 +909,13 @@ mod tests {
     // ── PoolWithIrm helpers ───────────────────────────────────────────────────
 
     /// Build minimal valid wire bytes for a Feed account (all fields zeroed).
+    /// `FeedAccount::from_bytes` deserializes via Anchor's `try_deserialize`,
+    /// which validates the account discriminator — so it must be the real one,
+    /// not a filler. A zeroed body is a valid `Manual` feed (source = 0).
     fn feed_wire() -> Vec<u8> {
+        use anchor_lang::Discriminator;
         let mut v = vec![0u8; DISCRIMINATOR + 224];
-        v[..DISCRIMINATOR].fill(0xAA);
+        v[..DISCRIMINATOR].copy_from_slice(&Feed::DISCRIMINATOR);
         v
     }
 

@@ -5,10 +5,10 @@ use {
     anchor_lang::{
         prelude::Pubkey,
         solana_program::{instruction::Instruction, program_pack::Pack, system_instruction},
-        AnchorSerialize, Discriminator, InstructionData, ToAccountMetas,
+        AccountDeserialize, AnchorSerialize, Discriminator, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token::{self, state::Mint as SplMint},
-    feed::state::PriceSource,
+    feed::state::{Feed, PriceSource},
     litesvm::LiteSVM,
     pyth_solana_receiver_sdk::price_update::{PriceFeedMessage, PriceUpdateV2, VerificationLevel},
     solana_account::Account,
@@ -237,12 +237,11 @@ fn manual_create_and_set_value_happy_path() {
     ));
     // Both mints in fresh_svm are decimals=6 → feed inherits them.
     let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey())).unwrap();
-    let body = &feed_account.data[8..];
-    assert_eq!(body[34], 6); // collateral_decimals
-    assert_eq!(body[35], 6); // lend_decimals
-    // Mints are stored at offsets 64..96 and 96..128.
-    assert_eq!(&body[64..96], ctx.collateral_mint.as_ref());
-    assert_eq!(&body[96..128], ctx.lend_mint.as_ref());
+    let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
+    assert_eq!(feed.data.collateral_decimals, 6);
+    assert_eq!(feed.data.lend_decimals, 6);
+    assert_eq!(feed.data.collateral_mint, ctx.collateral_mint);
+    assert_eq!(feed.data.lend_mint, ctx.lend_mint);
 }
 
 #[test]
@@ -374,18 +373,11 @@ fn pyth_set_from_pyth_happy_path() {
     ));
 
     let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey())).unwrap();
-    // Skip the 8-byte Anchor discriminator and parse the fields directly.
-    let body = &feed_account.data[8..];
-    // Layout: authority(32) source(1) bump(1) coll_dec(1) lend_dec(1) pad(4)
-    //         coll_price(8) lend_price(8) last_updated_ts(8)
-    //         coll_mint(32) lend_mint(32) coll_feed_id(32) lend_feed_id(32) reserved(32)
-    let coll_price = u64::from_le_bytes(body[40..48].try_into().unwrap());
-    let lend_price = u64::from_le_bytes(body[48..56].try_into().unwrap());
-    let last_ts = i64::from_le_bytes(body[56..64].try_into().unwrap());
-    assert_eq!(coll_price, 123_450_000);
-    assert_eq!(lend_price, 1_000_000);
+    let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
+    assert_eq!(feed.state.collateral_price, 123_450_000);
+    assert_eq!(feed.state.lend_price, 1_000_000);
     // last_updated_ts == min(publish_time)
-    assert_eq!(last_ts, now - 10);
+    assert_eq!(feed.state.last_updated_ts, now - 10);
 }
 
 #[test]

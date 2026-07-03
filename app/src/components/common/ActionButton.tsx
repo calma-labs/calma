@@ -6,6 +6,8 @@ interface ActionButtonProps {
   variant: "primary" | "secondary";
   disabled?: boolean;
   compact?: boolean;
+  className?: string;
+  title?: string;
   onClick?: () => void;
 }
 
@@ -15,13 +17,15 @@ export function ActionButton({
   variant,
   disabled,
   compact,
+  className,
+  title,
   onClick,
 }: ActionButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      title={disabled ? "Connect wallet to continue" : undefined}
+      title={title ?? (disabled ? "Connect wallet to continue" : undefined)}
       className={cn(
         "flex items-center gap-1.5 rounded-xl pl-1.5 py-1.5 font-medium transition-all duration-200",
         compact ? "text-xs pr-3" : "text-sm pr-4",

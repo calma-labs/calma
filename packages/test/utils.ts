@@ -151,17 +151,24 @@ export async function setupTest(
   });
 
   // Create the feed account once; skip if already exists (shared provider wallet key).
+  // Manual price source: feed ids must be all-zero and max_pyth_age is ignored.
   if (!(await connection.getAccountInfo(feedPda))) {
     await feedProgram.methods
-      .create()
-      .accounts({ authority: feedAuthority, payer: payer.publicKey })
+      .create({ manual: {} }, Array(32).fill(0), Array(32).fill(0), 0)
+      .accounts({
+        authority: feedAuthority,
+        collateralMint,
+        lendMint,
+        payer: payer.publicKey,
+      })
       .signers([payer])
       .rpc();
   }
 
-  // Set initial oracle price so the CPI inside create reads a non-zero value.
+  // Set initial oracle price (collateral == lend == 1.0) so the ratio is 1.0 and
+  // the CPI inside create reads a non-zero value.
   await feedProgram.methods
-    .setValue(new BN(1_000_000))
+    .setValue(new BN(1_000_000), new BN(1_000_000))
     .accounts({ authority: feedAuthority })
     .rpc();
 
@@ -207,6 +214,24 @@ export async function setupTest(
     feedPda,
     feedAuthority,
   };
+}
+
+/**
+ * Updates the shared manual oracle feed's collateral and lend prices.
+ *
+ * With equal token decimals (all test mints use 6), the borrow check reads
+ * `ratio = collateralPrice / lendPrice × PRICE_SCALE`, so this directly scales a
+ * position's borrow capacity: capacity = collateral × ratio / PRICE_SCALE × LTV.
+ */
+export async function setFeedPrice(
+  setup: TestSetup,
+  collateralPrice: number,
+  lendPrice: number = 1_000_000
+): Promise<void> {
+  await setup.feedProgram.methods
+    .setValue(new BN(collateralPrice), new BN(lendPrice))
+    .accounts({ authority: setup.feedAuthority })
+    .rpc();
 }
 
 export function irmAccounts(setup: TestSetup) {

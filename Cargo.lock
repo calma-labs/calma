@@ -715,6 +715,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "feed-state",
  "irm-state",
  "js-sys",
  "math",

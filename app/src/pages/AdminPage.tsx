@@ -1,11 +1,11 @@
+import { ActionButton } from "@/components/common/ActionButton";
 import { useCreateMint } from "@/hooks/program/useCreateMint";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
 import { Keypair } from "@solana/web3.js";
-import { CheckCircle2, Copy, Loader2, Plus, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Copy, Loader2, Plus, RefreshCw, Radio, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-
-const ADMIN_WALLET = "8vW1zRVXWqCq5z5xZGDVKmosg5PBX1yEQZAeffewEtkX";
+import { NavLink } from "react-router";
 
 // ─── guard ────────────────────────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { connected, wallet } = useWalletConnection();
 
   const isAdmin =
-    connected && wallet && String(wallet.account.address) === ADMIN_WALLET;
+    connected && wallet;
 
   if (!isAdmin) {
     return (
@@ -177,36 +177,55 @@ function CreateMintTool() {
           ) : (
             <span />
           )}
-          <button
-            type="submit"
+          <ActionButton
+            variant="primary"
             disabled={isPending || !decimalsValid || confirmed}
-            className={cn(
-              "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
-              "bg-[#c698e5] text-[#17081f] shadow-[0_0_20px_rgba(198,152,229,0.30)]",
-              "enabled:hover:bg-[#d4aeee] enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]",
-              "enabled:active:scale-95 cursor-pointer",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-            )}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creating…
-              </>
-            ) : confirmed ? (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                Created
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4" />
-                Create Mint
-              </>
-            )}
-          </button>
+            title=""
+            label={isPending ? "Creating…" : confirmed ? "Created" : "Create Mint"}
+            icon={
+              isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin text-[#17081f]" />
+              ) : confirmed ? (
+                <CheckCircle2 className="h-4 w-4 text-[#17081f]" />
+              ) : (
+                <Plus className="h-4 w-4 text-[#17081f]" />
+              )
+            }
+          />
         </div>
       </form>
+    </div>
+  );
+}
+
+// ─── admin links ──────────────────────────────────────────────────────────────
+
+const ADMIN_LINKS = [
+  { to: "/feed", label: "Feed" },
+  { to: "/guard", label: "Guard" },
+] as const;
+
+function AdminLinks() {
+  return (
+    <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] p-6">
+      <div className="flex items-center gap-2.5 mb-5">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#c698e5]/15 text-[#c698e5]">
+          <Radio className="h-4 w-4" />
+        </span>
+        <h2 className="text-sm font-semibold text-[#efe0f7]/80">Tools</h2>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {ADMIN_LINKS.map(({ to, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className="flex items-center justify-between rounded-xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-4 py-3 text-sm font-medium text-[#efe0f7]/80 hover:border-[#c698e5]/35 hover:bg-[#c698e5]/[0.07] hover:text-[#efe0f7] transition-colors"
+          >
+            {label}
+          </NavLink>
+        ))}
+      </div>
     </div>
   );
 }
@@ -228,6 +247,7 @@ export function AdminPage() {
 
         <div className="w-2/3 flex flex-col gap-5">
           <CreateMintTool />
+          <AdminLinks />
         </div>
       </div>
     </AdminGuard>

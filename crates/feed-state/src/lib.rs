@@ -41,6 +41,7 @@ pub struct FeedData {
 }
 
 #[account]
+#[derive(Copy)]
 pub struct Feed {
     pub state: FeedState,
     pub config: FeedConfig,
