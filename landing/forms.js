@@ -54,6 +54,13 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.c
 // prevent hero pager from advancing on scroll while the modal is open
 ['wheel', 'touchmove'].forEach(ev => modal.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }));
 
+// ===== Deep link: open the modal when arriving at #waitlist =====
+const openFromHash = () => {
+  if (location.hash.toLowerCase() === '#waitlist') openModal();
+};
+openFromHash();                                      // on initial load
+window.addEventListener('hashchange', openFromHash); // if navigated to while loaded
+
 // reveal the free-text field when "Other" is ticked
 const other     = document.getElementById('intOther');
 const otherText = document.getElementById('intOtherText');

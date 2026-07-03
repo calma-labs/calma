@@ -1,6 +1,5 @@
 import { getPoolMeta } from '@/config/poolRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
-import { leveraged_net_apy_bps } from '@jbl/wasm-lib'
 import type {
     BorrowPosition,
     LendPosition,
@@ -140,6 +139,7 @@ export function useBorrowPositions(enabled = true) {
 
 export function useMultiplyPositions(enabled = true) {
     const { data: borrowPositions, isLoading } = useBorrowPositions(enabled)
+    const { data: pools = [] } = useValidLendingAccounts()
 
     const data = useMemo<MultiplyPosition[]>(() => {
         return borrowPositions.map((pos) => {
@@ -147,11 +147,10 @@ export function useMultiplyPositions(enabled = true) {
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            const netAPY = leveraged_net_apy_bps(
-                Math.round(multiplier * 10_000),
-                Math.round(pos.supplyAPY * 100),
-                Math.round(pos.borrowAPY * 100),
-            ) / 100
+            // Net APY is replayed by the pool view against its real utilization —
+            // no client-side formula (see crates/bindings policy).
+            const pool = pools.find((p) => p.publicKey.toBase58() === pos.poolId)
+            const netAPY = pool ? pool.account.leveraged_net_apy(multiplier) : 0
 
             return {
                 id: pos.id,
@@ -173,7 +172,7 @@ export function useMultiplyPositions(enabled = true) {
                 pnlPct: 0,
             } satisfies MultiplyPosition
         })
-    }, [borrowPositions])
+    }, [borrowPositions, pools])
 
     return { data, isLoading }
 }
