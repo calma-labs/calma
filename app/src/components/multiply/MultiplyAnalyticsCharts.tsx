@@ -83,6 +83,7 @@ function generateApyMultiData(
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// style-exception: chart line colors for multi-line recharts require hex values
 const MULT_COLORS = [
   "#34d399",
   "#a3e635",
@@ -136,12 +137,12 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
   return (
     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
       {/* ── Available liquidity ── */}
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden">
-        <div className="px-5 pt-4 pb-3 border-b border-[#c698e5]/10">
-          <p className="text-xs font-semibold text-[#efe0f7]/60">
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden">
+        <div className="px-5 pt-4 pb-3 border-b border-surface-accent/10">
+          <p className="text-xs font-semibold text-surface-foreground/60">
             Available Liquidity
           </p>
-          <p className="text-[10px] text-[#efe0f7]/28 mt-0.5">
+          <p className="text-xs text-surface-foreground/28 mt-0.5">
             180-day history
           </p>
         </div>
@@ -153,6 +154,7 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
               margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
             >
               <defs>
+                {/* style-exception: recharts SVG gradient requires hex color values */}
                 <linearGradient id="liqGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#c698e5" stopOpacity={0.28} />
                   <stop offset="95%" stopColor="#c698e5" stopOpacity={0.02} />
@@ -181,6 +183,7 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
                   "Available",
                 ]}
               />
+              {/* style-exception: recharts Area stroke requires hex color */}
               <Area
                 type="monotone"
                 dataKey="value"
@@ -196,12 +199,12 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
       </div>
 
       {/* ── Net APY by multiplier level ── */}
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden">
-        <div className="px-5 pt-4 pb-3 border-b border-[#c698e5]/10">
-          <p className="text-xs font-semibold text-[#efe0f7]/60">
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden">
+        <div className="px-5 pt-4 pb-3 border-b border-surface-accent/10">
+          <p className="text-xs font-semibold text-surface-foreground/60">
             Net APY by Multiplier Level
           </p>
-          <p className="text-[10px] text-[#efe0f7]/28 mt-0.5">
+          <p className="text-xs text-surface-foreground/28 mt-0.5">
             180-day history
           </p>
         </div>
@@ -239,6 +242,7 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
                   ];
                 }}
               />
+              {/* style-exception: recharts Line strokes use MULT_COLORS hex array */}
               {multiplierLevels.map((_, i) => (
                 <Line
                   key={i}
@@ -256,11 +260,12 @@ export function MultiplyAnalyticsCharts({ pool, seed }: Props) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pt-1">
             {multiplierLevels.map((m, i) => (
               <div key={m} className="flex items-center gap-1.5">
+                {/* style-exception: legend swatch color matches recharts line color */}
                 <span
                   className="h-[3px] w-5 rounded-full inline-block"
                   style={{ backgroundColor: MULT_COLORS[i] }}
                 />
-                <span className="text-[9px] text-[#efe0f7]/35 tabular-nums">
+                <span className="text-xs text-surface-foreground/35 tabular-nums">
                   {m}×
                 </span>
               </div>

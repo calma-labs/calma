@@ -1,6 +1,5 @@
 import { ChartRangePicker } from "@/components/common/ChartRangePicker";
 import { dateLabel, seededRand, thinData } from "@/lib/formatters";
-import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import {
   Area,
@@ -53,9 +52,9 @@ export function SupplyApyChart({ supplyApy, seed }: SupplyApyChartProps) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     return (
-      <div className="rounded-xl border border-[#c698e5]/20 bg-[#1a0d24] px-3 py-2 text-xs">
-        <p className="text-[#efe0f7]/40 mb-0.5">{label}</p>
-        <p className="font-semibold text-emerald-400">
+      <div className="rounded-xl border border-surface-accent/20 bg-modal-bg px-3 py-2 text-xs">
+        <p className="text-surface-foreground/40 mb-0.5">{label}</p>
+        <p className="font-semibold text-success">
           {payload[0].value.toFixed(2)}% APY
         </p>
       </div>
@@ -63,15 +62,11 @@ export function SupplyApyChart({ supplyApy, seed }: SupplyApyChartProps) {
   };
 
   return (
-    <div
-      className={cn(
-        "mt-4 rounded-2xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-5 pt-5 pb-4",
-      )}
-    >
+    <div className="mt-4 rounded-2xl border border-surface-accent/15 bg-surface-accent/[0.03] px-5 pt-5 pb-4">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <p className="text-sm font-semibold text-[#efe0f7]">Supply APY</p>
-          <p className="text-[11px] text-[#efe0f7]/35 mt-0.5">
+          <p className="text-sm font-semibold text-surface-foreground">Supply APY</p>
+          <p className="text-xs text-surface-foreground/35 mt-0.5">
             Historical rate
           </p>
         </div>
@@ -88,6 +83,7 @@ export function SupplyApyChart({ supplyApy, seed }: SupplyApyChartProps) {
           margin={{ top: 4, right: 4, left: -28, bottom: 0 }}
         >
           <defs>
+            {/* style-exception: recharts SVG gradient requires hex color values */}
             <linearGradient id="supplyApyGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#34d399" stopOpacity={0.25} />
               <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
@@ -116,6 +112,7 @@ export function SupplyApyChart({ supplyApy, seed }: SupplyApyChartProps) {
             content={<CustomTooltip />}
             cursor={{ stroke: "rgba(198,152,229,0.2)", strokeWidth: 1 }}
           />
+          {/* style-exception: recharts Area stroke requires hex color */}
           <Area
             type="monotone"
             dataKey="apy"

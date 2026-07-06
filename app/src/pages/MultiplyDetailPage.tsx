@@ -49,13 +49,13 @@ export function MultiplyDetailPage() {
         <BackButton to="/multiply" label="Back to Multiply" />
         <div className="flex flex-col items-center justify-center py-28 gap-4">
           {isLoading ? (
-            <p className="text-[#efe0f7]/30 text-sm">Loading strategy…</p>
+            <p className="text-surface-foreground/30 text-sm">Loading strategy…</p>
           ) : (
             <>
-              <p className="text-[#efe0f7]/50 text-sm">Strategy not found.</p>
+              <p className="text-surface-foreground/50 text-sm">Strategy not found.</p>
               <button
                 onClick={() => navigate("/multiply")}
-                className="text-xs text-[#c698e5] hover:underline cursor-pointer"
+                className="text-xs text-surface-accent hover:underline cursor-pointer"
               >
                 ← Back to Multiply
               </button>
@@ -102,54 +102,54 @@ export function MultiplyDetailPage() {
           </div>
 
           {/* How it Works — vertical stepper */}
-          <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] px-5 py-6 flex flex-col">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-[#efe0f7]/28 mb-6">
+          <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] px-5 py-6 flex flex-col">
+            <p className="text-xs font-semibold uppercase tracking-widest text-surface-foreground/30 mb-6">
               How Multiply Works
             </p>
 
             <div className="flex flex-col flex-1">
               <div className="flex gap-3.5 flex-1">
                 <div className="flex flex-col items-center">
-                  <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-[#c698e5]/35 bg-[#c698e5]/12 text-[9px] font-bold text-[#c698e5] leading-none">
+                  <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-surface-accent/35 bg-surface-accent/12 text-xs font-bold text-surface-accent leading-none">
                     1
                   </div>
-                  <div className="w-px flex-1 bg-gradient-to-b from-[#c698e5]/20 to-transparent mt-2" />
+                  <div className="w-px flex-1 bg-gradient-to-b from-surface-accent/20 to-transparent mt-2" />
                 </div>
                 <div className="pb-6 pt-0.5">
-                  <p className="text-sm font-semibold text-[#efe0f7]/70 mb-1 leading-snug">
+                  <p className="text-sm font-semibold text-surface-foreground/70 mb-1 leading-snug">
                     Deposit collateral
                   </p>
-                  <p className="text-xs text-[#efe0f7]/35 leading-relaxed">
+                  <p className="text-xs text-surface-foreground/35 leading-relaxed">
                     Supply {pool.collateralSymbol} as collateral into the pool.
                   </p>
                 </div>
               </div>
               <div className="flex gap-3.5 flex-1">
                 <div className="flex flex-col items-center">
-                  <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-[#c698e5]/35 bg-[#c698e5]/12 text-[9px] font-bold text-[#c698e5] leading-none">
+                  <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-surface-accent/35 bg-surface-accent/12 text-xs font-bold text-surface-accent leading-none">
                     2
                   </div>
-                  <div className="w-px flex-1 bg-gradient-to-b from-[#c698e5]/20 to-transparent mt-2" />
+                  <div className="w-px flex-1 bg-gradient-to-b from-surface-accent/20 to-transparent mt-2" />
                 </div>
                 <div className="pb-6 pt-0.5">
-                  <p className="text-sm font-semibold text-[#efe0f7]/70 mb-1 leading-snug">
+                  <p className="text-sm font-semibold text-surface-foreground/70 mb-1 leading-snug">
                     Borrow {pool.lendSymbol}
                   </p>
-                  <p className="text-xs text-[#efe0f7]/35 leading-relaxed">
+                  <p className="text-xs text-surface-foreground/35 leading-relaxed">
                     Protocol flash-borrows {pool.lendSymbol}, swaps to more{" "}
                     {pool.collateralSymbol} and deposits it.
                   </p>
                 </div>
               </div>
               <div className="flex gap-3.5">
-                <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-[#c698e5]/35 bg-[#c698e5]/12 text-[9px] font-bold text-[#c698e5] leading-none">
+                <div className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-full border border-surface-accent/35 bg-surface-accent/12 text-xs font-bold text-surface-accent leading-none">
                   3
                 </div>
                 <div className="pt-0.5">
-                  <p className="text-sm font-semibold text-[#efe0f7]/70 mb-1 leading-snug">
+                  <p className="text-sm font-semibold text-surface-foreground/70 mb-1 leading-snug">
                     Compounded exposure
                   </p>
-                  <p className="text-xs text-[#efe0f7]/35 leading-relaxed">
+                  <p className="text-xs text-surface-foreground/35 leading-relaxed">
                     One atomic transaction, up to {pool.account.ltv_percent}% LTV. Net APY =
                     supply yield × leverage − borrow cost.
                   </p>
@@ -163,7 +163,7 @@ export function MultiplyDetailPage() {
         <MultiplyAnalyticsCharts pool={pool} seed={chartSeed} />
 
         {!connected && (
-          <p className="mt-6 text-center text-xs text-[#efe0f7]/30">
+          <p className="mt-6 text-center text-xs text-surface-foreground/30">
             Connect your wallet to open a leveraged position.
           </p>
         )}

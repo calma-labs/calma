@@ -96,9 +96,9 @@ export function MultiplyPositionPanel({
   if (!connected) return null;
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] px-4 py-6 flex items-center gap-2">
-        <div className="h-1.5 w-1.5 rounded-full bg-[#c698e5] animate-pulse" />
-        <span className="text-[11px] text-[#efe0f7]/30">Loading position…</span>
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] px-4 py-6 flex items-center gap-2">
+        <div className="h-1.5 w-1.5 rounded-full bg-surface-accent animate-pulse" />
+        <span className="text-xs text-surface-foreground/30">Loading position…</span>
       </div>
     );
   }
@@ -121,11 +121,11 @@ export function MultiplyPositionPanel({
 
   return (
     <>
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden">
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#c698e5]/10">
-          <div className="h-1.5 w-1.5 rounded-full bg-[#c698e5]" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#efe0f7]/45">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-accent/10">
+          <div className="h-1.5 w-1.5 rounded-full bg-surface-accent" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
             My Positions
           </span>
         </div>
@@ -140,41 +140,41 @@ export function MultiplyPositionPanel({
               className="h-6 w-6 rounded-full"
             />
             <div>
-              <p className="text-sm font-semibold text-[#efe0f7]">
+              <p className="text-sm font-semibold text-surface-foreground">
                 {pool.lendSymbol}
               </p>
-              <p className="text-[10px] text-[#efe0f7]/35">Multiply</p>
+              <p className="text-xs text-surface-foreground/35">Multiply</p>
             </div>
           </div>
 
           {/* Multiplier */}
           <div className="flex flex-col min-w-[55px]">
-            <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">
+            <span className="text-xs text-surface-foreground/35 mb-0.5">
               Multiplier
             </span>
-            <span className="text-sm font-bold tabular-nums text-[#c698e5]">
+            <span className="text-sm font-bold tabular-nums text-surface-accent">
               {position.leverage.toFixed(2)}×
             </span>
           </div>
 
           {/* Net APY */}
           <div className="flex flex-col min-w-[60px]">
-            <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">
+            <span className="text-xs text-surface-foreground/35 mb-0.5">
               Net APY
             </span>
-            <span className="text-sm font-semibold tabular-nums text-[#34d399]">
+            <span className="text-sm font-semibold tabular-nums text-success">
               {position.netAPY.toFixed(2)}%
             </span>
           </div>
 
           {/* Collateral */}
           <div className="flex flex-col min-w-[100px]">
-            <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">
+            <span className="text-xs text-surface-foreground/35 mb-0.5">
               Collateral
             </span>
-            <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
+            <span className="text-sm font-semibold tabular-nums text-surface-foreground">
               {position.collateralFormatted}{" "}
-              <span className="text-xs text-[#efe0f7]/40">
+              <span className="text-xs text-surface-foreground/40">
                 {pool.collateralSymbol}
               </span>
             </span>
@@ -182,10 +182,10 @@ export function MultiplyPositionPanel({
 
           {/* Debt */}
           <div className="flex flex-col min-w-[100px]">
-            <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Debt</span>
-            <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
+            <span className="text-xs text-surface-foreground/35 mb-0.5">Debt</span>
+            <span className="text-sm font-semibold tabular-nums text-surface-foreground">
               {position.debtFormatted}{" "}
-              <span className="text-xs text-[#efe0f7]/40">
+              <span className="text-xs text-surface-foreground/40">
                 {pool.lendSymbol}
               </span>
             </span>
@@ -193,7 +193,7 @@ export function MultiplyPositionPanel({
 
           {/* P&L — not computable without price history; shown as placeholder */}
           <div className="flex flex-col min-w-[90px]">
-            <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">P&L</span>
+            <span className="text-xs text-surface-foreground/35 mb-0.5">P&L</span>
             <PnlCell pnl={0} pct={0} />
           </div>
 

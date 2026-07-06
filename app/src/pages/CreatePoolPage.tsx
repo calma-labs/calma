@@ -22,12 +22,12 @@ import { useNavigate } from "react-router";
 
 function fieldClass(error: boolean) {
   return cn(
-    "w-full rounded-xl border bg-[#c698e5]/[0.04] px-4 py-2.5 text-sm text-[#efe0f7]",
-    "placeholder:text-[#efe0f7]/25 outline-none transition-colors duration-150",
-    "focus:bg-[#c698e5]/[0.07] focus:border-[#c698e5]/50",
+    "w-full rounded-xl border bg-surface-accent/[0.04] px-4 py-2.5 text-sm text-surface-foreground",
+    "placeholder:text-surface-foreground/25 transition-colors duration-150",
+    "focus:bg-surface-accent/[0.07] focus:border-surface-accent/50 focus-visible:ring-2 focus-visible:ring-ring",
     error
-      ? "border-[#d45677]/60 focus:border-[#d45677]"
-      : "border-[#c698e5]/20 hover:border-[#c698e5]/35",
+      ? "border-destructive/60 focus:border-destructive"
+      : "border-surface-accent/20 hover:border-surface-accent/35",
   );
 }
 
@@ -46,15 +46,15 @@ function Field({ id, label, hint, error, children }: FieldProps) {
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={id}
-        className="text-xs font-semibold uppercase tracking-wider text-[#efe0f7]/45"
+        className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/45"
       >
         {label}
       </label>
       {children}
       {hint && !error && (
-        <p className="text-[11px] text-[#efe0f7]/30">{hint}</p>
+        <p className="text-xs text-surface-foreground/30">{hint}</p>
       )}
-      {error && <p className="text-[11px] text-[#d45677]">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
@@ -107,12 +107,12 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] p-6">
+    <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.025] p-6">
       <div className="flex items-center gap-2.5 mb-5">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#c698e5]/15 text-[#c698e5]">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-accent/15 text-surface-accent">
           {icon}
         </span>
-        <h2 className="text-sm font-semibold text-[#efe0f7]/80">{title}</h2>
+        <h2 className="text-sm font-semibold text-surface-foreground/80">{title}</h2>
       </div>
       <div className="flex flex-col gap-5">{children}</div>
     </div>
@@ -128,18 +128,18 @@ function AddressRow({ label, value }: { label: string; value: string }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#efe0f7]/35">
+      <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/35">
         {label}
       </span>
       <div className="flex items-center gap-2">
-        <span className="flex-1 font-mono text-xs text-[#efe0f7]/80 break-all">
+        <span className="flex-1 font-mono text-xs text-surface-foreground/80 break-all">
           {value}
         </span>
         <button
           type="button"
           onClick={copy}
           title="Copy to clipboard"
-          className="shrink-0 rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#c698e5]/10 hover:text-[#c698e5] transition-colors cursor-pointer"
+          className="shrink-0 rounded-lg p-1.5 text-surface-foreground/40 hover:bg-surface-accent/10 hover:text-surface-accent transition-colors cursor-pointer"
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
@@ -246,25 +246,25 @@ export function CreatePoolPage() {
 
         <div className="flex w-2/3 mx-auto flex-col justify-center mt-8">
           <div className="mb-8 flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#34d399]/15 text-[#34d399]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-success/15 text-success">
               <CheckCircle2 className="h-5 w-5" />
             </span>
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-[#efe0f7]">
+              <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
                 Pool Deployed
               </h1>
-              <p className="text-sm text-[#efe0f7]/50 mt-0.5">
+              <p className="text-sm text-surface-foreground/50 mt-0.5">
                 Save these addresses — they were generated automatically.
               </p>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] p-6 flex flex-col gap-4">
+          <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.025] p-6 flex flex-col gap-4">
             <AddressRow
               label="Pool Address"
               value={result.poolAddress.toBase58()}
             />
-            <div className="border-t border-[#c698e5]/10" />
+            <div className="border-t border-surface-accent/10" />
             <AddressRow
               label="Collateral Mint"
               value={result.collateralMint.toBase58()}
@@ -273,12 +273,13 @@ export function CreatePoolPage() {
           </div>
 
           <div className="flex gap-3 mt-6">
+            {/* style-exception: glow shadow requires exact rgba for surface-accent color */}
             <button
               onClick={() => navigate(`/pool/${result.poolAddress.toBase58()}`)}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200",
-                "bg-[#c698e5] text-[#17081f] shadow-[0_0_20px_rgba(198,152,229,0.30)]",
-                "hover:bg-[#d4aeee] hover:shadow-[0_0_28px_rgba(198,152,229,0.45)] active:scale-95 cursor-pointer",
+                "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)]",
+                "hover:brightness-110 hover:shadow-[0_0_28px_rgba(198,152,229,0.45)] active:scale-95 cursor-pointer",
               )}
             >
               <ExternalLink className="h-4 w-4" />
@@ -290,7 +291,7 @@ export function CreatePoolPage() {
                 setForm(DEFAULT_FORM);
                 setSubmitAttempted(false);
               }}
-              className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 border border-[#c698e5]/25 bg-[#c698e5]/8 text-[#c698e5] hover:border-[#c698e5]/50 hover:bg-[#c698e5]/15 active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 border border-surface-accent/25 bg-surface-accent/8 text-surface-accent hover:border-surface-accent/50 hover:bg-surface-accent/15 active:scale-95 cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               Create Another
@@ -310,12 +311,12 @@ export function CreatePoolPage() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2.5 mb-2">
-            <Plus className="h-5 w-5 text-[#c698e5]" />
-            <h1 className="text-3xl font-semibold tracking-tight text-[#efe0f7]">
+            <Plus className="h-5 w-5 text-surface-accent" />
+            <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
               Create Pool
             </h1>
           </div>
-          <p className="text-sm text-[#efe0f7]/50 max-w-lg">
+          <p className="text-sm text-surface-foreground/50 max-w-lg">
             Configure interest rate parameters and deploy a new lending pool.
             Token mints are generated automatically and shown after deployment.
           </p>
@@ -331,7 +332,7 @@ export function CreatePoolPage() {
             title="Interest Rate Model"
             icon={<Settings2 className="h-4 w-4" />}
           >
-            <p className="text-[11px] text-[#efe0f7]/35 -mt-2">
+            <p className="text-xs text-surface-foreground/35 -mt-2">
               Two-slope model: rate&nbsp;=&nbsp;m·utilisation&nbsp;+&nbsp;c. The
               first slope applies below the kink, the second above it.
               Intercepts (c₁, c₂) can be negative for advanced curve shaping.
@@ -429,24 +430,25 @@ export function CreatePoolPage() {
           {/* Actions */}
           <div className="flex items-center justify-between pt-1">
             {!connected && (
-              <p className="text-xs text-[#d45677]">
+              <p className="text-xs text-destructive">
                 Connect your wallet to deploy the pool
               </p>
             )}
             {connected && submitAttempted && hasErrors && (
-              <p className="text-xs text-[#d45677]">
+              <p className="text-xs text-destructive">
                 Fix the errors above before continuing
               </p>
             )}
             {connected && !(submitAttempted && hasErrors) && <span />}
 
+            {/* style-exception: glow shadow requires exact rgba for surface-accent color */}
             <button
               type="submit"
               disabled={isPending || !connected}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
-                "bg-[#c698e5] text-[#17081f] shadow-[0_0_20px_rgba(198,152,229,0.30)]",
-                "enabled:hover:bg-[#d4aeee] enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]",
+                "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)]",
+                "enabled:hover:brightness-110 enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]",
                 "enabled:active:scale-95",
                 "disabled:opacity-50 disabled:cursor-not-allowed",
               )}

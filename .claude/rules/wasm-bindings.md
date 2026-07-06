@@ -1,4 +1,7 @@
-# crates/bindings
+---
+paths:
+  - "crates/bindings/**/*.rs"
+---
 
 Wasm bindings consumed by the frontend (`@jbl/wasm-lib`). Parses Anchor account
 bytes (`state.rs`, `exports.rs`) and exposes client-side protocol math.

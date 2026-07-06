@@ -1,14 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  --color-accent: #aa3bff;
-  --color-accent-dark: #c084fc;
-  --color-app-bg: #fff;
-  --color-app-bg-dark: #16171d;
-  --color-app-text: #6b6375;
-  --color-app-heading: #08060d;
-  --color-app-border: #e5e4e7;
-
   --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, Consolas, monospace;
 
@@ -24,6 +16,22 @@
   --color-ring: #aa3bff;
   --color-primary: #aa3bff;
   --color-primary-foreground: #ffffff;
+  --color-secondary: #f4f4f5;
+  --color-secondary-foreground: #08060d;
+  --color-destructive: #d45677;
+  --color-destructive-foreground: #ffffff;
+  --color-accent: #aa3bff;
+  --color-accent-foreground: #ffffff;
+  --color-success: #34d399;
+  --color-warning: #f0a854;
+  /* App surface / chrome tokens */
+  --color-surface: #17081f;
+  --color-surface-foreground: #efe0f7;
+  --color-surface-accent: #c698e5;
+  /* Wallet / modal overlay backgrounds (unique values, not aliases) */
+  --color-wallet-bg: #1a0a24;
+  --color-wallet-subtle: #1f0e2b;
+  --color-modal-bg: #1a0d24;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,6 +47,14 @@
     --color-ring: #c084fc;
     --color-primary: #c084fc;
     --color-primary-foreground: #08060d;
+    --color-secondary: #27272a;
+    --color-secondary-foreground: #ffffff;
+    --color-destructive: #e0647f;
+    --color-destructive-foreground: #ffffff;
+    --color-accent: #c084fc;
+    --color-accent-foreground: #08060d;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
   }
 }
 
@@ -46,14 +62,7 @@
   *,
   *::before,
   *::after {
-    outline: none !important;
-    box-shadow: none;
-  }
-
-  *:focus,
-  *:focus-visible,
-  *:focus-within {
-    outline: none !important;
+    box-sizing: border-box;
   }
 
   html {

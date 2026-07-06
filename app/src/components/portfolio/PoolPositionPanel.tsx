@@ -21,8 +21,8 @@ import { type WithdrawPosition } from "./WithdrawModal";
 
 function SectionLabel({ label }: { label: string }) {
   return (
-    <div className="px-4 border-b border-[#c698e5]/8 bg-[#c698e5]/[0.015]">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#efe0f7]/30">
+    <div className="px-4 border-b border-surface-accent/8 bg-surface-accent/[0.015]">
+      <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/30">
         {label}
       </span>
     </div>
@@ -41,32 +41,32 @@ function LendRow({
   onRedeemLp?: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-10 gap-y-2 px-4 py-3.5 border-b border-[#c698e5]/8 last:border-none">
+    <div className="flex flex-wrap items-center gap-x-10 gap-y-2 px-4 py-3.5 border-b border-surface-accent/8 last:border-none">
       {/* Asset */}
       <div className="flex items-center gap-2 min-w-[90px]">
         <img src={pos.icon} alt={pos.asset} className="h-6 w-6 rounded-full" />
-        <p className="text-sm font-semibold text-[#efe0f7]">{pos.asset}</p>
+        <p className="text-sm font-semibold text-surface-foreground">{pos.asset}</p>
       </div>
 
       {/* Supplied */}
       <div className="flex flex-col min-w-[80px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Supplied</span>
-        <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">Supplied</span>
+        <span className="text-sm font-semibold tabular-nums text-surface-foreground">
           {pos.supplied.toLocaleString("en-US", { maximumFractionDigits: 4 })}
         </span>
       </div>
 
       {/* APY */}
       <div className="flex flex-col min-w-[60px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">APY</span>
-        <span className="text-sm font-semibold tabular-nums text-[#34d399]">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">APY</span>
+        <span className="text-sm font-semibold tabular-nums text-success">
           {pos.apy.toFixed(2)}%
         </span>
       </div>
 
       <div className="flex flex-col min-w-[70px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Earned</span>
-        <span className="text-sm tabular-nums text-[#34d399]">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">Earned</span>
+        <span className="text-sm tabular-nums text-success">
           {/* +${pos.earned < 1 ? pos.earned.toFixed(3) : pos.earned.toFixed(2)} */}
           {/* Placeholder until we fetch real earned amounts */}
           +$11.23
@@ -74,7 +74,7 @@ function LendRow({
       </div>
 
       <div className="flex flex-col min-w-[50px]">
-        <span className="text-[10px] ml-1 text-[#efe0f7]/35 mb-0.5">
+        <span className="text-xs ml-1 text-surface-foreground/35 mb-0.5">
           Health
         </span>
         {/* <HealthBadge value={pos.health} /> */}
@@ -84,15 +84,15 @@ function LendRow({
 
       {/* Collateral */}
       <div className="flex flex-col min-w-[50px]">
-        <span className="text-[10px] ml-1 text-[#efe0f7]/35 mb-0.5">
+        <span className="text-xs ml-1 text-surface-foreground/35 mb-0.5">
           Collateral
         </span>
         <span
           className={cn(
-            "text-[10px] px-2 py-0.5 rounded-full font-medium w-fit",
+            "text-xs px-2 py-0.5 rounded-full font-medium w-fit",
             pos.collateralEnabled
-              ? "bg-[#34d399]/10 text-[#34d399]"
-              : "bg-[#efe0f7]/8 text-[#efe0f7]/35",
+              ? "bg-success/10 text-success"
+              : "bg-surface-foreground/8 text-surface-foreground/35",
           )}
         >
           {pos.collateralEnabled ? "On" : "Off"}
@@ -120,7 +120,7 @@ function BorrowRow({
   onRepay: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-10 gap-y-2 px-4 py-3.5 border-b border-[#c698e5]/8 last:border-none">
+    <div className="flex flex-wrap items-center gap-x-10 gap-y-2 px-4 py-3.5 border-b border-surface-accent/8 last:border-none">
       {/* Borrowed asset (primary) */}
       <div className="flex items-center gap-2 min-w-[90px]">
         <img
@@ -128,7 +128,7 @@ function BorrowRow({
           alt={pos.borrowedAsset}
           className="h-6 w-6 rounded-full"
         />
-        <p className="text-sm font-semibold text-[#efe0f7]">
+        <p className="text-sm font-semibold text-surface-foreground">
           {pos.borrowedAsset}
         </p>
       </div>
@@ -136,7 +136,7 @@ function BorrowRow({
       {/* Lend */}
       {/* <div className="flex items-center gap-2 min-w-[90px]">
         <div className="flex flex-col">
-          <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Lended</span>
+          <span className="text-xs text-surface-foreground/35 mb-0.5">Lended</span>
 
           <div className="flex items-center gap-1.5">
             <img
@@ -144,7 +144,7 @@ function BorrowRow({
               alt={pos.borrowedAsset}
               className="h-4 w-4 rounded-full"
             />
-            <span className="text-xs text-[#efe0f7]/50">
+            <span className="text-xs text-surface-foreground/50">
               {pos.borrowedAsset}
             </span>
           </div>
@@ -153,23 +153,23 @@ function BorrowRow({
 
       {/* Debt */}
       <div className="flex flex-col min-w-[80px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Debt</span>
-        <span className="text-sm font-semibold tabular-nums text-[#efe0f7]">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">Debt</span>
+        <span className="text-sm font-semibold tabular-nums text-surface-foreground">
           {pos.debtAmount.toLocaleString("en-US", { maximumFractionDigits: 4 })}
         </span>
       </div>
 
       {/* Borrow APY */}
       <div className="flex flex-col min-w-[60px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Borrow APY</span>
-        <span className="text-sm font-semibold tabular-nums text-[#d45677]">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">Borrow APY</span>
+        <span className="text-sm font-semibold tabular-nums text-destructive">
           {pos.borrowAPY.toFixed(2)}%
         </span>
       </div>
 
       <div className="flex flex-col min-w-[50px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">LTV</span>
-        <span className="text-sm tabular-nums text-[#efe0f7]/70">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">LTV</span>
+        <span className="text-sm tabular-nums text-surface-foreground/70">
           {/* {pos.ltv.toFixed(1)}% */}
           {/* Placeholder until we compute real LTV values */}
           45.2%
@@ -177,8 +177,8 @@ function BorrowRow({
       </div>
 
       <div className="flex flex-col min-w-[70px]">
-        <span className="text-[10px] text-[#efe0f7]/35 mb-0.5">Liq. Price</span>
-        <span className="text-sm tabular-nums text-[#efe0f7]/70">
+        <span className="text-xs text-surface-foreground/35 mb-0.5">Liq. Price</span>
+        <span className="text-sm tabular-nums text-surface-foreground/70">
           {/* ${pos.liqPrice.toFixed(1)} */}
           {/* Placeholder until we compute real liquidation price */}
           $123.45
@@ -186,7 +186,7 @@ function BorrowRow({
       </div>
 
       <div className="flex flex-col min-w-[50px]">
-        <span className="text-[10px] ml-1 text-[#efe0f7]/35 mb-0.5">HF</span>
+        <span className="text-xs ml-1 text-surface-foreground/35 mb-0.5">HF</span>
         {/* <HFBadge value={pos.healthFactor} /> */}
         {/* Placeholder until we compute real health factor */}
         <HealthBadge value={90.32} />
@@ -298,9 +298,9 @@ export function PoolPositionPanel({
   if (!connected) return null;
   if (positionLoading) {
     return (
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] px-4 py-6 flex items-center gap-2">
-        <div className="h-1.5 w-1.5 rounded-full bg-[#c698e5] animate-pulse" />
-        <span className="text-[11px] text-[#efe0f7]/30">
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] px-4 py-6 flex items-center gap-2">
+        <div className="h-1.5 w-1.5 rounded-full bg-surface-accent animate-pulse" />
+        <span className="text-xs text-surface-foreground/30">
           Loading positions…
         </span>
       </div>
@@ -310,11 +310,11 @@ export function PoolPositionPanel({
 
   return (
     <>
-      <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden">
+      <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#c698e5]/10">
-          <div className="h-1.5 w-1.5 rounded-full bg-[#c698e5]" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#efe0f7]/45">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-surface-accent/10">
+          <div className="h-1.5 w-1.5 rounded-full bg-surface-accent" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
             My Positions
           </span>
         </div>

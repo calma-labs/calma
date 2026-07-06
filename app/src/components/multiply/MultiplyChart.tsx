@@ -129,6 +129,7 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
     const el = chartRef.current;
     if (!el) return;
 
+    // style-exception: lightweight-charts requires raw color strings in its config API
     const chart = createChart(el, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
@@ -165,6 +166,7 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
 
     chartApi.current = chart;
 
+    // style-exception: lightweight-charts CandlestickSeries requires hex colors
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#34d399",
       downColor: "#d45677",
@@ -199,9 +201,9 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
   );
 
   return (
-    <div className="rounded-2xl border border-[#c698e5]/15 bg-[#c698e5]/[0.025] overflow-hidden flex flex-col h-full">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[#c698e5]/10 flex-shrink-0">
-        <div className="flex items-center gap-1 rounded-lg border border-[#c698e5]/12 bg-[#c698e5]/5 p-0.5">
+    <div className="rounded-2xl border border-surface-accent/15 bg-surface-accent/[0.025] overflow-hidden flex flex-col h-full">
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-surface-accent/10 flex-shrink-0">
+        <div className="flex items-center gap-1 rounded-lg border border-surface-accent/12 bg-surface-accent/5 p-0.5">
           {(["price", "apy"] as ChartTab[]).map((t) => (
             <button
               key={t}
@@ -209,8 +211,8 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
               className={cn(
                 "rounded-md px-3.5 py-1.5 text-xs font-medium transition-all cursor-pointer capitalize",
                 tab === t
-                  ? "bg-[#c698e5]/20 text-[#c698e5]"
-                  : "text-[#efe0f7]/35 hover:text-[#efe0f7]/70",
+                  ? "bg-surface-accent/20 text-surface-accent"
+                  : "text-surface-foreground/35 hover:text-surface-foreground/70",
               )}
             >
               {t === "price" ? "Price" : "Net APY"}
@@ -225,10 +227,10 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
                 key={r}
                 onClick={() => setPriceRange(r)}
                 className={cn(
-                  "rounded-md px-2.5 py-1 text-[10px] font-medium transition-all cursor-pointer",
+                  "rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                   priceRange === r
-                    ? "bg-[#c698e5]/18 text-[#c698e5]"
-                    : "text-[#efe0f7]/30 hover:text-[#efe0f7]/70",
+                    ? "bg-surface-accent/18 text-surface-accent"
+                    : "text-surface-foreground/30 hover:text-surface-foreground/70",
                 )}
               >
                 {PRICE_RANGE_LABELS[r]}
@@ -242,8 +244,8 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
         isChartLoading ? (
           <div className="flex-1 min-h-[430px] flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
-              <div className="h-6 w-6 rounded-full border-2 border-[#c698e5]/40 border-t-[#c698e5] animate-spin" />
-              <span className="text-[11px] text-[#efe0f7]/30">
+              <div className="h-6 w-6 rounded-full border-2 border-surface-accent/40 border-t-surface-accent animate-spin" />
+              <span className="text-xs text-surface-foreground/30">
                 Loading chart…
               </span>
             </div>
@@ -277,6 +279,7 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
                 tickLine={false}
                 width={44}
               />
+              {/* style-exception: recharts Tooltip contentStyle requires plain JS object with hex colors */}
               <Tooltip
                 cursor={{ fill: "rgba(198,152,229,0.06)" }}
                 contentStyle={{
@@ -308,6 +311,7 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
                     fill: "rgba(239,224,247,0.55)",
                   }}
                 />
+                {/* style-exception: recharts Cell fill color is computed from runtime bar data */}
                 {apyBars.map((bar, i) => (
                   <Cell
                     key={i}
@@ -321,14 +325,14 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
 
           <div className="flex items-center justify-between mt-1 px-1">
             <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-sm bg-emerald-400" />
-              <span className="text-[10px] text-[#efe0f7]/40">
+              <div className="h-2 w-2 rounded-sm bg-success" />
+              <span className="text-xs text-surface-foreground/40">
                 1× = {pool.supplyAPY.toFixed(2)}% supply APY
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-sm bg-[#c698e5]" />
-              <span className="text-[10px] text-[#efe0f7]/40">
+              <div className="h-2 w-2 rounded-sm bg-surface-accent" />
+              <span className="text-xs text-surface-foreground/40">
                 {meta.maxMultiplier}× = {meta.maxNetAPY.toFixed(2)}% net APY
               </span>
             </div>

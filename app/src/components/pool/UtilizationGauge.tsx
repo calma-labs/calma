@@ -101,25 +101,27 @@ export function UtilizationGauge({
   const tipPoint = pt(ARC_START + fillSweep);
 
   return (
-    <div className="rounded-2xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-6 py-5">
+    <div className="rounded-2xl border border-surface-accent/15 bg-surface-accent/[0.03] px-6 py-5">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-1">
         <div>
-          <p className="text-sm font-semibold text-[#efe0f7]">
+          <p className="text-sm font-semibold text-surface-foreground">
             Pool Utilization
           </p>
-          <p className="text-[11px] text-[#efe0f7]/35 mt-0.5">
+          <p className="text-xs text-surface-foreground/35 mt-0.5">
             Curve-optimized capital efficiency
           </p>
         </div>
+        {/* style-exception: zone color is computed at runtime from utilization data */}
         <span
-          className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full border transition-colors duration-500"
+          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border transition-colors duration-500"
           style={{
             color: zone.color,
             borderColor: zone.color + "40",
             backgroundColor: zone.color + "14",
           }}
         >
+          {/* style-exception: zone dot color is dynamic */}
           <span
             className="h-1.5 w-1.5 rounded-full animate-pulse"
             style={{ backgroundColor: zone.color }}
@@ -157,7 +159,7 @@ export function UtilizationGauge({
             strokeLinecap="round"
           />
 
-          {/* Zone tint segments */}
+          {/* Zone tint segments — style-exception: colors are data-driven from ZONES array */}
           {ZONES.map((z) => {
             const zStart = ARC_START + (z.from / 100) * ARC_SWEEP;
             const zSweep = ((z.to - z.from) / 100) * ARC_SWEEP;
@@ -173,7 +175,7 @@ export function UtilizationGauge({
             );
           })}
 
-          {/* Active fill arc */}
+          {/* Active fill arc — style-exception: fill color is runtime zone data */}
           {pct > 0 && (
             <path
               d={arcPath(ARC_START, fillSweep)}
@@ -203,7 +205,7 @@ export function UtilizationGauge({
             );
           })}
 
-          {/* Tip dot */}
+          {/* Tip dot — style-exception: fill color is runtime zone data */}
           {pct > 0 && arcPct < 100 && (
             <circle
               cx={tipPoint.x}
@@ -214,7 +216,7 @@ export function UtilizationGauge({
             />
           )}
 
-          {/* ── Outer threshold labels ── */}
+          {/* ── Outer threshold labels — style-exception: fill colors are zone data */}
           {(() => {
             const labels: Array<{
               pct: number;
@@ -251,7 +253,7 @@ export function UtilizationGauge({
             });
           })()}
 
-          {/* ── Centre readout ── */}
+          {/* ── Centre readout — style-exception: fill color is runtime zone data */}
           <text
             x={GCX}
             y={GCY - 14}
@@ -292,12 +294,14 @@ export function UtilizationGauge({
       <div className="flex justify-center gap-4 mb-4">
         {ZONES.map((z) => (
           <div key={z.label} className="flex items-center gap-1.5">
+            {/* style-exception: zone dot color is runtime data */}
             <span
               className="h-2 w-2 rounded-full flex-shrink-0"
               style={{ backgroundColor: z.color }}
             />
+            {/* style-exception: zone label color is runtime data */}
             <span
-              className="text-[9px] font-semibold uppercase tracking-wide"
+              className="text-xs font-semibold uppercase tracking-wide"
               style={{ color: zone.label === z.label ? z.color : "#efe0f740" }}
             >
               {z.label}
@@ -307,30 +311,32 @@ export function UtilizationGauge({
       </div>
 
       {/* ── Metrics strip ───────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2 border-t border-[#c698e5]/10 pt-4">
+      <div className="grid grid-cols-3 gap-2 border-t border-surface-accent/10 pt-4">
         <div className="flex flex-col gap-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#efe0f7]/30">
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/30">
             Total Supply
           </span>
-          <span className="text-sm font-semibold text-[#c698e5] tabular-nums">
+          <span className="text-sm font-semibold text-surface-accent tabular-nums">
             {formatRawTokens(totalSupplied)}
           </span>
-          <div className="h-0.5 rounded-full bg-[#c698e5]/20 mt-0.5">
-            <div className="h-full w-full rounded-full bg-[#c698e5]" />
+          <div className="h-0.5 rounded-full bg-surface-accent/20 mt-0.5">
+            <div className="h-full w-full rounded-full bg-surface-accent" />
           </div>
         </div>
 
         <div className="flex flex-col gap-1 items-center">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#efe0f7]/30">
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/30">
             Borrowed
           </span>
+          {/* style-exception: text color is runtime zone data */}
           <span
             className="text-sm font-semibold tabular-nums"
             style={{ color: zone.color }}
           >
             {formatRawTokens(totalBorrowed)}
           </span>
-          <div className="h-0.5 rounded-full bg-[#c698e5]/10 mt-0.5 w-full overflow-hidden">
+          <div className="h-0.5 rounded-full bg-surface-accent/10 mt-0.5 w-full overflow-hidden">
+            {/* style-exception: bar width and color are computed from runtime utilization + zone data */}
             <div
               className="h-full rounded-full transition-all duration-700"
               style={{ width: `${Math.min(100, Math.max(0, pct))}%`, backgroundColor: zone.color }}
@@ -339,15 +345,16 @@ export function UtilizationGauge({
         </div>
 
         <div className="flex flex-col gap-1 items-end">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#efe0f7]/30">
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/30">
             Available
           </span>
-          <span className="text-sm font-medium text-[#efe0f7]/55 tabular-nums">
+          <span className="text-sm font-medium text-surface-foreground/55 tabular-nums">
             {formatRawTokens(available)}
           </span>
-          <div className="h-0.5 rounded-full bg-[#efe0f7]/8 mt-0.5 w-full overflow-hidden">
+          <div className="h-0.5 rounded-full bg-surface-foreground/8 mt-0.5 w-full overflow-hidden">
+            {/* style-exception: bar width is computed from runtime utilization */}
             <div
-              className="h-full rounded-full bg-[#efe0f7]/30 transition-all duration-700"
+              className="h-full rounded-full bg-surface-foreground/30 transition-all duration-700"
               style={{ width: `${Math.max(0, 100 - pct)}%` }}
             />
           </div>
@@ -360,13 +367,13 @@ export function UtilizationGauge({
 // ─── Side-panel companion component ──────────────────────────────────────────
 export function UtilizationInfoPanel() {
   return (
-    <div className="rounded-2xl border border-[#34d399]/18 bg-[#34d399]/[0.03] px-5 py-8 flex flex-col gap-5 h-full">
+    <div className="rounded-2xl border border-success/18 bg-success/[0.03] px-5 py-8 flex flex-col gap-5 h-full">
       {/* Title */}
       <div>
         <div className="flex items-center gap-2 mb-2.5">
-          <div className="h-6 w-6 rounded-lg bg-[#34d399]/15 flex items-center justify-center flex-shrink-0">
+          <div className="h-6 w-6 rounded-lg bg-success/15 flex items-center justify-center flex-shrink-0">
             <svg
-              className="h-3.5 w-3.5 text-[#34d399]"
+              className="h-3.5 w-3.5 text-success"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
@@ -376,43 +383,45 @@ export function UtilizationInfoPanel() {
               <path d="M2 12 L5 8 L8 10 L11 5 L14 3" />
             </svg>
           </div>
-          <p className="text-sm font-semibold text-[#efe0f7]">
+          <p className="text-sm font-semibold text-surface-foreground">
             Curve-Optimized
           </p>
         </div>
-        <p className="text-[11px] text-[#efe0f7]/50 leading-relaxed">
+        <p className="text-xs text-surface-foreground/50 leading-relaxed">
           This pool's two-segment interest-rate curve dynamically adjusts
           borrowing costs — enabling{" "}
-          <span className="text-[#34d399] font-semibold">up to 95 %</span> safe
+          <span className="text-success font-semibold">up to 95 %</span> safe
           utilization versus the ~80 % ceiling of traditional protocols.
         </p>
       </div>
 
       {/* Zone breakdown */}
       <div>
-        <p className="text-[9px] font-semibold uppercase tracking-wider text-[#efe0f7]/25 mb-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/25 mb-3">
           Rate zones
         </p>
         <div className="space-y-3">
           {ZONES.map((z) => (
             <div key={z.label} className="flex items-start gap-2.5">
+              {/* style-exception: zone dot color is runtime data */}
               <div
                 className="mt-0.5 h-2 w-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: z.color }}
               />
               <div>
                 <div className="flex items-baseline gap-1.5">
+                  {/* style-exception: zone label color is runtime data */}
                   <span
-                    className="text-[10px] font-bold uppercase tracking-wide"
+                    className="text-xs font-bold uppercase tracking-wide"
                     style={{ color: z.color }}
                   >
                     {z.label}
                   </span>
-                  <span className="text-[9px] text-[#efe0f7]/30 font-medium">
+                  <span className="text-xs text-surface-foreground/30 font-medium">
                     {z.sub}
                   </span>
                 </div>
-                <p className="text-[10px] text-[#efe0f7]/45 leading-snug mt-0.5">
+                <p className="text-xs text-surface-foreground/45 leading-snug mt-0.5">
                   {z.desc}
                 </p>
               </div>

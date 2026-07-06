@@ -93,12 +93,12 @@ export function MarketPage() {
     <div className="w-full max-w-6xl mx-auto px-4 py-12">
       <div className="mb-8">
         <div className="flex items-center gap-2.5 mb-2">
-          <BarChart3 className="h-5 w-5 text-[#c698e5]" />
-          <h1 className="text-3xl font-semibold tracking-tight text-[#efe0f7]">
+          <BarChart3 className="h-5 w-5 text-surface-accent" />
+          <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
             Markets
           </h1>
         </div>
-        <p className="text-sm text-[#efe0f7]/50 max-w-lg">
+        <p className="text-sm text-surface-foreground/50 max-w-lg">
           Select an asset to supply, borrow, repay or withdraw. Rates update in
           real-time based on pool utilisation.
         </p>
@@ -112,7 +112,7 @@ export function MarketPage() {
       />
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-32 text-[#efe0f7]/30 text-sm">
+        <div className="flex items-center justify-center py-32 text-surface-foreground/30 text-sm">
           Loading markets…
         </div>
       ) : (

@@ -96,15 +96,15 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-[#c698e5]/15 bg-[#1a0d24] overflow-hidden"
+        className="w-full max-w-sm rounded-2xl border border-surface-accent/15 bg-modal-bg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
-          <p className="text-base font-semibold text-[#efe0f7]">Borrow</p>
+          <p className="text-base font-semibold text-surface-foreground">Borrow</p>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#efe0f7]/30 hover:bg-[#c698e5]/10 hover:text-[#efe0f7] transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-surface-foreground/30 hover:bg-surface-accent/10 hover:text-surface-foreground transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -114,16 +114,16 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
           {/* Amount input */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between gap-2 px-2">
-              <span className="text-[11px] text-[#efe0f7]/40 flex-shrink-0">
+              <span className="text-xs text-surface-foreground/40 flex-shrink-0">
                 Amount
               </span>
               <button
                 onClick={() => setAmount(String(limit))}
-                className="flex items-center gap-1 text-[11px] text-[#efe0f7]/35 hover:text-[#c698e5] transition-colors cursor-pointer min-w-0"
+                className="flex items-center gap-1 text-xs text-surface-foreground/35 hover:text-surface-accent transition-colors cursor-pointer min-w-0"
               >
                 <Wallet className="h-3 w-3 flex-shrink-0" />
                 <span className="flex-shrink-0">Borrow power:</span>
-                <span className="tabular-nums text-[#efe0f7]/55 truncate">
+                <span className="tabular-nums text-surface-foreground/55 truncate">
                   {limit.toLocaleString("en-US", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 6,
@@ -133,7 +133,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
               </button>
             </div>
 
-            <div className="flex items-center gap-2.5 rounded-xl border border-[#c698e5]/15 bg-[#c698e5]/5 px-3.5 py-3 transition-colors focus-within:border-[#c698e5]/40">
+            <div className="flex items-center gap-2.5 rounded-xl border border-surface-accent/15 bg-surface-accent/5 px-3.5 py-3 transition-colors focus-within:border-surface-accent/40">
               <img
                 src={displayIcon}
                 alt={displaySymbol}
@@ -147,9 +147,9 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
                 placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-[#efe0f7] placeholder-[#efe0f7]/20 outline-none tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-surface-foreground placeholder-surface-foreground/20 tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <span className="text-[11px] font-semibold text-[#efe0f7]/40 flex-shrink-0">
+              <span className="text-xs font-semibold text-surface-foreground/40 flex-shrink-0">
                 {displaySymbol}
               </span>
             </div>
@@ -161,7 +161,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
               <button
                 key={p}
                 onClick={() => setAmount(((limit * p) / 100).toFixed(6))}
-                className="flex-1 rounded-lg border border-[#c698e5]/15 py-1.5 text-[11px] font-medium text-[#efe0f7]/35 hover:border-[#c698e5]/35 hover:text-[#c698e5] transition-all cursor-pointer"
+                className="flex-1 rounded-lg border border-surface-accent/15 py-1.5 text-xs font-medium text-surface-foreground/35 hover:border-surface-accent/35 hover:text-surface-accent transition-all cursor-pointer"
               >
                 {p}%
               </button>
@@ -170,12 +170,12 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
 
           {/* Fixed rate toggle */}
           <div className="flex flex-col gap-2">
-            <label className="flex items-center justify-between rounded-xl border border-[#c698e5]/10 px-3.5 py-3 cursor-pointer hover:border-[#c698e5]/25 transition-colors">
+            <label className="flex items-center justify-between rounded-xl border border-surface-accent/10 px-3.5 py-3 cursor-pointer hover:border-surface-accent/25 transition-colors">
               <div className="flex items-center gap-2.5">
-                <Lock className="h-3.5 w-3.5 text-[#c698e5]/60" />
+                <Lock className="h-3.5 w-3.5 text-surface-accent/60" />
                 <div>
-                  <p className="text-xs font-medium text-[#efe0f7]/80">Fixed rate</p>
-                  <p className="text-[11px] text-[#efe0f7]/35">
+                  <p className="text-xs font-medium text-surface-foreground/80">Fixed rate</p>
+                  <p className="text-xs text-surface-foreground/35">
                     Lock in rate at {projectedFixedAPY.toFixed(2)}% APY
                   </p>
                 </div>
@@ -183,7 +183,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
               <div
                 className={cn(
                   "relative h-5 w-9 rounded-full transition-colors duration-200",
-                  fixedRate ? "bg-[#c698e5]" : "bg-[#c698e5]/15",
+                  fixedRate ? "bg-surface-accent" : "bg-surface-accent/15",
                 )}
               >
                 <span
@@ -208,10 +208,10 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
                     key={d}
                     onClick={() => setFixedDuration(d)}
                     className={cn(
-                      "flex-1 rounded-lg border py-1.5 text-[11px] font-medium transition-all cursor-pointer",
+                      "flex-1 rounded-lg border py-1.5 text-xs font-medium transition-all cursor-pointer",
                       fixedDuration === d
-                        ? "border-[#c698e5]/50 bg-[#c698e5]/10 text-[#c698e5]"
-                        : "border-[#c698e5]/15 text-[#efe0f7]/35 hover:border-[#c698e5]/35 hover:text-[#c698e5]",
+                        ? "border-surface-accent/50 bg-surface-accent/10 text-surface-accent"
+                        : "border-surface-accent/15 text-surface-foreground/35 hover:border-surface-accent/35 hover:text-surface-accent",
                     )}
                   >
                     {d === "1w" ? "1 Week" : "1 Month"}
@@ -222,29 +222,29 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
           </div>
 
           {/* Info rows */}
-          <div className="rounded-xl border border-[#c698e5]/10 divide-y divide-[#c698e5]/8">
+          <div className="rounded-xl border border-surface-accent/10 divide-y divide-surface-accent/8">
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+              <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                 <Info className="h-3 w-3" />
                 Borrow APY
               </span>
-              <span className="text-xs font-semibold text-emerald-400">
+              <span className="text-xs font-semibold text-success">
                 {fixedRate
                   ? projectedFixedAPY.toFixed(2)
                   : projectedBorrowAPY.toFixed(2)}
                 %{fixedRate && (
-                  <span className="ml-1 text-[10px] font-medium text-[#c698e5]/70">
+                  <span className="ml-1 text-xs font-medium text-surface-accent/70">
                     fixed · {fixedDuration === "1w" ? "1w" : "1m"}
                   </span>
                 )}
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+              <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                 <Info className="h-3 w-3" />
                 Pool available
               </span>
-              <span className="text-xs font-semibold tabular-nums text-[#efe0f7]/60">
+              <span className="text-xs font-semibold tabular-nums text-surface-foreground/60">
                 {pool.availableLiquidity.toLocaleString("en-US", {
                   maximumFractionDigits: 2,
                 })}{" "}
@@ -252,11 +252,11 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+              <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                 <Info className="h-3 w-3" />
                 LTV ({poolData.ltv_percent}%)
               </span>
-              <span className="text-xs font-semibold tabular-nums text-[#efe0f7]/60">
+              <span className="text-xs font-semibold tabular-nums text-surface-foreground/60">
                 {userBorrowPower.toLocaleString("en-US", {
                   maximumFractionDigits: 2,
                 })}{" "}
@@ -272,8 +272,8 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
             className={cn(
               "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2",
               canSubmit
-                ? "bg-[#d45677] text-white hover:bg-[#e0647f]"
-                : "bg-[#c698e5]/12 text-[#efe0f7]/20 cursor-not-allowed",
+                ? "bg-destructive text-white hover:bg-destructive/80"
+                : "bg-surface-accent/12 text-surface-foreground/20 cursor-not-allowed",
             )}
           >
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}

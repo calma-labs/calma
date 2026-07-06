@@ -35,15 +35,15 @@ function chartDomain(history: PortfolioHistoryPoint[]): [number, number] {
 export function PortfolioChart({ history, changePct30d }: PortfolioChartProps) {
   const [yMin, yMax] = chartDomain(history);
   return (
-    <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden mb-6">
-      <div className="px-5 pt-4 pb-3 border-b border-[#c698e5]/10 flex items-center justify-between">
+    <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden mb-6">
+      <div className="px-5 pt-4 pb-3 border-b border-surface-accent/10 flex items-center justify-between">
         <div>
-          <p className="text-xs font-semibold text-[#efe0f7]/60">
+          <p className="text-xs font-semibold text-surface-foreground/60">
             Portfolio Net Value
           </p>
-          <p className="text-[10px] text-[#efe0f7]/28 mt-0.5">90-day history</p>
+          <p className="text-xs text-surface-foreground/28 mt-0.5">90-day history</p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-[#34d399]">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-success">
           <ArrowUpRight className="h-3.5 w-3.5" />
           {changePct30d.toFixed(2)}% 30d
         </div>
@@ -55,6 +55,7 @@ export function PortfolioChart({ history, changePct30d }: PortfolioChartProps) {
             margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
           >
             <defs>
+              {/* style-exception: recharts linearGradient stopColor requires hex color strings */}
               <linearGradient id="portfolioGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#c698e5" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#c698e5" stopOpacity={0.02} />
@@ -81,6 +82,7 @@ export function PortfolioChart({ history, changePct30d }: PortfolioChartProps) {
               labelStyle={LABEL_STYLE}
               formatter={(v) => [`$${Number(v).toLocaleString()}`, "Net Value"]}
             />
+            {/* style-exception: recharts Area stroke and activeDot fill require hex color strings */}
             <Area
               type="monotone"
               dataKey="value"

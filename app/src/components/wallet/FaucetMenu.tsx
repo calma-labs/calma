@@ -29,20 +29,20 @@ function FaucetRow({ entry }: { entry: MintEntry }) {
       className={cn(
         "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2",
         "text-xs font-medium transition-colors",
-        "text-[#c698e5]/80 hover:bg-[#c698e5]/10 cursor-pointer",
+        "text-surface-accent/80 hover:bg-surface-accent/10 cursor-pointer",
         isPending && "opacity-50",
       )}
     >
       <div className="flex items-center gap-2">
         <img src={entry.icon} alt={entry.symbol} className="h-4 w-4 rounded-full" />
-        <span className="text-[#efe0f7]/70">{entry.symbol}</span>
+        <span className="text-surface-foreground/70">{entry.symbol}</span>
       </div>
       <div className="flex items-center gap-2">
-        {error && <span className="text-[10px] text-red-400">Failed</span>}
+        {error && <span className="text-xs text-destructive">Failed</span>}
         {isPending ? (
-          <Loader2 size={11} className="shrink-0 animate-spin text-[#c698e5]" />
+          <Loader2 size={11} className="shrink-0 animate-spin text-surface-accent" />
         ) : (
-          <Droplets size={11} className="shrink-0 text-[#c698e5]/60" />
+          <Droplets size={11} className="shrink-0 text-surface-accent/60" />
         )}
       </div>
     </button>
@@ -86,7 +86,7 @@ export function FaucetMenu() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-2 text-[10px] text-[#efe0f7]/30">
+      <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-surface-foreground/30">
         <Loader2 size={10} className="animate-spin" />
         Loading pools…
       </div>
@@ -103,16 +103,16 @@ export function FaucetMenu() {
 
   return (
     <>
-      <div className="mx-3 my-1 border-t border-[#c698e5]/10" />
+      <div className="mx-3 my-1 border-t border-surface-accent/10" />
       <div className="flex items-center justify-between px-3 py-1.5">
-        <p className="text-[10px] uppercase tracking-widest text-[#efe0f7]/30">Faucet</p>
+        <p className="text-xs uppercase tracking-widest text-surface-foreground/30">Faucet</p>
         <button
           type="button"
           onClick={handleMintAll}
           disabled={mintAllPending}
           className={cn(
-            "flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
-            "text-[#c698e5]/70 hover:bg-[#c698e5]/10 cursor-pointer",
+            "flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium transition-colors",
+            "text-surface-accent/70 hover:bg-surface-accent/10 cursor-pointer",
             mintAllPending && "opacity-50",
           )}
         >
@@ -122,7 +122,7 @@ export function FaucetMenu() {
             <Droplets size={9} />
           )}
           Mint all
-          {mintAllError && <span className="text-red-400 ml-1">Failed</span>}
+          {mintAllError && <span className="ml-1 text-destructive">Failed</span>}
         </button>
       </div>
       {validEntries.map((entry) => (

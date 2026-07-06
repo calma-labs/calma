@@ -8,9 +8,9 @@ export const CATEGORY_FILTERS: { value: "all" | Category; label: string }[] = [
 ];
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  stablecoin: "text-[#34d399] bg-[#34d399]/8 border-[#34d399]/20",
-  volatile: "text-[#c698e5] bg-[#c698e5]/8 border-[#c698e5]/20",
-  lsd: "text-[#f0a854] bg-[#f0a854]/8 border-[#f0a854]/20",
+  stablecoin: "text-success bg-success/8 border-success/20",
+  volatile: "text-surface-accent bg-surface-accent/8 border-surface-accent/20",
+  lsd: "text-warning bg-warning/8 border-warning/20",
 };
 
 export const CATEGORY_BADGE: Record<
@@ -19,14 +19,14 @@ export const CATEGORY_BADGE: Record<
 > = {
   stablecoin: {
     label: "Stablecoin",
-    classes: "text-[#34d399] bg-[#34d399]/10 border-[#34d399]/25",
+    classes: "text-success bg-success/10 border-success/25",
   },
   volatile: {
     label: "Volatile",
-    classes: "text-[#c698e5] bg-[#c698e5]/10 border-[#c698e5]/25",
+    classes: "text-surface-accent bg-surface-accent/10 border-surface-accent/25",
   },
   lsd: {
     label: "LSD",
-    classes: "text-[#f0a854] bg-[#f0a854]/10 border-[#f0a854]/25",
+    classes: "text-warning bg-warning/10 border-warning/25",
   },
 };

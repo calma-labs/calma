@@ -28,14 +28,14 @@ export function ActionButton({
         "enabled:active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
         !disabled && "cursor-pointer",
         variant === "primary"
-          ? "bg-[#c698e5] text-[#17081f] shadow-[0_0_20px_rgba(198,152,229,0.30)] enabled:hover:bg-[#d4aeee] enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]"
-          : "border border-[#c698e5]/25 bg-[#c698e5]/8 text-[#c698e5] enabled:hover:border-[#c698e5]/50 enabled:hover:bg-[#c698e5]/15",
+          ? "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)] enabled:hover:bg-surface-accent/85 enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]"
+          : "border border-surface-accent/25 bg-surface-accent/8 text-surface-accent enabled:hover:border-surface-accent/50 enabled:hover:bg-surface-accent/15",
       )}
     >
       <span
         className={cn(
           "flex items-center justify-center rounded-lg h-6 w-6",
-          variant === "primary" ? "bg-[#17081f]/15" : "bg-[#c698e5]/15",
+          variant === "primary" ? "bg-surface/15" : "bg-surface-accent/15",
         )}
       >
         {icon}

@@ -30,13 +30,13 @@ const SOCIAL_LINKS = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-[#c698e5]/10 px-6 py-6 mt-8">
+    <footer className="border-t border-surface-accent/10 px-6 py-6 mt-8">
       <div className="max-w-6xl mx-auto flex flex-col items-center gap-5 sm:flex-row sm:justify-between">
         <div className="flex flex-col items-center gap-1 sm:items-start">
-          <span className="text-sm font-semibold text-[#c698e5]">
+          <span className="text-sm font-semibold text-surface-accent">
             Calma
           </span>
-          <span className="text-xs text-[#efe0f7]/30">
+          <span className="text-xs text-surface-foreground/30">
             Decentralised lending on Solana
           </span>
         </div>
@@ -49,14 +49,14 @@ export function Footer() {
               target="_blank"
               rel="noopener noreferrer"
               aria-label={label}
-              className="text-[#efe0f7]/30 transition-colors hover:text-[#c698e5]"
+              className="text-surface-foreground/30 transition-colors hover:text-surface-accent"
             >
               {icon}
             </a>
           ))}
         </div>
 
-        <p className="text-xs text-[#efe0f7]/25">
+        <p className="text-xs text-surface-foreground/25">
           © {new Date().getFullYear()} JBL Protocol. All rights reserved.
         </p>
       </div>
