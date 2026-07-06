@@ -23,32 +23,33 @@ export function MultiplyHero({
             alt={pool.lendSymbol}
             width={56}
             height={56}
-            className="h-14 w-14 rounded-full ring-2 ring-[#c698e5]/20 object-contain"
+            className="h-14 w-14 rounded-full ring-2 ring-surface-accent/20 object-contain"
           />
+          {/* style-exception: 26px icon size required for stacked icon overlap design */}
           <img
             src={pool.collateralIcon}
             alt={pool.collateralSymbol}
             width={26}
             height={26}
-            className="absolute -bottom-1 -right-1 h-[26px] w-[26px] rounded-full ring-2 ring-[#17081f]"
+            className="absolute -bottom-1 -right-1 h-[26px] w-[26px] rounded-full ring-2 ring-surface"
           />
         </div>
 
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-[#efe0f7]">
+            <h1 className="text-2xl font-bold tracking-tight text-surface-foreground">
               {pool.name}
             </h1>
-            <span className="text-sm font-medium text-[#efe0f7]/35">
+            <span className="text-sm font-medium text-surface-foreground/35">
               {pool.symbol} / {pool.collateralSymbol}
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <span className="inline-flex items-center gap-1 rounded-md border border-[#c698e5]/20 bg-[#c698e5]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#c698e5]">
+            <span className="inline-flex items-center gap-1 rounded-md border border-surface-accent/20 bg-surface-accent/10 px-2 py-0.5 text-xs font-bold uppercase tracking-widest text-surface-accent">
               <Zap className="h-2.5 w-2.5" />
               Multiply
             </span>
-            <span className="text-[11px] text-[#efe0f7]/30">
+            <span className="text-xs text-surface-foreground/30">
               Borrow {pool.lendSymbol} · loop collateral · up to {MAX_MULTIPLY}×
             </span>
           </div>

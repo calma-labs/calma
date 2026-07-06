@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 interface StatCardProps {
   label: string;
   value: string;
@@ -7,20 +9,21 @@ interface StatCardProps {
 
 export function StatCard({ label, value, sub, positive }: StatCardProps) {
   return (
-    <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] px-5 py-4">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-[#efe0f7]/35 mb-1">
+    <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.025] px-5 py-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-surface-foreground/35 mb-1">
         {label}
       </p>
-      <p className="text-lg font-bold text-[#efe0f7] tabular-nums">{value}</p>
+      <p className="text-lg font-bold text-surface-foreground tabular-nums">{value}</p>
       {sub !== undefined && (
         <p
-          className={`text-[11px] mt-0.5 tabular-nums ${
+          className={cn(
+            "text-xs mt-0.5 tabular-nums",
             positive === true
-              ? "text-[#34d399]"
+              ? "text-success"
               : positive === false
-                ? "text-[#d45677]"
-                : "text-[#efe0f7]/35"
-          }`}
+                ? "text-destructive"
+                : "text-surface-foreground/35",
+          )}
         >
           {sub}
         </p>

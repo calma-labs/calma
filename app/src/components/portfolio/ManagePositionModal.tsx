@@ -109,16 +109,17 @@ export function ManagePositionModal({
     multiplier < 2 ? "Low" : multiplier < 3.5 ? "Moderate" : "High";
   const riskColor =
     liquidationRisk === "Low"
-      ? "text-[#34d399]"
+      ? "text-success"
       : liquidationRisk === "Moderate"
-      ? "text-[#f0a854]"
-      : "text-[#d45677]";
+      ? "text-warning"
+      : "text-destructive";
 
   // Build chart
   useEffect(() => {
     const el = chartRef.current;
     if (!el) return;
 
+    // style-exception: lightweight-charts requires raw color strings in its config API
     const chart = createChart(el, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
@@ -155,6 +156,7 @@ export function ManagePositionModal({
 
     chartApi.current = chart;
 
+    // style-exception: lightweight-charts CandlestickSeries requires hex colors
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#34d399",
       downColor: "#d45677",
@@ -171,6 +173,7 @@ export function ManagePositionModal({
     );
     candleSeries.setData(ohlcData);
 
+    // style-exception: lightweight-charts createPriceLine requires raw color strings
     // Mark entry price with a dashed purple line
     candleSeries.createPriceLine({
       price: position.entryPrice,
@@ -220,24 +223,24 @@ export function ManagePositionModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm px-4 py-6"
     >
       <div
-        className="w-full max-w-5xl rounded-2xl border border-[#c698e5]/15 bg-[#1a0d24] overflow-hidden flex flex-col"
+        className="w-full max-w-5xl rounded-2xl border border-surface-accent/15 bg-modal-bg overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#c698e5]/10 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-surface-accent/10 flex-shrink-0">
           <div className="flex items-center gap-3">
             <img
               src={position.icon}
               alt={position.asset}
-              className="h-9 w-9 rounded-full ring-1 ring-[#c698e5]/20"
+              className="h-9 w-9 rounded-full ring-1 ring-surface-accent/20"
             />
             <div>
-              <p className="text-sm font-semibold text-[#efe0f7]">
+              <p className="text-sm font-semibold text-surface-foreground">
                 Manage Position · {position.asset}
               </p>
-              <p className="text-[11px] text-[#efe0f7]/35">
+              <p className="text-xs text-surface-foreground/35">
                 Debt: {position.debtAsset} ·{" "}
-                <span className="text-[#c698e5]">
+                <span className="text-surface-accent">
                   {position.multiplier.toFixed(1)}× current
                 </span>
               </p>
@@ -245,7 +248,7 @@ export function ManagePositionModal({
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#efe0f7]/30 hover:bg-[#c698e5]/10 hover:text-[#efe0f7] transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-surface-foreground/30 hover:bg-surface-accent/10 hover:text-surface-foreground transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -254,24 +257,24 @@ export function ManagePositionModal({
         {/* Body — two columns */}
         <div className="flex flex-col md:flex-row min-h-0">
           {/* ── Left: Chart ─────────────────────────────────────────────────── */}
-          <div className="flex-1 min-w-0 flex flex-col border-b md:border-b-0 md:border-r border-[#c698e5]/10">
+          <div className="flex-1 min-w-0 flex flex-col border-b md:border-b-0 md:border-r border-surface-accent/10">
             {/* Chart toolbar */}
             <div className="flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
               <div className="flex items-center gap-4">
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-[#efe0f7]/30">
+                <span className="text-xs uppercase tracking-wider font-semibold text-surface-foreground/30">
                   Price
                 </span>
                 {/* Entry price legend */}
                 <div className="flex items-center gap-1.5">
-                  <div className="w-5 border-t border-dashed border-[#c698e5]/70" />
-                  <span className="text-[10px] text-[#c698e5]/70">
+                  <div className="w-5 border-t border-dashed border-surface-accent/70" />
+                  <span className="text-xs text-surface-accent/70">
                     Entry ${position.entryPrice.toFixed(2)}
                   </span>
                 </div>
                 {/* Liq price legend */}
                 <div className="flex items-center gap-1.5">
-                  <div className="w-5 border-t border-dashed border-[#d45677]/70" />
-                  <span className="text-[10px] text-[#d45677]/70">
+                  <div className="w-5 border-t border-dashed border-destructive/70" />
+                  <span className="text-xs text-destructive/70">
                     Liq. ${position.liqPrice.toFixed(2)}
                   </span>
                 </div>
@@ -282,10 +285,10 @@ export function ManagePositionModal({
                     key={r}
                     onClick={() => setPriceRange(r)}
                     className={cn(
-                      "rounded-md px-2.5 py-1 text-[10px] font-medium transition-all cursor-pointer",
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
                       priceRange === r
-                        ? "bg-[#c698e5]/18 text-[#c698e5]"
-                        : "text-[#efe0f7]/30 hover:text-[#efe0f7]/70",
+                        ? "bg-surface-accent/18 text-surface-accent"
+                        : "text-surface-foreground/30 hover:text-surface-foreground/70",
                     )}
                   >
                     {RANGE_LABELS[r]}
@@ -305,40 +308,40 @@ export function ManagePositionModal({
           <div className="w-full md:w-[340px] flex-shrink-0 flex flex-col px-5 pt-4 pb-5 gap-5 overflow-y-auto">
             {/* Position stats */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-[#c698e5]/10 bg-[#c698e5]/[0.025] px-3 py-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+              <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.025] px-3 py-2.5">
+                <p className="text-xs uppercase tracking-wider text-surface-foreground/30 mb-1">
                   Position
                 </p>
-                <p className="text-sm font-bold tabular-nums text-[#efe0f7]">
+                <p className="text-sm font-bold tabular-nums text-surface-foreground">
                   ${position.positionSize.toLocaleString()}
                 </p>
               </div>
-              <div className="rounded-xl border border-[#c698e5]/10 bg-[#c698e5]/[0.025] px-3 py-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+              <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.025] px-3 py-2.5">
+                <p className="text-xs uppercase tracking-wider text-surface-foreground/30 mb-1">
                   Net APY
                 </p>
-                <p className="text-sm font-bold tabular-nums text-[#34d399]">
+                <p className="text-sm font-bold tabular-nums text-success">
                   {position.netAPY.toFixed(1)}%
                 </p>
               </div>
-              <div className="rounded-xl border border-[#c698e5]/10 bg-[#c698e5]/[0.025] px-3 py-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+              <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.025] px-3 py-2.5">
+                <p className="text-xs uppercase tracking-wider text-surface-foreground/30 mb-1">
                   P&L
                 </p>
                 <p
                   className={cn(
                     "text-sm font-bold tabular-nums",
-                    isPnlPositive ? "text-[#34d399]" : "text-[#d45677]",
+                    isPnlPositive ? "text-success" : "text-destructive",
                   )}
                 >
                   {isPnlPositive ? "+" : ""}${position.pnl.toFixed(0)}
                 </p>
               </div>
-              <div className="rounded-xl border border-[#c698e5]/10 bg-[#c698e5]/[0.025] px-3 py-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+              <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.025] px-3 py-2.5">
+                <p className="text-xs uppercase tracking-wider text-surface-foreground/30 mb-1">
                   Current
                 </p>
-                <p className="text-sm font-bold tabular-nums text-[#efe0f7]">
+                <p className="text-sm font-bold tabular-nums text-surface-foreground">
                   ${position.currentPrice.toFixed(2)}
                 </p>
               </div>
@@ -347,11 +350,11 @@ export function ManagePositionModal({
             {/* Multiplier slider */}
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+                <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                   <Zap className="h-3 w-3" />
                   Multiplier
                 </span>
-                <span className="text-sm font-bold tabular-nums text-[#c698e5]">
+                <span className="text-sm font-bold tabular-nums text-surface-accent">
                   {multiplier.toFixed(1)}×
                 </span>
               </div>
@@ -364,7 +367,8 @@ export function ManagePositionModal({
                   step={0.1}
                   value={multiplier}
                   onChange={(e) => setMultiplier(parseFloat(e.target.value))}
-                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-[#c698e5]/15 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#c698e5] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#1a0d24] [&::-webkit-slider-thumb]:shadow-lg [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#c698e5] [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-[#1a0d24]"
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-surface-accent/15 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-surface-accent [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-modal-bg [&::-webkit-slider-thumb]:shadow-lg [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-surface-accent [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-modal-bg"
+                  // style-exception: slider gradient uses runtime sliderPct value
                   style={{
                     background: `linear-gradient(to right, rgba(198,152,229,0.6) ${sliderPct}%, rgba(198,152,229,0.12) ${sliderPct}%)`,
                   }}
@@ -374,7 +378,7 @@ export function ManagePositionModal({
                     <button
                       key={m}
                       onClick={() => setMultiplier(m)}
-                      className="text-[9px] text-[#efe0f7]/25 hover:text-[#c698e5] transition-colors cursor-pointer"
+                      className="text-xs text-surface-foreground/25 hover:text-surface-accent transition-colors cursor-pointer"
                     >
                       {m}×
                     </button>
@@ -384,18 +388,18 @@ export function ManagePositionModal({
             </div>
 
             {/* Projected stats */}
-            <div className="rounded-xl border border-[#c698e5]/10 divide-y divide-[#c698e5]/8">
+            <div className="rounded-xl border border-surface-accent/10 divide-y divide-surface-accent/8">
               <div className="flex items-center justify-between px-3.5 py-2.5">
-                <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+                <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                   <Info className="h-3 w-3" />
                   Projected net APY
                 </span>
-                <span className="text-xs font-semibold text-[#34d399] tabular-nums">
+                <span className="text-xs font-semibold text-success tabular-nums">
                   {projectedAPY.toFixed(1)}%
                 </span>
               </div>
               <div className="flex items-center justify-between px-3.5 py-2.5">
-                <span className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40">
+                <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
                   <AlertTriangle className="h-3 w-3" />
                   Liq. risk
                 </span>
@@ -407,9 +411,9 @@ export function ManagePositionModal({
 
             {/* Warning if multiplier changed significantly */}
             {/* {Math.abs(multiplier - position.multiplier) > 0.5 && (
-              <div className="rounded-xl border border-[#f0a854]/15 bg-[#f0a854]/5 px-3.5 py-2.5 flex items-start gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 text-[#f0a854] mt-0.5 flex-shrink-0" />
-                <p className="text-[11px] text-[#f0a854]/80 leading-relaxed">
+              <div className="rounded-xl border border-warning/15 bg-warning/5 px-3.5 py-2.5 flex items-start gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-warning/80 leading-relaxed">
                   Changing multiplier will rebalance debt. Review the
                   projected risk before confirming.
                 </p>
@@ -418,7 +422,7 @@ export function ManagePositionModal({
 
             <button
               onClick={handleSubmit}
-              className="w-full rounded-xl py-3 text-sm font-semibold bg-[#c698e5] text-[#17081f] hover:bg-[#d4aeee] transition-all duration-200 active:scale-[0.98] cursor-pointer mt-auto"
+              className="w-full rounded-xl py-3 text-sm font-semibold bg-surface-accent text-surface hover:bg-surface-accent/80 transition-all duration-200 active:scale-[0.98] cursor-pointer mt-auto"
             >
               Update Position
             </button>

@@ -109,10 +109,10 @@ export function PoolDetailPage() {
       <div className="w-full max-w-6xl mx-auto px-4 py-12">
         <BackButton to="/markets" label="Back to markets" />
         <div className="flex flex-col items-center justify-center py-28 gap-4">
-          <p className="text-[#efe0f7]/50 text-sm">Invalid pool address.</p>
+          <p className="text-surface-foreground/50 text-sm">Invalid pool address.</p>
           <button
             onClick={() => navigate("/markets")}
-            className="text-xs text-[#c698e5] hover:underline"
+            className="text-xs text-surface-accent hover:underline"
           >
             ← Back to markets
           </button>
@@ -127,13 +127,13 @@ export function PoolDetailPage() {
         <BackButton to="/markets" label="Back to markets" />
         <div className="flex flex-col items-center justify-center py-28 gap-4">
           {isLoading ? (
-            <p className="text-[#efe0f7]/30 text-sm">Loading pool…</p>
+            <p className="text-surface-foreground/30 text-sm">Loading pool…</p>
           ) : (
             <>
-              <p className="text-[#efe0f7]/50 text-sm">Pool not found.</p>
+              <p className="text-surface-foreground/50 text-sm">Pool not found.</p>
               <button
                 onClick={() => navigate("/markets")}
-                className="text-xs text-[#c698e5] hover:underline"
+                className="text-xs text-surface-accent hover:underline"
               >
                 ← Back to markets
               </button>

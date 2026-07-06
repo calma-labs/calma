@@ -19,13 +19,13 @@ export function MarketFilters({
   return (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="relative flex-1 max-w-xs">
-        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#efe0f7]/30" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-surface-foreground/30" />
         <input
           type="text"
           placeholder="Search assets…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full rounded-lg border border-[#c698e5]/15 bg-[#c698e5]/5 py-1.5 pl-8 pr-3 text-xs text-[#efe0f7] placeholder-[#efe0f7]/25 outline-none transition-all duration-200 focus:border-[#c698e5]/50 focus:bg-[#c698e5]/10 focus:ring-2 focus:ring-[#c698e5]/15 focus:scale-[1.01]"
+          className="w-full rounded-lg border border-surface-accent/15 bg-surface-accent/5 py-1.5 pl-8 pr-3 text-xs text-surface-foreground placeholder:text-surface-foreground/25 transition-all duration-200 focus:border-surface-accent/50 focus:bg-surface-accent/10 focus:ring-2 focus:ring-surface-accent/15 focus:scale-[1.01]"
         />
       </div>
 
@@ -37,8 +37,8 @@ export function MarketFilters({
             className={cn(
               "rounded-full cursor-pointer px-3 py-1 text-xs font-medium transition-all duration-150 active:scale-95",
               categoryFilter === value
-                ? "bg-[#c698e5] text-[#17081f] shadow-[0_0_12px_rgba(198,152,229,0.25)]"
-                : "border border-[#c698e5]/15 text-[#efe0f7]/40 hover:border-[#c698e5]/40 hover:text-[#efe0f7]/80",
+                ? "bg-surface-accent text-surface shadow-[0_0_12px_rgba(198,152,229,0.25)]"
+                : "border border-surface-accent/15 text-surface-foreground/40 hover:border-surface-accent/40 hover:text-surface-foreground/80",
             )}
           >
             {label}

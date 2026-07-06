@@ -100,24 +100,24 @@ export function ClosePositionModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm px-4"
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-[#c698e5]/15 bg-[#1a0d24] overflow-hidden"
+        className="w-full max-w-sm rounded-2xl border border-surface-accent/15 bg-modal-bg overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#c698e5]/10">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-surface-accent/10">
           <div className="flex items-center gap-3">
             <img
               src={position.icon}
               alt={position.asset}
-              className="h-9 w-9 rounded-full ring-1 ring-[#c698e5]/20"
+              className="h-9 w-9 rounded-full ring-1 ring-surface-accent/20"
             />
             <div>
-              <p className="text-sm font-semibold text-[#efe0f7]">
+              <p className="text-sm font-semibold text-surface-foreground">
                 Close Position
               </p>
-              <p className="text-[11px] text-[#efe0f7]/35">
+              <p className="text-xs text-surface-foreground/35">
                 {position.asset} ·{" "}
-                <span className="text-[#c698e5]">
+                <span className="text-surface-accent">
                   {position.multiplier.toFixed(2)}×
                 </span>{" "}
                 · debt {position.debtAsset}
@@ -126,7 +126,7 @@ export function ClosePositionModal({
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[#efe0f7]/30 hover:bg-[#c698e5]/10 hover:text-[#efe0f7] transition-colors cursor-pointer"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-surface-foreground/30 hover:bg-surface-accent/10 hover:text-surface-foreground transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -134,39 +134,39 @@ export function ClosePositionModal({
 
         <div className="px-5 pb-5 pt-4 flex flex-col gap-4">
           {/* Position summary */}
-          <div className="rounded-xl border border-[#c698e5]/10 divide-y divide-[#c698e5]/8">
+          <div className="rounded-xl border border-surface-accent/10 divide-y divide-surface-accent/8">
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="text-xs text-[#efe0f7]/40">
+              <span className="text-xs text-surface-foreground/40">
                 Collateral to withdraw
               </span>
-              <span className="text-xs font-semibold tabular-nums text-[#efe0f7]/70">
+              <span className="text-xs font-semibold tabular-nums text-surface-foreground/70">
                 {userPosition.format_collateral(collateralDecimals ?? 6)}{" "}
                 {pool.collateralSymbol}
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="text-xs text-[#efe0f7]/40">Debt to repay</span>
-              <span className="text-xs font-semibold tabular-nums text-[#d45677]">
+              <span className="text-xs text-surface-foreground/40">Debt to repay</span>
+              <span className="text-xs font-semibold tabular-nums text-destructive">
                 {poolData.format_debt(userPosition, lendDecimals ?? 6)}{" "}
                 {pool.lendSymbol}
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="text-xs text-[#efe0f7]/40">
+              <span className="text-xs text-surface-foreground/40">
                 Flash fee (0.09%)
               </span>
-              <span className="text-xs tabular-nums text-[#efe0f7]/50">
+              <span className="text-xs tabular-nums text-surface-foreground/50">
                 ~
                 {flashFee.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
                 {pool.lendSymbol}
               </span>
             </div>
             <div className="flex items-center justify-between px-3.5 py-2.5">
-              <span className="text-xs text-[#efe0f7]/40">Est. return</span>
+              <span className="text-xs text-surface-foreground/40">Est. return</span>
               <span
                 className={cn(
                   "text-xs font-bold tabular-nums",
-                  estimatedReturn > 0 ? "text-[#34d399]" : "text-[#d45677]",
+                  estimatedReturn > 0 ? "text-success" : "text-destructive",
                 )}
               >
                 ~
@@ -179,9 +179,9 @@ export function ClosePositionModal({
           </div>
 
           {/* Warning */}
-          <div className="rounded-xl border border-[#f0a854]/15 bg-[#f0a854]/5 px-3.5 py-2.5 flex items-start gap-2">
-            <AlertTriangle className="h-3.5 w-3.5 text-[#f0a854] mt-0.5 flex-shrink-0" />
-            <p className="text-[11px] text-[#f0a854]/80 leading-relaxed">
+          <div className="rounded-xl border border-warning/15 bg-warning/5 px-3.5 py-2.5 flex items-start gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-warning mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-warning/80 leading-relaxed">
               Closing repays all debt and returns collateral as{" "}
               {pool.lendSymbol} via a flash-loan unwind. If pool utilization is
               too high the withdrawal may be queued and the transaction will
@@ -196,13 +196,13 @@ export function ClosePositionModal({
               className={cn(
                 "h-4 w-4 rounded flex-shrink-0 border transition-all cursor-pointer flex items-center justify-center",
                 confirmed
-                  ? "bg-[#c698e5] border-[#c698e5]"
-                  : "border-[#c698e5]/30 bg-transparent hover:border-[#c698e5]/60",
+                  ? "bg-surface-accent border-surface-accent"
+                  : "border-surface-accent/30 bg-transparent hover:border-surface-accent/60",
               )}
             >
               {confirmed && (
                 <svg
-                  className="h-2.5 w-2.5 text-[#17081f]"
+                  className="h-2.5 w-2.5 text-surface"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -216,7 +216,7 @@ export function ClosePositionModal({
                 </svg>
               )}
             </div>
-            <span className="text-[11px] text-[#efe0f7]/45 group-hover:text-[#efe0f7]/65 transition-colors">
+            <span className="text-xs text-surface-foreground/45 group-hover:text-surface-foreground/65 transition-colors">
               I understand this action is irreversible
             </span>
           </label>
@@ -227,8 +227,8 @@ export function ClosePositionModal({
             className={cn(
               "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2",
               confirmed && !isPending
-                ? "bg-[#d45677] text-white hover:bg-[#e0647f] cursor-pointer"
-                : "bg-[#c698e5]/12 text-[#efe0f7]/20 cursor-not-allowed",
+                ? "bg-destructive text-white hover:bg-destructive/80 cursor-pointer"
+                : "bg-surface-accent/12 text-surface-foreground/20 cursor-not-allowed",
             )}
           >
             {isPending ? (

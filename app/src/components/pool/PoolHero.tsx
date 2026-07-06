@@ -7,15 +7,15 @@ import { ExternalLink, Layers, TrendingDown, TrendingUp } from "lucide-react";
 const CATEGORY_BADGE: Record<Category, { label: string; classes: string }> = {
   stablecoin: {
     label: "Stablecoin",
-    classes: "text-[#34d399] bg-[#34d399]/10 border-[#34d399]/25",
+    classes: "text-success bg-success/10 border-success/25",
   },
   volatile: {
     label: "Volatile",
-    classes: "text-[#c698e5] bg-[#c698e5]/10 border-[#c698e5]/25",
+    classes: "text-surface-accent bg-surface-accent/10 border-surface-accent/25",
   },
   lsd: {
     label: "LSD",
-    classes: "text-[#f0a854] bg-[#f0a854]/10 border-[#f0a854]/25",
+    classes: "text-warning bg-warning/10 border-warning/25",
   },
 };
 
@@ -50,28 +50,28 @@ export function PoolHero({
         />
         <div className="flex flex-col gap-2 mt-1">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-bold tracking-tight text-[#efe0f7]">
+            <h1 className="text-2xl font-bold tracking-tight text-surface-foreground">
               {pool.name}
             </h1>
-            <span className="text-sm font-medium text-[#efe0f7]/40">
+            <span className="text-sm font-medium text-surface-foreground/40">
               {pool.symbol}
             </span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest font-bold text-[#c698e5] px-2 py-0.5 rounded-md bg-[#c698e5]/10 border border-[#c698e5]/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#c698e5] opacity-80" />
+            <span className="inline-flex items-center gap-1 text-xs uppercase tracking-widest font-bold text-surface-accent px-2 py-0.5 rounded-md bg-surface-accent/10 border border-surface-accent/20">
+              <span className="h-1.5 w-1.5 rounded-full bg-surface-accent opacity-80" />
               Verified
             </span>
             <span
               className={cn(
-                "inline-flex items-center text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-md border",
+                "inline-flex items-center text-xs uppercase tracking-widest font-bold px-2 py-0.5 rounded-md border",
                 CATEGORY_BADGE[pool.category].classes,
               )}
             >
               {CATEGORY_BADGE[pool.category].label}
             </span>
             {/* Collateral badge — shows what borrowers must deposit */}
-            <span className="inline-flex items-center gap-1 text-[10px] text-[#efe0f7]/35 px-2 py-0.5 rounded-md bg-[#efe0f7]/5 border border-[#efe0f7]/10">
+            <span className="inline-flex items-center gap-1 text-xs text-surface-foreground/35 px-2 py-0.5 rounded-md bg-surface-foreground/5 border border-surface-foreground/10">
               {pool.collateralIcon && (
                 <img
                   src={pool.collateralIcon}
@@ -87,7 +87,7 @@ export function PoolHero({
               href={`https://solscan.io/account/${pool.address}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] text-[#efe0f7]/25 hover:text-[#c698e5] transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-surface-foreground/25 hover:text-surface-accent transition-colors"
             >
               <ExternalLink className="h-3 w-3" />
               Solscan
@@ -103,7 +103,7 @@ export function PoolHero({
           compact
           disabled={!isWalletConnected}
           onClick={onDeposit}
-          icon={<TrendingUp className="h-3.5 w-3.5 text-[#17081f]" />}
+          icon={<TrendingUp className="h-3.5 w-3.5 text-surface" />}
         />
         <ActionButton
           label="Withdraw Collateral"
@@ -111,21 +111,21 @@ export function PoolHero({
           compact
           disabled={!isWalletConnected || !hasWithdrawPosition}
           onClick={onWithdraw}
-          icon={<TrendingDown className="h-3.5 w-3.5 text-[#c698e5]" />}
+          icon={<TrendingDown className="h-3.5 w-3.5 text-surface-accent" />}
         />
         <ActionButton
           label="Lend"
           variant="secondary"
           disabled={!isWalletConnected}
           onClick={onLend}
-          icon={<Layers className="h-4 w-4 text-[#c698e5]" />}
+          icon={<Layers className="h-4 w-4 text-surface-accent" />}
         />
         <ActionButton
           label="Borrow"
           variant="secondary"
           disabled={!isWalletConnected}
           onClick={onBorrow}
-          icon={<TrendingDown className="h-4 w-4 text-[#c698e5]" />}
+          icon={<TrendingDown className="h-4 w-4 text-surface-accent" />}
         />
       </div>
     </div>
@@ -149,16 +149,16 @@ function StatItem({
   last?: boolean;
 }) {
   const valueClass = isApy
-    ? "text-[#34d399]"
+    ? "text-success"
     : isCost
-    ? "text-[#f59e0b]"
-    : "text-[#efe0f7]";
+    ? "text-warning"
+    : "text-surface-foreground";
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-1 px-6 py-5 min-w-[120px]">
-      <p className={`text-xl font-semibold tabular-nums ${valueClass}`}>
+      <p className={cn("text-xl font-semibold tabular-nums", valueClass)}>
         {value}
       </p>
-      <p className="text-xs text-[#efe0f7]/40 text-center leading-tight">
+      <p className="text-xs text-surface-foreground/40 text-center leading-tight">
         {label}
       </p>
     </div>
@@ -167,8 +167,8 @@ function StatItem({
 
 export function PoolStatsBar({ pool }: PoolStatsBarProps) {
   return (
-    <div className="overflow-hidden mb-8 rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.03]">
-      <div className="flex w-full overflow-x-auto divide-x divide-[#c698e5]/10">
+    <div className="overflow-hidden mb-8 rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.03]">
+      <div className="flex w-full overflow-x-auto divide-x divide-surface-accent/10">
         <StatItem
           label="Total Supplied"
           value={formatRawTokens(pool.totalSupplied)}

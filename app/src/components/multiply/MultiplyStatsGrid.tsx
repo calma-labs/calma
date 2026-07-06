@@ -12,19 +12,19 @@ interface StatCardProps {
 
 function StatCard({ label, value, sub, accent }: StatCardProps) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-2xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-5 py-4">
-      <p className="text-[11px] text-[#efe0f7]/35 uppercase tracking-widest font-medium">
+    <div className="flex flex-col gap-1.5 rounded-2xl border border-surface-accent/15 bg-surface-accent/[0.03] px-5 py-4">
+      <p className="text-xs text-surface-foreground/35 uppercase tracking-widest font-medium">
         {label}
       </p>
       <p
         className={cn(
           "text-xl font-bold tabular-nums",
-          accent ?? "text-[#efe0f7]",
+          accent ?? "text-surface-foreground",
         )}
       >
         {value}
       </p>
-      {sub && <p className="text-[11px] text-[#efe0f7]/30">{sub}</p>}
+      {sub && <p className="text-xs text-surface-foreground/30">{sub}</p>}
     </div>
   );
 }
@@ -42,13 +42,13 @@ export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
         label="Max Multiplier"
         value={`${MAX_MULTIPLY}×`}
         sub="leverage cap"
-        accent="text-[#c698e5]"
+        accent="text-surface-accent"
       />
       <StatCard
         label="Max Net APY"
         value={`${maxNetAPY.toFixed(2)}%`}
         sub={`at ${MAX_MULTIPLY}× leverage`}
-        accent="text-emerald-400"
+        accent="text-success"
       />
       <StatCard
         label="Market Size"
@@ -59,7 +59,7 @@ export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
         label="Borrow APY"
         value={`${pool.borrowAPY.toFixed(2)}%`}
         sub={`${pool.lendSymbol} debt cost`}
-        accent="text-[#f0a854]"
+        accent="text-warning"
       />
     </div>
   );

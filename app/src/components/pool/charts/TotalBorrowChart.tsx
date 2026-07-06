@@ -62,9 +62,9 @@ export function TotalBorrowChart({
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     return (
-      <div className="rounded-xl border border-[#c698e5]/20 bg-[#1a0d24] px-3 py-2 text-xs">
-        <p className="text-[#efe0f7]/40 mb-0.5">{label}</p>
-        <p className="font-semibold text-[#d45677]">
+      <div className="rounded-xl border border-surface-accent/20 bg-modal-bg px-3 py-2 text-xs">
+        <p className="text-surface-foreground/40 mb-0.5">{label}</p>
+        <p className="font-semibold text-destructive">
           {formatLargeUSD(payload[0].value)}
         </p>
       </div>
@@ -72,11 +72,11 @@ export function TotalBorrowChart({
   };
 
   return (
-    <div className="rounded-2xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-5 pt-5 pb-4">
+    <div className="rounded-2xl border border-surface-accent/15 bg-surface-accent/[0.03] px-5 pt-5 pb-4">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <p className="text-sm font-semibold text-[#efe0f7]">Total Borrowed</p>
-          <p className="text-[11px] text-[#efe0f7]/35 mt-0.5">
+          <p className="text-sm font-semibold text-surface-foreground">Total Borrowed</p>
+          <p className="text-xs text-surface-foreground/35 mt-0.5">
             Borrows over time
           </p>
         </div>
@@ -84,7 +84,7 @@ export function TotalBorrowChart({
           options={RANGE_OPTIONS}
           value={range}
           onChange={setRange}
-          activeClass="bg-[#d45677]/20 text-[#d45677]"
+          activeClass="bg-destructive/20 text-destructive"
         />
       </div>
 
@@ -94,6 +94,7 @@ export function TotalBorrowChart({
           margin={{ top: 4, right: 4, left: -4, bottom: 0 }}
         >
           <defs>
+            {/* style-exception: recharts SVG gradient requires hex color values */}
             <linearGradient id="totalBorrowGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#d45677" stopOpacity={0.22} />
               <stop offset="100%" stopColor="#d45677" stopOpacity={0} />
@@ -123,6 +124,7 @@ export function TotalBorrowChart({
             content={<CustomTooltip />}
             cursor={{ stroke: "rgba(212,86,119,0.2)", strokeWidth: 1 }}
           />
+          {/* style-exception: recharts Area stroke requires hex color */}
           <Area
             type="monotone"
             dataKey="borrow"

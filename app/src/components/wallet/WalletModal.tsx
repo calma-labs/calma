@@ -52,7 +52,7 @@ function WalletIcon({ icon, name }: { icon?: string; name: string }) {
     );
   }
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#c698e5]/15 text-[11px] font-bold text-[#c698e5]">
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-accent/15 text-xs font-bold text-surface-accent">
       {name[0]?.toUpperCase() ?? "?"}
     </span>
   );
@@ -83,23 +83,23 @@ function WalletRow({
       onClick={() => onConnect(id)}
       disabled={connecting}
       className={cn(
-        "group flex cursor-pointer w-full items-center gap-3 rounded-xl px-3 py-2.5",
+        "group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5",
         "text-left transition-colors duration-100",
-        "hover:bg-[#c698e5]/8",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c698e5]/40 focus-visible:ring-offset-0",
+        "hover:bg-surface-accent/10",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
         "disabled:pointer-events-none disabled:opacity-50",
       )}
     >
       <WalletIcon icon={icon} name={name} />
-      <span className="flex-1 text-[13px] font-medium text-[#efe0f7]">
+      <span className="flex-1 text-sm font-medium text-surface-foreground">
         {name}
       </span>
       {connecting ? (
-        <span className="h-3 w-3 animate-spin rounded-full border-2 border-[#c698e5]/20 border-t-[#c698e5]" />
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-surface-accent/20 border-t-surface-accent" />
       ) : detected ? (
         <div className="flex gap-1 items-center">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#c698e5] shadow-[0_0_5px_#c698e5]" />
-          <span className="text-[10px] font-medium text-[#c698e5]/70">
+          <span className="h-1.5 w-1.5 rounded-full bg-surface-accent" />
+          <span className="text-xs font-medium text-surface-accent/70">
             Detected
           </span>
         </div>
@@ -125,9 +125,9 @@ function WalletInstallRow({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "group flex cursor-pointer w-full items-center gap-3 rounded-xl px-3 py-2.5",
-        "transition-colors duration-100 hover:bg-[#c698e5]/5",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c698e5]/40 focus-visible:ring-offset-0",
+        "group flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5",
+        "transition-colors duration-100 hover:bg-surface-accent/5",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0",
       )}
     >
       <img
@@ -137,10 +137,10 @@ function WalletInstallRow({
         height={28}
         className="h-7 w-7 rounded-lg object-contain opacity-30 grayscale"
       />
-      <span className="flex-1 text-[13px] font-medium text-[#efe0f7]/30">
+      <span className="flex-1 text-sm font-medium text-surface-foreground/30">
         {name}
       </span>
-      <span className="flex items-center gap-1 text-[11px] font-medium text-[#efe0f7]/20 transition-colors group-hover:text-[#c698e5]/60">
+      <span className="flex items-center gap-1 text-xs font-medium text-surface-foreground/20 transition-colors group-hover:text-surface-accent/60">
         <Download size={11} />
         Install
       </span>
@@ -203,23 +203,24 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="relative w-full space-y-3 max-w-[380px] rounded-[24px] border border-[#c698e5]/15 bg-[#1a0a24] shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
+      {/* style-exception: wallet modal panel needs fixed max-width to prevent overflow on narrow screens */}
+      <div className="relative w-full max-w-sm space-y-3 rounded-3xl border border-surface-accent/15 bg-wallet-bg shadow-2xl">
         {/* Close */}
         <button
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute cursor-pointer right-4 top-4 z-10 rounded-full p-1.5 text-[#efe0f7]/25 transition-colors hover:bg-[#c698e5]/10 hover:text-[#c698e5] focus-visible:outline-none"
+          className="absolute right-4 top-4 z-10 cursor-pointer rounded-full p-1.5 text-surface-foreground/25 transition-colors hover:bg-surface-accent/10 hover:text-surface-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X size={16} />
         </button>
 
         {/* Header */}
         <div className="px-6 text-center pb-4 pt-7">
-          <p className="text-[15px] font-semibold text-[#efe0f7]">
+          <p className="text-base font-semibold text-surface-foreground">
             Connect wallet
           </p>
-          <p className="mt-0.5 text-xs text-[#efe0f7]/35">
+          <p className="mt-0.5 text-xs text-surface-foreground/35">
             Select a wallet to continue
           </p>
         </div>
@@ -249,7 +250,7 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
 
           {extraConnectors.length > 0 && (
             <>
-              <div className="my-1.5 h-px bg-[#c698e5]/10" />
+              <div className="my-1.5 h-px bg-surface-accent/10" />
               {extraConnectors.map((c) => (
                 <WalletRow
                   key={c.id}
@@ -266,9 +267,9 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
         </div>
 
         {/* Footer — no divider, just soft spacing */}
-        <p className="px-6 text-center pb-5 pt-2 text-[11px] text-[#efe0f7]/25">
+        <p className="pb-5 pt-2 text-center text-xs text-surface-foreground/25 px-6">
           By connecting you agree to the{" "}
-          <span className="cursor-pointer text-[#c698e5]/60 underline underline-offset-2 hover:text-[#c698e5]">
+          <span className="cursor-pointer text-surface-accent/60 underline underline-offset-2 hover:text-surface-accent">
             Terms of Service
           </span>
         </p>

@@ -4,6 +4,7 @@ import { LendTable } from "@/components/portfolio/LendTable";
 import { MultiplyPositionsTable } from "@/components/portfolio/MultiplyPositionsTable";
 import { PortfolioChart } from "@/components/portfolio/PortfolioChart";
 import { usePortfolioSummary } from "@/hooks/usePortfolio";
+import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
 import { Wallet } from "lucide-react";
 import { useState } from "react";
@@ -21,12 +22,12 @@ export function PortfolioPage() {
       {/* ── Header ── */}
       <div className="mb-8">
         <div className="flex items-center gap-2.5 mb-2">
-          <Wallet className="h-5 w-5 text-[#c698e5]" />
-          <h1 className="text-3xl font-semibold tracking-tight text-[#efe0f7]">
+          <Wallet className="h-5 w-5 text-surface-accent" />
+          <h1 className="text-3xl font-semibold tracking-tight text-surface-foreground">
             Portfolio
           </h1>
         </div>
-        <p className="text-sm text-[#efe0f7]/50 max-w-md">
+        <p className="text-sm text-surface-foreground/50 max-w-md">
           Track your active positions, earnings and borrowing health across all
           JBL strategies.
         </p>
@@ -35,14 +36,14 @@ export function PortfolioPage() {
       {/* ── Wallet gate ── */}
       {!connected ? (
         <div className="flex flex-col items-center justify-center py-28 gap-6">
-          <div className="rounded-full border border-[#c698e5]/20 bg-[#c698e5]/[0.06] p-5">
-            <Wallet className="h-10 w-10 text-[#c698e5]/60" />
+          <div className="rounded-full border border-surface-accent/20 bg-surface-accent/[0.06] p-5">
+            <Wallet className="h-10 w-10 text-surface-accent/60" />
           </div>
           <div className="text-center">
-            <p className="text-lg font-semibold text-[#efe0f7]/80 mb-1">
+            <p className="text-lg font-semibold text-surface-foreground/80 mb-1">
               Connect your wallet
             </p>
-            <p className="text-sm text-[#efe0f7]/35 max-w-xs">
+            <p className="text-sm text-surface-foreground/35 max-w-xs">
               Connect a wallet to view your active positions and portfolio
               performance.
             </p>
@@ -97,28 +98,31 @@ export function PortfolioPage() {
           )}
 
           {/* ── Positions ── */}
-          <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.02] overflow-hidden">
+          <div className="rounded-2xl border border-surface-accent/12 bg-surface-accent/[0.02] overflow-hidden">
             {/* Tab bar */}
-            <div className="flex items-center gap-1 border-b border-[#c698e5]/10 px-4 pt-3 pb-0">
+            <div className="flex items-center gap-1 border-b border-surface-accent/10 px-4 pt-3 pb-0">
               {TABS.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`relative cursor-pointer pb-3 px-3 text-sm font-medium transition-colors ${
+                  className={cn(
+                    "relative cursor-pointer pb-3 px-3 text-sm font-medium transition-colors",
                     activeTab === tab
-                      ? "text-[#c698e5]"
-                      : "text-[#efe0f7]/40 hover:text-[#efe0f7]/70"
-                  }`}
+                      ? "text-surface-accent"
+                      : "text-surface-foreground/40 hover:text-surface-foreground/70",
+                  )}
                 >
                   {tab}
                   {activeTab === tab && (
-                    <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-[#c698e5]" />
+                    /* style-exception: 2px tab underline indicator requires sub-pixel height */
+                    <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-surface-accent" />
                   )}
                 </button>
               ))}
             </div>
 
             {/* Tab content */}
+            {/* style-exception: 180px min-height prevents layout shift while tab content loads */}
             <div className="min-h-[180px]">
               {activeTab === "Lend" && <LendTable />}
               {activeTab === "Borrow" && <BorrowTable />}
