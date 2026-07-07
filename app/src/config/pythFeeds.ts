@@ -81,3 +81,12 @@ export function feedIdToBytes(id: string): number[] {
     for (let i = 0; i < 64; i += 2) bytes.push(parseInt(hex.slice(i, i + 2), 16))
     return bytes
 }
+
+/**
+ * Encode a 32-byte feed id (as stored on-chain) back into the un-prefixed hex
+ * form the rest of the app + Hermes uses.
+ */
+export function bytesToFeedIdHex(bytes: number[]): string {
+    if (bytes.length !== 32) throw new Error(`Invalid feed id byte length: ${bytes.length}`)
+    return bytes.map((b) => b.toString(16).padStart(2, '0')).join('')
+}

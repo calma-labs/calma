@@ -29,6 +29,11 @@ pub struct UserPositionAccount(pub(crate) UserPosition);
 /// Wasm-exposed wrapper around a parsed `IrmConfig` account from the irm program.
 #[wasm_bindgen]
 pub struct IrmConfigAccount(IrmState);
+/// Wasm-exposed wrapper around a `PiecewiseLinearModel` — a 2..=4 point
+/// utilization → rate curve.  Constructed from parallel `utils` / `rates`
+/// arrays; `rate_bps` replays the on-chain evaluator exactly.
+#[wasm_bindgen]
+pub struct RatePointsAccount(irm_state::PiecewiseLinearModel);
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
 pub struct FeedAccount(pub(crate) Feed);
@@ -238,6 +243,78 @@ impl UserPositionAccount {
 }
 
 #[wasm_bindgen]
+impl RatePointsAccount {
+    /// Build from parallel `utils` (u16, 0..=10_000) and `rates` (u32 bps) arrays.
+    ///
+    /// Validates the on-chain invariants once, so `rate_bps` afterwards performs
+    /// zero checks (hot path — CU/perf matters).
+    ///
+    /// Returns `None` if any invariant fails:
+    ///   * `utils.len() == rates.len()`
+    ///   * length in `2..=4`
+    ///   * `utils[0] == 0`
+    ///   * `utils` strictly increasing
+    pub fn from_arrays(utils: Vec<u16>, rates: Vec<u32>) -> Option<RatePointsAccount> {
+        if utils.len() != rates.len() {
+            return None;
+        }
+        let len = utils.len();
+        if !(irm_state::MIN_POINTS..=irm_state::MAX_POINTS).contains(&len) {
+            return None;
+        }
+        if utils[0] != 0 {
+            return None;
+        }
+        for i in 1..len {
+            if utils[i] <= utils[i - 1] {
+                return None;
+            }
+        }
+
+        let mut points = [irm_state::RatePoint::default(); irm_state::MAX_POINTS];
+        for i in 0..len {
+            points[i] = irm_state::RatePoint::new(utils[i], rates[i]);
+        }
+        Some(RatePointsAccount(irm_state::PiecewiseLinearModel {
+            points,
+            len: len as u8,
+            _pad: [0; 7],
+        }))
+    }
+
+    /// Effective borrow rate in basis points at `utilization_bps`.
+    /// Delegates to `PiecewiseLinearModel::get_fee_bps` — no client-side math.
+    pub fn rate_bps(&self, utilization_bps: u64) -> u32 {
+        self.0.get_fee_bps(utilization_bps)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn len(&self) -> u8 {
+        self.0.len
+    }
+
+    /// Utilization (bps) of the point at index `i`. Returns 0 if `i >= len`.
+    pub fn util_at(&self, i: u8) -> u16 {
+        let idx = i as usize;
+        if idx >= self.0.len as usize {
+            0
+        } else {
+            self.0.points[idx].util_bps
+        }
+    }
+
+    /// Rate (bps) of the point at index `i`. Returns 0 if `i >= len`.
+    pub fn rate_at(&self, i: u8) -> u32 {
+        let idx = i as usize;
+        if idx >= self.0.len as usize {
+            0
+        } else {
+            self.0.points[idx].rate_bps
+        }
+    }
+}
+
+#[wasm_bindgen]
 impl IrmConfigAccount {
     /// Parse from raw Anchor account bytes (8-byte discriminator included).
     pub fn from_bytes(account_data: &[u8]) -> Option<IrmConfigAccount> {
@@ -255,37 +332,29 @@ impl IrmConfigAccount {
         self.0.model.get_fee_bps(utilization_bps)
     }
 
-    /// Slope coefficient (a) for the given curve index (0–3).
-    pub fn fee_curve_a(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a)
+    /// Number of live rate points (2..=4).
+    pub fn points_len(&self) -> u8 {
+        self.0.model.len
     }
 
-    /// Base rate (b) for the given curve index (0–3).
-    pub fn fee_curve_b(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.b)
+    /// Utilization (bps) of the point at index `i`. Returns 0 if `i >= points_len()`.
+    pub fn point_util(&self, i: u8) -> u16 {
+        let idx = i as usize;
+        if idx >= self.0.model.len as usize {
+            0
+        } else {
+            self.0.model.points[idx].util_bps
+        }
     }
 
-    /// Post-kink slope (a2) for the given curve index (0–3).
-    pub fn fee_curve_a2(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a2)
-    }
-
-    /// Kink point in utilization basis points (0..=10_000) for the given curve index (0–3).
-    pub fn fee_curve_kink(&self, curve: u8) -> u64 {
-        self.0
-            .model
-            .curves
-            .get(curve as usize)
-            .map_or(0, |c| c.kink)
-    }
-
-    /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
-    pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
-        self.0
-            .model
-            .curves
-            .get(curve as usize)
-            .map_or(0, |c| c.enabled)
+    /// Rate (bps) of the point at index `i`. Returns 0 if `i >= points_len()`.
+    pub fn point_rate(&self, i: u8) -> u32 {
+        let idx = i as usize;
+        if idx >= self.0.model.len as usize {
+            0
+        } else {
+            self.0.model.points[idx].rate_bps
+        }
     }
 }
 
@@ -366,6 +435,36 @@ impl FeedAccount {
     #[wasm_bindgen(getter)]
     pub fn lend_feed_id(&self) -> Vec<u8> {
         self.0.config.lend_feed_id.to_vec()
+    }
+
+    /// Max Pyth confidence as fraction of price, in bps. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_conf_bps(&self) -> u16 {
+        self.0.rules.max_conf_bps
+    }
+
+    /// Time-scaled deviation budget in bps per hour. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_deviation_bps_per_hour(&self) -> u16 {
+        self.0.rules.max_deviation_bps_per_hour
+    }
+
+    /// Max allowed divergence between spot and Pyth EMA in bps. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn ema_divergence_bps(&self) -> u16 {
+        self.0.rules.ema_divergence_bps
+    }
+
+    /// Absolute floor on normalized price (PRICE_SCALE units). `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn min_price(&self) -> u64 {
+        self.0.rules.min_price
+    }
+
+    /// Absolute ceiling on normalized price (PRICE_SCALE units). `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_price(&self) -> u64 {
+        self.0.rules.max_price
     }
 }
 
@@ -935,13 +1034,14 @@ mod tests {
 
     // IrmState field offsets:
     //   0..31   : pool Pubkey
-    //   32..191 : model (PiecewiseLinearModel = 4 × LinearSegment = 4 × 40 B)
-    //     LinearSegment layout: a(i64) b(i64) a2(i64) kink(u64) enabled(u8) _pad[7]
-    //     Curve 0 starts at byte 32 of IrmState body
-    //   192..223 : authority Pubkey
-    //   224      : bump
-    //   225..231 : _pad[7]
-    const IRM_CURVE0_OFFSET: usize = 32; // relative to IrmState body (after discriminator)
+    //   32..71  : model (PiecewiseLinearModel = [RatePoint; 4] + len(u8) + _pad[7])
+    //     RatePoint layout: rate_bps(u32) util_bps(u16) _pad[2]  (8 bytes)
+    //     model.points starts at byte 32; model.len at byte 32 + 32 = 64
+    //   72..103 : authority Pubkey
+    //   104     : bump
+    //   105..111: _pad[7]
+    const IRM_POINTS_OFFSET: usize = 32; // relative to IrmState body (after discriminator)
+    const IRM_LEN_OFFSET: usize = IRM_POINTS_OFFSET + 32; // 4 × 8-byte points
 
     /// Build wire bytes for a Pool with the given market supply and borrow amounts.
     /// All other fields are zeroed.
@@ -953,21 +1053,22 @@ mod tests {
         v
     }
 
-    /// Build wire bytes for an IrmState with a single flat-rate curve at
-    /// `rate_bps` (curve 0: a=0, b=rate_bps, a2=0, kink=0, enabled=1).
-    /// All other curves are disabled.
-    fn irm_wire_flat(rate_bps: i64) -> Vec<u8> {
+    /// Build wire bytes for an IrmState with a flat rate `rate_bps` at every
+    /// utilization — encoded as the 2-point curve `[(0, rate), (10_000, rate)]`.
+    fn irm_wire_flat(rate_bps: u32) -> Vec<u8> {
         let mut v = account_bytes::<irm_state::IrmState>();
-        // LinearSegment 0: a=0 (i64), b=rate_bps (i64), a2=0 (i64), kink=0 (u64),
-        //                  enabled=1 (u8), _pad=[0;7]
-        let curve_base = DISCRIMINATOR + IRM_CURVE0_OFFSET;
-        // a at +0 (i64, LE) — already 0
-        // b at +8 (i64, LE)
-        v[curve_base + 8..curve_base + 16].copy_from_slice(&rate_bps.to_le_bytes());
-        // a2 at +16 — already 0
-        // kink at +24 — already 0
-        // enabled at +32
-        v[curve_base + 32] = 1;
+        // RatePoint layout: rate_bps(u32) util_bps(u16) _pad[2]  — 8 bytes.
+        let base = DISCRIMINATOR + IRM_POINTS_OFFSET;
+
+        // Point 0: (util=0, rate=rate_bps)
+        v[base..base + 4].copy_from_slice(&rate_bps.to_le_bytes());
+        v[base + 4..base + 6].copy_from_slice(&0u16.to_le_bytes());
+        // Point 1: (util=10_000, rate=rate_bps)
+        v[base + 8..base + 12].copy_from_slice(&rate_bps.to_le_bytes());
+        v[base + 12..base + 14].copy_from_slice(&10_000u16.to_le_bytes());
+
+        // len = 2
+        v[DISCRIMINATOR + IRM_LEN_OFFSET] = 2;
         v
     }
 

@@ -1,6 +1,5 @@
-import { BN } from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
-import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js'
+import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { connection, irmProgram, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
@@ -13,17 +12,28 @@ const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5
 /** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
 const POOL_SPACE = 41_256
 
+export interface IrmRatePointInput {
+    /** Utilization in basis points (0..=10_000). First point must be 0. */
+    utilBps: number
+    /** Borrow rate in basis points. */
+    rateBps: number
+}
+
 export interface CreatePoolParams {
     collateralMint: PublicKey
     lendMint: PublicKey
     ltvPercent?: number
     /** Max age (seconds) a Pyth price may have when borrowing/withdrawing. */
     maxFeedAgeSecs?: number
-    curveM1?: number
-    curveC1?: number
-    curveM2?: number
-    curveC2?: number
+    /** 2..=4 rate curve points. Defaults to the on-chain `DEFAULT_POINTS` if omitted. */
+    ratePoints?: IrmRatePointInput[]
 }
+
+const DEFAULT_RATE_POINTS: IrmRatePointInput[] = [
+    { utilBps: 0, rateBps: 50 },
+    { utilBps: 9500, rateBps: 450 },
+    { utilBps: 10000, rateBps: 1000 },
+]
 
 export interface CreatePoolResult {
     poolAddress: PublicKey
@@ -51,37 +61,18 @@ async function createPool(
         FEED_PROGRAM_ID,
     )
 
+    const ratePoints = (params.ratePoints ?? DEFAULT_RATE_POINTS).map((p) => ({
+        utilBps: p.utilBps,
+        rateBps: p.rateBps,
+    }))
+
     const irmInitIx = await irmProgram.methods
-        .initialize()
+        .initialize(ratePoints)
         .accounts({
             pool: poolKeypair.publicKey,
             authority: payer,
             payer,
         })
-        .instruction()
-
-    // irmState is a PDA whose seed comes from inside the account data, so Anchor's
-    // IDL-based auto-derivation can't resolve it — pass it explicitly via cast.
-    const irmSetCurve0Ix = await (irmProgram.methods
-        .setFeeCurve(0, {
-            a: new BN(params.curveM1 ?? 450),
-            b: new BN(params.curveC1 ?? 0),
-            a2: new BN(0),
-            kink: new BN(0),
-            enabled: true,
-        }) as unknown as { accounts: (a: object) => { instruction: () => Promise<TransactionInstruction> } })
-        .accounts({ irmState, authority: payer })
-        .instruction()
-
-    const irmSetCurve1Ix = await (irmProgram.methods
-        .setFeeCurve(1, {
-            a: new BN(params.curveM2 ?? 8000),
-            b: new BN(params.curveC2 ?? -7173),
-            a2: new BN(0),
-            kink: new BN(0),
-            enabled: true,
-        }) as unknown as { accounts: (a: object) => { instruction: () => Promise<TransactionInstruction> } })
-        .accounts({ irmState, authority: payer })
         .instruction()
 
     const createIx = await readonlyProgram.methods
@@ -114,8 +105,6 @@ async function createPool(
                     programId: readonlyProgram.programId,
                 }),
                 irmInitIx,
-                irmSetCurve0Ix,
-                irmSetCurve1Ix,
                 createIx,
             )
             tx.partialSign(poolKeypair)

@@ -1,4 +1,4 @@
-import { irm_rate_bps } from "@jbl/wasm-lib";
+import { RatePointsAccount } from "@jbl/wasm-lib";
 import { useMemo } from "react";
 import {
   Area,
@@ -12,24 +12,32 @@ import {
   YAxis,
 } from "recharts";
 
-const POINTS = 151; // 0 %..150 % utilization in 1 % steps
+const POINTS = 126; // 0 %..125 % utilization in 1 % steps
 
-interface IrmCurveChartProps {
-  m1: number;
-  c1: number;
-  m2: number;
-  c2: number;
+export interface IrmPoint {
+  /** Utilization in basis points (0..=10_000). */
+  utilBps: number;
+  /** Borrow rate in basis points. */
+  rateBps: number;
 }
 
-export function IrmCurveChart({ m1, c1, m2, c2 }: IrmCurveChartProps) {
-  const data = useMemo(
-    () =>
-      Array.from({ length: POINTS }, (_, i) => ({
-        util: i,
-        rate: +(irm_rate_bps(BigInt(m1), BigInt(c1), BigInt(m2), BigInt(c2), BigInt(i * 100)) / 100).toFixed(2),
-      })),
-    [m1, c1, m2, c2],
-  );
+interface IrmCurveChartProps {
+  points: IrmPoint[];
+}
+
+export function IrmCurveChart({ points }: IrmCurveChartProps) {
+  const data = useMemo(() => {
+    const utils = new Uint16Array(points.map((p) => p.utilBps));
+    const rates = new Uint32Array(points.map((p) => p.rateBps));
+    const curve = RatePointsAccount.from_arrays(utils, rates);
+    if (!curve) return [];
+    const samples = Array.from({ length: POINTS }, (_, i) => ({
+      util: i,
+      rate: +(curve.rate_bps(BigInt(i * 100)) / 100).toFixed(2),
+    }));
+    curve.free();
+    return samples;
+  }, [points]);
 
   const maxRate = Math.max(...data.map((d) => d.rate), 1);
   const yMax = Math.ceil(maxRate * 1.12);
@@ -81,7 +89,7 @@ export function IrmCurveChart({ m1, c1, m2, c2 }: IrmCurveChartProps) {
             tickLine={false}
             axisLine={false}
             tickFormatter={(v) => `${v}%`}
-            ticks={[0, 25, 50, 75, 100, 125, 150]}
+            ticks={[0, 25, 50, 75, 100, 125]}
           />
           <YAxis
             domain={[0, yMax]}
@@ -92,7 +100,7 @@ export function IrmCurveChart({ m1, c1, m2, c2 }: IrmCurveChartProps) {
           />
           <ReferenceArea
             x1={100}
-            x2={150}
+            x2={125}
             fill="rgba(240,168,84,0.06)"
             stroke="none"
             label={{ value: "Queued", position: "insideTopLeft", fill: "rgba(240,168,84,0.45)", fontSize: 10 }}

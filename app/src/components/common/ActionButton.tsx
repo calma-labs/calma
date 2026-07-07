@@ -31,6 +31,7 @@ export function ActionButton({
         compact ? "text-xs pr-3" : "text-sm pr-4",
         "enabled:active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
         !disabled && "cursor-pointer",
+        className,
         variant === "primary"
           ? "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)] enabled:hover:bg-surface-accent/85 enabled:hover:shadow-[0_0_28px_rgba(198,152,229,0.45)]"
           : "border border-surface-accent/25 bg-surface-accent/8 text-surface-accent enabled:hover:border-surface-accent/50 enabled:hover:bg-surface-accent/15",

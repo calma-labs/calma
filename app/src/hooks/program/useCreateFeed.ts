@@ -1,6 +1,7 @@
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { type FeedRulesInput, noRules } from '../../config/feedRules'
 import { feedIdToBytes, MAX_PYTH_AGE_SECS } from '../../config/pythFeeds'
 import { connection, feedProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
@@ -13,6 +14,12 @@ export interface CreateFeedParams {
     collateralFeedId: string
     /** Pyth feed id (hex) for the lend side. */
     lendFeedId: string
+    /**
+     * Optional validation rules baked into the feed at create time. Defaults to
+     * the all-disabled sentinel from `noRules()`, matching the on-chain
+     * `FeedRules::default()`.
+     */
+    rules?: FeedRulesInput
 }
 
 /**
@@ -30,6 +37,7 @@ export function useCreateFeed() {
             lendMint,
             collateralFeedId,
             lendFeedId,
+            rules,
         }: CreateFeedParams): Promise<string> => {
             if (!connected || !wallet?.signTransaction) throw new Error('Wallet not connected')
 
@@ -42,6 +50,7 @@ export function useCreateFeed() {
                     feedIdToBytes(collateralFeedId),
                     feedIdToBytes(lendFeedId),
                     MAX_PYTH_AGE_SECS,
+                    rules ?? noRules(),
                 )
                 .accounts({
                     authority: payer,

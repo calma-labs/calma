@@ -3,6 +3,7 @@ import { PythSolanaReceiver } from '@pythnetwork/pyth-solana-receiver'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { noRules } from '../../config/feedRules'
 import {
     feedIdToBytes,
     hermesId,
@@ -85,7 +86,7 @@ export function usePushPythFeed() {
                 }
             } else {
                 const createIx = await feedProgram.methods
-                    .create({ pyth: {} }, collBytes, lendBytes, MAX_PYTH_AGE_SECS)
+                    .create({ pyth: {} }, collBytes, lendBytes, MAX_PYTH_AGE_SECS, noRules())
                     .accounts({
                         authority: payer,
                         collateralMint: PLACEHOLDER_MINT,

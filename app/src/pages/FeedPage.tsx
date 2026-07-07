@@ -1,16 +1,20 @@
 import { ActionButton } from "@/components/common/ActionButton";
 import { TokenSelect } from "@/components/ui/token-select";
 import { usePushPythFeed } from "@/hooks/program/usePushPythFeed";
-import { useFeedsByPair } from "@/hooks/program/useFeedsByPair";
+import { useFeedsByPair, type FeedByPair } from "@/hooks/program/useFeedsByPair";
 import { useCreateFeed } from "@/hooks/program/useCreateFeed";
+import { useSetFeedFromPyth } from "@/hooks/program/useSetFeedFromPyth";
+import { useSetFeedManualValue } from "@/hooks/program/useSetFeedManualValue";
 import { usePythPrice } from "@/hooks/usePythPrice";
 import { usePythFeeds } from "@/hooks/usePythFeeds";
+import { type FeedRulesInput, noRules } from "@/config/feedRules";
 import { pythQueryForToken } from "@/config/pythFeeds";
 import { getTokenOptions } from "@/config/poolRegistry";
 import { feedPda } from "@/lib/program";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
 import {
   Activity,
   CheckCircle2,
@@ -276,6 +280,111 @@ function formatScaled(v: bigint): string {
   });
 }
 
+/** Prices are stored scaled by PRICE_SCALE (1e6) on-chain. */
+const PRICE_SCALE_N = 1_000_000n;
+
+interface RulesInputStrings {
+  maxConfBps: string;
+  maxDeviationBpsPerHour: string;
+  emaDivergenceBps: string;
+  minPriceUsd: string;
+  maxPriceUsd: string;
+}
+
+/** Parse a form field: empty → 0; otherwise expect a non-negative number. */
+function parseOptional(field: string): number | null {
+  const s = field.trim();
+  if (s === "") return 0;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+/** Convert a USD-denominated form field into an on-chain PRICE_SCALE u64 (as BN). */
+function usdToScaledBn(field: string): anchor.BN | null {
+  const n = parseOptional(field);
+  if (n === null) return null;
+  if (n === 0) return new anchor.BN(0);
+  // Multiply in BigInt to avoid float imprecision on the boundary.
+  const scaled = BigInt(Math.round(n * Number(PRICE_SCALE_N)));
+  return new anchor.BN(scaled.toString());
+}
+
+/**
+ * Human-readable validation for the rules form. Returns a message when a field
+ * is malformed; `null` when all values are acceptable (0 or positive).
+ */
+function validateRulesInputs(v: RulesInputStrings): string | null {
+  const bpsFields: Array<[string, string]> = [
+    ["Max confidence", v.maxConfBps],
+    ["Max deviation", v.maxDeviationBpsPerHour],
+    ["EMA divergence", v.emaDivergenceBps],
+  ];
+  for (const [label, raw] of bpsFields) {
+    const n = parseOptional(raw);
+    if (n === null) return `${label} must be a non-negative number.`;
+    if (!Number.isInteger(n)) return `${label} must be an integer bps value.`;
+    if (n > 65_535) return `${label} exceeds the u16 limit (65535).`;
+  }
+  const min = parseOptional(v.minPriceUsd);
+  const max = parseOptional(v.maxPriceUsd);
+  if (min === null) return "Min price must be a non-negative number.";
+  if (max === null) return "Max price must be a non-negative number.";
+  if (min > 0 && max > 0 && min > max) {
+    return "Min price cannot exceed max price.";
+  }
+  return null;
+}
+
+/**
+ * Build a `FeedRulesInput` from the current form values. Callers must pass
+ * fields that have already cleared `validateRulesInputs`, so parsing is
+ * infallible here.
+ */
+function buildRulesInput(v: RulesInputStrings): FeedRulesInput {
+  const base = noRules();
+  return {
+    ...base,
+    maxConfBps: parseOptional(v.maxConfBps) ?? 0,
+    maxDeviationBpsPerHour: parseOptional(v.maxDeviationBpsPerHour) ?? 0,
+    emaDivergenceBps: parseOptional(v.emaDivergenceBps) ?? 0,
+    minPrice: usdToScaledBn(v.minPriceUsd) ?? new anchor.BN(0),
+    maxPrice: usdToScaledBn(v.maxPriceUsd) ?? new anchor.BN(0),
+  };
+}
+
+interface RuleInputProps {
+  label: string;
+  hint: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}
+
+function RuleInput({ label, hint, value, onChange, placeholder }: RuleInputProps) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[10px] uppercase tracking-wider text-[#efe0f7]/40">
+        {label}
+      </label>
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(
+          "w-full rounded-lg border border-[#c698e5]/20 bg-[#c698e5]/[0.04]",
+          "px-3 py-2 text-sm font-mono text-[#efe0f7] tabular-nums outline-none",
+          "placeholder:text-[#efe0f7]/25 focus:border-[#c698e5]/40",
+        )}
+      />
+      <p className="text-[10px] text-[#efe0f7]/30">{hint}</p>
+    </div>
+  );
+}
+
 interface CreateFeedCardProps {
   collateralMint: PublicKey;
   lendMint: PublicKey;
@@ -305,6 +414,15 @@ function CreateFeedCard({
   const [collateralChoice, setCollateralChoice] = useState("");
   const [lendChoice, setLendChoice] = useState("");
 
+  // Optional Pyth-side validation rules baked into the feed at create time.
+  // Fields are strings so the inputs stay controlled; empty / "0" → disabled,
+  // matching the on-chain `FeedRules::default()` sentinel.
+  const [maxConfBps, setMaxConfBps] = useState("");
+  const [maxDeviationBpsPerHour, setMaxDeviationBpsPerHour] = useState("");
+  const [emaDivergenceBps, setEmaDivergenceBps] = useState("");
+  const [minPriceUsd, setMinPriceUsd] = useState("");
+  const [maxPriceUsd, setMaxPriceUsd] = useState("");
+
   const collateralFeed =
     collateralFeeds?.find((f) => f.id === collateralChoice) ??
     collateralFeeds?.[0] ??
@@ -327,9 +445,30 @@ function CreateFeedCard({
 
   const feedsResolved = !!collateralFeedId && !!lendFeedId;
 
+  const rulesError = validateRulesInputs({
+    maxConfBps,
+    maxDeviationBpsPerHour,
+    emaDivergenceBps,
+    minPriceUsd,
+    maxPriceUsd,
+  });
+
   async function handleCreate() {
-    if (!feedsResolved) return;
-    await mutateAsync({ collateralMint, lendMint, collateralFeedId, lendFeedId });
+    if (!feedsResolved || rulesError) return;
+    const rules = buildRulesInput({
+      maxConfBps,
+      maxDeviationBpsPerHour,
+      emaDivergenceBps,
+      minPriceUsd,
+      maxPriceUsd,
+    });
+    await mutateAsync({
+      collateralMint,
+      lendMint,
+      collateralFeedId,
+      lendFeedId,
+      rules,
+    });
   }
 
   return (
@@ -443,6 +582,60 @@ function CreateFeedCard({
           </div>
         </div>
 
+        {/* optional validation rules */}
+        <details className="group rounded-xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-4 py-3 open:pb-4">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 text-[11px] uppercase tracking-wider text-[#efe0f7]/45 list-none">
+            <span>Optional validation rules · advanced</span>
+            <span className="text-[#efe0f7]/30 group-open:hidden">Show</span>
+            <span className="text-[#efe0f7]/30 hidden group-open:inline">Hide</span>
+          </summary>
+          <p className="mt-2 text-[10px] text-[#efe0f7]/35">
+            All fields are optional. Leave empty (or 0) to disable a rule. Rules
+            are fixed at create time and enforced when this feed is refreshed via{" "}
+            <span className="font-mono">set_from_pyth</span>.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <RuleInput
+              label="Max confidence (bps)"
+              hint="Reject if conf/price exceeds this. 100 = 1%."
+              value={maxConfBps}
+              onChange={setMaxConfBps}
+              placeholder="e.g. 100"
+            />
+            <RuleInput
+              label="Max deviation (bps/hour)"
+              hint="Time-scaled circuit breaker. 500 = 5% per hour."
+              value={maxDeviationBpsPerHour}
+              onChange={setMaxDeviationBpsPerHour}
+              placeholder="e.g. 500"
+            />
+            <RuleInput
+              label="EMA divergence (bps)"
+              hint="Reject if spot diverges from Pyth EMA by more than this."
+              value={emaDivergenceBps}
+              onChange={setEmaDivergenceBps}
+              placeholder="e.g. 300"
+            />
+            <RuleInput
+              label="Min price (USD)"
+              hint="Absolute floor on normalized price."
+              value={minPriceUsd}
+              onChange={setMinPriceUsd}
+              placeholder="e.g. 0.5"
+            />
+            <RuleInput
+              label="Max price (USD)"
+              hint="Absolute ceiling on normalized price."
+              value={maxPriceUsd}
+              onChange={setMaxPriceUsd}
+              placeholder="e.g. 1000000"
+            />
+          </div>
+          {rulesError && (
+            <p className="mt-3 text-[11px] text-[#d45677]">{rulesError}</p>
+          )}
+        </details>
+
         {error && (
           <p className="text-[11px] text-[#d45677]">
             {error instanceof Error ? error.message : "Unknown error"}
@@ -470,7 +663,7 @@ function CreateFeedCard({
           <ActionButton
             variant="primary"
             onClick={handleCreate}
-            disabled={!connected || isPending || !feedsResolved}
+            disabled={!connected || isPending || !feedsResolved || !!rulesError}
             label={isPending ? "Creating…" : !connected ? "Connect wallet" : "Create feed"}
             icon={
               isPending ? (
@@ -484,6 +677,333 @@ function CreateFeedCard({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+interface FeedUpdaterActionsProps {
+  feed: FeedByPair;
+  collateralMint: PublicKey;
+  lendMint: PublicKey;
+}
+
+function FeedUpdaterActions({
+  feed,
+  collateralMint,
+  lendMint,
+}: FeedUpdaterActionsProps) {
+  if (feed.source === "Pyth") {
+    return (
+      <PythFeedUpdater
+        feed={feed}
+        collateralMint={collateralMint}
+        lendMint={lendMint}
+      />
+    );
+  }
+  if (feed.source === "Manual") {
+    return (
+      <ManualFeedUpdater
+        feed={feed}
+        collateralMint={collateralMint}
+        lendMint={lendMint}
+      />
+    );
+  }
+  return null;
+}
+
+function PythFeedUpdater({
+  feed,
+  collateralMint,
+  lendMint,
+}: FeedUpdaterActionsProps) {
+  const { connected } = useWalletConnection();
+  const {
+    collateralAccount,
+    lendAccount,
+    busy,
+    signatures,
+    error,
+    loadSide,
+    commit,
+    reset,
+  } = useSetFeedFromPyth();
+
+  const refreshCtx = {
+    feed: feed.publicKey,
+    collateralFeedIdBytes: feed.collateralFeedId,
+    lendFeedIdBytes: feed.lendFeedId,
+    collateralMint,
+    lendMint,
+  };
+
+  const anythingLoaded =
+    collateralAccount !== null ||
+    lendAccount !== null ||
+    signatures.commit.length > 0;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-[#c698e5]/10 pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30">
+          Refresh from Pyth Hermes
+        </p>
+        {anythingLoaded && (
+          <button
+            type="button"
+            onClick={reset}
+            className={cn(
+              "text-[10px] uppercase tracking-wider text-[#efe0f7]/40",
+              "hover:text-[#efe0f7]/70",
+            )}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <FeedRefreshRow
+          label="Load collateral price"
+          side="collateral"
+          account={collateralAccount}
+          signatures={signatures.collateral}
+          busy={busy}
+          onClick={() => loadSide("collateral", refreshCtx)}
+          disabled={!connected || busy !== null || collateralAccount !== null}
+        />
+        <FeedRefreshRow
+          label="Load loaned price"
+          side="lend"
+          account={lendAccount}
+          signatures={signatures.lend}
+          busy={busy}
+          onClick={() => loadSide("lend", refreshCtx)}
+          disabled={!connected || busy !== null || lendAccount !== null}
+        />
+        <FeedRefreshRow
+          label="Commit set_from_pyth"
+          side="commit"
+          account={null}
+          signatures={signatures.commit}
+          busy={busy}
+          onClick={() => commit(refreshCtx)}
+          disabled={
+            !connected ||
+            busy !== null ||
+            collateralAccount === null ||
+            lendAccount === null ||
+            signatures.commit.length > 0
+          }
+        />
+      </div>
+
+      {error && <p className="text-[10px] text-[#d45677]">{error}</p>}
+    </div>
+  );
+}
+
+interface FeedRefreshRowProps {
+  label: string;
+  side: "collateral" | "lend" | "commit";
+  account: PublicKey | null;
+  signatures: string[];
+  busy: "collateral" | "lend" | "commit" | null;
+  onClick: () => void;
+  disabled: boolean;
+}
+
+function FeedRefreshRow({
+  label,
+  side,
+  account,
+  signatures,
+  busy,
+  onClick,
+  disabled,
+}: FeedRefreshRowProps) {
+  const isBusy = busy === side;
+  const done = signatures.length > 0;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "text-[11px]",
+            done
+              ? "text-[#34d399]"
+              : isBusy
+              ? "text-[#efe0f7]/80"
+              : "text-[#efe0f7]/50",
+          )}
+        >
+          {label}
+          {signatures.length > 1 && (
+            <span className="ml-1 text-[#efe0f7]/35">
+              ({signatures.length} tx)
+            </span>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-semibold",
+            done
+              ? "border-[#34d399]/25 bg-[#34d399]/10 text-[#34d399]"
+              : "border-[#c698e5]/25 bg-[#c698e5]/[0.06] text-[#c698e5] hover:bg-[#c698e5]/[0.12]",
+            "disabled:opacity-40 disabled:cursor-not-allowed",
+          )}
+        >
+          {isBusy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : done ? (
+            <CheckCircle2 className="h-3 w-3" />
+          ) : (
+            <Send className="h-3 w-3" />
+          )}
+          {done ? "Done" : isBusy ? "Sending…" : "Run"}
+        </button>
+      </div>
+      {account && (
+        <p className="font-mono text-[10px] text-[#efe0f7]/40 break-all">
+          update acct {account.toBase58()}
+        </p>
+      )}
+      {signatures.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          {signatures.map((sig) => (
+            <a
+              key={sig}
+              href={`https://solscan.io/tx/${sig}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[10px] text-[#34d399]/80 hover:underline break-all"
+            >
+              {sig}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ManualFeedUpdater({
+  feed,
+  collateralMint,
+  lendMint,
+}: FeedUpdaterActionsProps) {
+  const { connected, wallet } = useWalletConnection();
+  const walletPubkey = wallet
+    ? new PublicKey(wallet.account.publicKey)
+    : null;
+  const isAuthority = !!walletPubkey && walletPubkey.equals(feed.authority);
+
+  const [collateralUsd, setCollateralUsd] = useState("");
+  const [lendUsd, setLendUsd] = useState("");
+  const { mutateAsync, isPending, error, data: signature } =
+    useSetFeedManualValue();
+
+  const parsedCollateral = usdToScaledBn(collateralUsd);
+  const parsedLend = usdToScaledBn(lendUsd);
+  const canSubmit =
+    connected &&
+    isAuthority &&
+    parsedCollateral !== null &&
+    parsedLend !== null &&
+    !parsedCollateral.isZero() &&
+    !parsedLend.isZero();
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+    await mutateAsync({
+      feed: feed.publicKey,
+      collateralPrice: parsedCollateral!,
+      lendPrice: parsedLend!,
+      collateralMint,
+      lendMint,
+    });
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-[#c698e5]/10 pt-3">
+      <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30">
+        Push manual price
+      </p>
+      {!isAuthority ? (
+        <p className="text-[10px] text-[#efe0f7]/35">
+          Only the feed's authority ({shorten(feed.authority.toBase58())}) can
+          update a Manual feed. Connect that wallet to push a price.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={collateralUsd}
+              onChange={(e) => setCollateralUsd(e.target.value)}
+              placeholder="Collateral price (USD)"
+              className={cn(
+                "w-full rounded-lg border border-[#c698e5]/20 bg-[#c698e5]/[0.04]",
+                "px-3 py-1.5 text-xs font-mono text-[#efe0f7] tabular-nums outline-none",
+                "placeholder:text-[#efe0f7]/25 focus:border-[#c698e5]/40",
+              )}
+            />
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              value={lendUsd}
+              onChange={(e) => setLendUsd(e.target.value)}
+              placeholder="Lend price (USD)"
+              className={cn(
+                "w-full rounded-lg border border-[#c698e5]/20 bg-[#c698e5]/[0.04]",
+                "px-3 py-1.5 text-xs font-mono text-[#efe0f7] tabular-nums outline-none",
+                "placeholder:text-[#efe0f7]/25 focus:border-[#c698e5]/40",
+              )}
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit || isPending}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border border-[#c698e5]/25 bg-[#c698e5]/[0.06]",
+                "px-3 py-1.5 text-[11px] font-semibold text-[#c698e5]",
+                "hover:bg-[#c698e5]/[0.12] disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
+            >
+              {isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              {isPending ? "Updating…" : "Update"}
+            </button>
+          </div>
+          {error && (
+            <p className="text-[10px] text-[#d45677]">
+              {error instanceof Error ? error.message : "Update failed"}
+            </p>
+          )}
+          {signature && (
+            <a
+              href={`https://solscan.io/tx/${signature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[10px] text-[#34d399] hover:underline break-all"
+            >
+              {signature}
+            </a>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -621,6 +1141,11 @@ function FeedFinderTool() {
                       : "never updated"}
                   </span>
                 </div>
+                <FeedUpdaterActions
+                  feed={f}
+                  collateralMint={collateralMint!}
+                  lendMint={lendMint!}
+                />
               </div>
             ))}
           </div>

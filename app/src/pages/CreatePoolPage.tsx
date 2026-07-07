@@ -1,5 +1,5 @@
 import { BackButton } from "@/components/common/BackButton";
-import { IrmCurveChart } from "@/components/pool/charts/IrmCurveChart";
+import { IrmCurveChart, type IrmPoint } from "@/components/pool/charts/IrmCurveChart";
 import {
   useCreateLendingPool,
   type CreatePoolResult,
@@ -154,56 +154,58 @@ function AddressRow({ label, value }: { label: string; value: string }) {
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
-interface FormState {
-  m1: string;
-  c1: string;
-  m2: string;
-  c2: string;
-  ltvPercent: string;
+interface KinkPoint {
+  /** Utilization in percent (0..150). */
+  util: string;
+  /** Rate in basis points. */
+  rate: string;
 }
 
-interface FormErrors {
-  m1?: string;
-  c1?: string;
-  m2?: string;
-  c2?: string;
-  ltvPercent?: string;
+interface FormState {
+  ltvPercent: string;
+  kinkPoints: KinkPoint[];
 }
+
+// (0%, 50 bps) → (95%, 450 bps) → (100%, 1000 bps) — matches the on-chain DEFAULT_POINTS.
+const DEFAULT_KINK_POINTS: KinkPoint[] = [
+  { util: "0", rate: "50" },
+  { util: "95", rate: "450" },
+  { util: "100", rate: "1000" },
+];
 
 const DEFAULT_FORM: FormState = {
-  m1: "450",
-  c1: "0",
-  m2: "8000",
-  c2: "-7173",
   ltvPercent: "97",
+  kinkPoints: DEFAULT_KINK_POINTS,
 };
 
-function validate(form: FormState): FormErrors {
-  const errors: FormErrors = {};
+/** Convert a form KinkPoint (utilization %, rate bps) to on-chain bps. */
+function toIrmPoint(kp: KinkPoint): IrmPoint {
+  return {
+    utilBps: Math.round(Number(kp.util) * 100),
+    rateBps: Math.round(Number(kp.rate)),
+  };
+}
 
-  // Slopes (m1, m2) must be non-negative
-  const slopeFields = ["m1", "m2"] as const;
-  for (const k of slopeFields) {
-    const n = Number(form[k]);
-    if (form[k] === "" || isNaN(n) || n < 0) {
-      errors[k] = "Must be a non-negative number";
-    }
+/** Validate the point list matches on-chain invariants. */
+function pointsValid(points: KinkPoint[]): boolean {
+  if (points.length < 2 || points.length > 4) return false;
+  const bpsPoints = points.map(toIrmPoint);
+  if (!Number.isFinite(bpsPoints[0].utilBps) || bpsPoints[0].utilBps !== 0) return false;
+  for (let i = 1; i < bpsPoints.length; i++) {
+    if (!Number.isFinite(bpsPoints[i].utilBps)) return false;
+    if (bpsPoints[i].utilBps <= bpsPoints[i - 1].utilBps) return false;
   }
+  return bpsPoints.every((p) => Number.isFinite(p.rateBps) && p.rateBps >= 0);
+}
 
-  // Intercepts (c1, c2) can be negative (i64 on-chain)
-  const interceptFields = ["c1", "c2"] as const;
-  for (const k of interceptFields) {
-    const n = Number(form[k]);
-    if (form[k] === "" || isNaN(n)) {
-      errors[k] = "Must be a valid number";
-    }
-  }
-
+function validate(form: FormState): { ltvPercent?: string; kinkPoints?: string } {
+  const errors: { ltvPercent?: string; kinkPoints?: string } = {};
   const ltv = Number(form.ltvPercent);
-  if (form.ltvPercent === "" || isNaN(ltv) || ltv <= 0 || ltv > 100) {
+  if (form.ltvPercent === "" || isNaN(ltv) || ltv <= 0 || ltv > 100)
     errors.ltvPercent = "Must be between 1 and 100";
-  }
-
+  if (!pointsValid(form.kinkPoints))
+    errors.kinkPoints =
+      "Need 2–4 points; first utilization must be 0 and utilizations strictly increasing.";
   return errors;
 }
 
@@ -228,12 +230,11 @@ export function CreatePoolPage() {
     onCreated: (r) => setResult(r),
   });
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function fieldError(key: keyof FormState): string | undefined {
-    return submitAttempted ? errors[key] : undefined;
+  function setKinkPoint(index: number, field: keyof KinkPoint, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      kinkPoints: prev.kinkPoints.map((p, i) => (i === index ? { ...p, [field]: value } : p)),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -245,10 +246,7 @@ export function CreatePoolPage() {
       collateralMint: new PublicKey(collateralAddr),
       lendMint: new PublicKey(lendAddr),
       ltvPercent: Number(form.ltvPercent),
-      curveM1: Number(form.m1),
-      curveC1: Number(form.c1),
-      curveM2: Number(form.m2),
-      curveC2: Number(form.c2),
+      ratePoints: form.kinkPoints.map(toIrmPoint),
     });
   }
 
@@ -379,81 +377,61 @@ export function CreatePoolPage() {
             icon={<Settings2 className="h-4 w-4" />}
           >
             <p className="text-xs text-surface-foreground/35 -mt-2">
-              Two-slope model: rate&nbsp;=&nbsp;m·utilisation&nbsp;+&nbsp;c. The
-              first slope applies below the kink, the second above it.
-              Intercepts (c₁, c₂) can be negative for advanced curve shaping.
+              Control points define a continuous curve. Editing these updates the
+              underlying segment parameters sent on-chain.
             </p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Field
-                id="m1"
-                label="m₁ — Low slope"
-                hint="Multiplier for low utilisation"
-                error={fieldError("m1")}
-              >
-                <NumberInput
-                  id="m1"
-                  value={form.m1}
-                  onChange={(v) => setField("m1", v)}
-                  min={0}
-                  placeholder="0"
-                  hasError={!!fieldError("m1")}
-                />
-              </Field>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-12" />
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
+                  Utilization (%)
+                </span>
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
+                  Rate (bps)
+                </span>
+              </div>
 
-              <Field
-                id="c1"
-                label="c₁ — Low intercept"
-                hint="Base rate for low utilisation (bps, can be negative)"
-                error={fieldError("c1")}
-              >
-                <NumberInput
-                  id="c1"
-                  value={form.c1}
-                  onChange={(v) => setField("c1", v)}
-                  placeholder="200"
-                  hasError={!!fieldError("c1")}
-                />
-              </Field>
+              {form.kinkPoints.map((point, i, arr) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-12 text-right text-xs text-surface-foreground/45">
+                    {i === 0 ? "Start" : i === arr.length - 1 ? "End" : "Kink"}
+                  </span>
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      value={point.util}
+                      min={0}
+                      max={150}
+                      step={1}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setKinkPoint(i, "util", e.target.value)
+                      }
+                      className={fieldClass(false)}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      value={point.rate}
+                      step="any"
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setKinkPoint(i, "rate", e.target.value)
+                      }
+                      className={fieldClass(false)}
+                    />
+                  </div>
+                </div>
+              ))}
 
-              <Field
-                id="m2"
-                label="m₂ — High slope"
-                hint="Multiplier for high utilisation"
-                error={fieldError("m2")}
-              >
-                <NumberInput
-                  id="m2"
-                  value={form.m2}
-                  onChange={(v) => setField("m2", v)}
-                  min={0}
-                  placeholder="0"
-                  hasError={!!fieldError("m2")}
-                />
-              </Field>
-
-              <Field
-                id="c2"
-                label="c₂ — High intercept"
-                hint="Base rate for high utilisation (bps, can be negative)"
-                error={fieldError("c2")}
-              >
-                <NumberInput
-                  id="c2"
-                  value={form.c2}
-                  onChange={(v) => setField("c2", v)}
-                  placeholder="1000"
-                  hasError={!!fieldError("c2")}
-                />
-              </Field>
+              {errors.kinkPoints && (
+                <p className="text-xs text-destructive">{errors.kinkPoints}</p>
+              )}
             </div>
 
-            <IrmCurveChart
-              m1={Number(form.m1) || 0}
-              c1={Number(form.c1) || 0}
-              m2={Number(form.m2) || 0}
-              c2={Number(form.c2) || 0}
-            />
+            {pointsValid(form.kinkPoints) && (
+              <IrmCurveChart points={form.kinkPoints.map(toIrmPoint)} />
+            )}
           </Section>
 
           {/* LTV */}
@@ -465,17 +443,17 @@ export function CreatePoolPage() {
               id="ltvPercent"
               label="Max LTV (%)"
               hint="Maximum loan-to-value ratio for borrowers (1–100)"
-              error={fieldError("ltvPercent")}
+              error={submitAttempted ? errors.ltvPercent : undefined}
             >
               <NumberInput
                 id="ltvPercent"
                 value={form.ltvPercent}
-                onChange={(v) => setField("ltvPercent", v)}
+                onChange={(v) => setForm((prev) => ({ ...prev, ltvPercent: v }))}
                 min={1}
                 max={100}
                 step={1}
                 placeholder="75"
-                hasError={!!fieldError("ltvPercent")}
+                hasError={submitAttempted && !!errors.ltvPercent}
               />
             </Field>
           </Section>

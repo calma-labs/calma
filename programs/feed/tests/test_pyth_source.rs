@@ -8,7 +8,7 @@ use {
         AccountDeserialize, AnchorSerialize, Discriminator, InstructionData, ToAccountMetas,
     },
     anchor_spl::token::spl_token::{self, state::Mint as SplMint},
-    feed::state::{Feed, PriceSource},
+    feed::state::{Feed, FeedRules, PriceSource},
     litesvm::LiteSVM,
     pyth_solana_receiver_sdk::price_update::{PriceFeedMessage, PriceUpdateV2, VerificationLevel},
     solana_account::Account,
@@ -68,17 +68,32 @@ fn write_pyth_price_update(
     exponent: i32,
     publish_time: i64,
 ) {
+    write_pyth_price_update_full(svm, key, feed_id, price, price, 0, exponent, publish_time);
+}
+
+/// Full-control variant that lets rule tests set `conf` and `ema_price`
+/// explicitly.
+fn write_pyth_price_update_full(
+    svm: &mut LiteSVM,
+    key: Pubkey,
+    feed_id: [u8; 32],
+    price: i64,
+    ema_price: i64,
+    conf: u64,
+    exponent: i32,
+    publish_time: i64,
+) {
     let update = PriceUpdateV2 {
         write_authority: Pubkey::default(),
         verification_level: VerificationLevel::Full,
         price_message: PriceFeedMessage {
             feed_id,
             price,
-            conf: 0,
+            conf,
             exponent,
             publish_time,
             prev_publish_time: publish_time.saturating_sub(1),
-            ema_price: price,
+            ema_price,
             ema_conf: 0,
         },
         posted_slot: 0,
@@ -148,6 +163,28 @@ fn create_ix(
     coll_feed_id: [u8; 32],
     lend_feed_id: [u8; 32],
 ) -> Instruction {
+    create_ix_with_rules(
+        payer,
+        authority,
+        collateral_mint,
+        lend_mint,
+        source,
+        coll_feed_id,
+        lend_feed_id,
+        FeedRules::default(),
+    )
+}
+
+fn create_ix_with_rules(
+    payer: &Pubkey,
+    authority: &Pubkey,
+    collateral_mint: Pubkey,
+    lend_mint: Pubkey,
+    source: PriceSource,
+    coll_feed_id: [u8; 32],
+    lend_feed_id: [u8; 32],
+    rules: FeedRules,
+) -> Instruction {
     // For Pyth-source feeds the param is required; for Manual it's ignored.
     let max_pyth_age_secs = if matches!(source, PriceSource::Pyth) {
         60
@@ -161,6 +198,7 @@ fn create_ix(
             collateral_feed_id: coll_feed_id,
             lend_feed_id,
             max_pyth_age_secs,
+            rules,
         }
         .data(),
         feed::accounts::Create {
@@ -378,6 +416,274 @@ fn pyth_set_from_pyth_happy_path() {
     assert_eq!(feed.state.lend_price, 1_000_000);
     // last_updated_ts == min(publish_time)
     assert_eq!(feed.state.last_updated_ts, now - 10);
+}
+
+/// Common setup for rule tests: pin the clock, create a Pyth-source feed with
+/// the given rules, and return the fixture context plus the pinned timestamp.
+fn setup_pyth_feed_with_rules(rules: FeedRules) -> (Ctx, i64) {
+    let mut ctx = fresh_svm();
+    let now: i64 = 1_700_000_000;
+    ctx.svm.set_sysvar::<Clock>(&Clock {
+        unix_timestamp: now,
+        ..Default::default()
+    });
+    assert!(send_ixs(
+        &mut ctx.svm,
+        &[create_ix_with_rules(
+            &ctx.payer.pubkey(),
+            &ctx.payer.pubkey(),
+            ctx.collateral_mint,
+            ctx.lend_mint,
+            PriceSource::Pyth,
+            COLL_FEED_ID,
+            LEND_FEED_ID,
+            rules,
+        )],
+        &ctx.payer,
+    ));
+    (ctx, now)
+}
+
+#[test]
+fn pyth_confidence_within_max_conf_bps_accepts() {
+    // 100 conf on 1_000_000 price = 1 bps → equal to the cap.
+    let rules = FeedRules {
+        max_conf_bps: 1,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 100, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 100, -6, now,
+    );
+    assert!(send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_confidence_over_max_conf_bps_rejects() {
+    let rules = FeedRules {
+        max_conf_bps: 1,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    // 101 / 1_000_000 > 1 bps on the collateral leg.
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 101, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_price_below_min_price_rejects() {
+    // min = 1.5e6 (normalized). A 1.0 price normalizes to 1_000_000 → below floor.
+    let rules = FeedRules {
+        min_price: 1_500_000,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 2_000_000, 2_000_000, 0, -6, now,
+    );
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_price_above_max_price_rejects() {
+    let rules = FeedRules {
+        max_price: 1_500_000,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    // Lend leg exceeds the ceiling.
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 2_000_000, 2_000_000, 0, -6, now,
+    );
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_ema_divergence_over_budget_rejects() {
+    // Allow up to 500 bps (5%) between spot and EMA.
+    let rules = FeedRules {
+        ema_divergence_bps: 500,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    // spot = 1_060_000 vs ema = 1_000_000 → 600 bps > 500 → reject.
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_060_000, 1_000_000, 0, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_first_update_skips_deviation_check() {
+    // Aggressive deviation rule; without the first-update skip a "large" first
+    // price would be rejected. Because last_updated_ts is 0, the check is a no-op.
+    let rules = FeedRules {
+        max_deviation_bps_per_hour: 1, // 0.01% per hour — extremely tight
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    assert!(send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_deviation_budget_scales_with_elapsed_time() {
+    // 100 bps/hour means a 200 bps jump is rejected after 1 hour but accepted
+    // after 2 hours.
+    let rules = FeedRules {
+        max_deviation_bps_per_hour: 100,
+        ..Default::default()
+    };
+    let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
+    let coll_pk = Pubkey::new_unique();
+    let lend_pk = Pubkey::new_unique();
+
+    // First update seeds the state.
+    write_pyth_price_update_full(
+        &mut ctx.svm, coll_pk, COLL_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, now,
+    );
+    assert!(send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+
+    // 1 hour later: try a +200 bps move on the collateral leg → over budget.
+    let one_hour_later = now + 3_600;
+    ctx.svm.set_sysvar::<Clock>(&Clock {
+        unix_timestamp: one_hour_later,
+        ..Default::default()
+    });
+    ctx.svm.expire_blockhash();
+    write_pyth_price_update_full(
+        &mut ctx.svm,
+        coll_pk,
+        COLL_FEED_ID,
+        1_020_000, // +200 bps vs 1_000_000
+        1_020_000,
+        0,
+        -6,
+        one_hour_later,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, one_hour_later,
+    );
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+
+    // Push the clock to 2 hours after the seed update → 200 bps now fits.
+    let two_hours_later = now + 7_200;
+    ctx.svm.set_sysvar::<Clock>(&Clock {
+        unix_timestamp: two_hours_later,
+        ..Default::default()
+    });
+    ctx.svm.expire_blockhash();
+    write_pyth_price_update_full(
+        &mut ctx.svm,
+        coll_pk,
+        COLL_FEED_ID,
+        1_020_000,
+        1_020_000,
+        0,
+        -6,
+        two_hours_later,
+    );
+    write_pyth_price_update_full(
+        &mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, 1_000_000, 0, -6, two_hours_later,
+    );
+    assert!(send_ixs(
+        &mut ctx.svm,
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &ctx.payer,
+    ));
+}
+
+#[test]
+fn pyth_create_rejects_invalid_rules_min_greater_than_max() {
+    let mut ctx = fresh_svm();
+    let rules = FeedRules {
+        min_price: 2_000_000,
+        max_price: 1_000_000,
+        ..Default::default()
+    };
+    assert!(!send_ixs(
+        &mut ctx.svm,
+        &[create_ix_with_rules(
+            &ctx.payer.pubkey(),
+            &ctx.payer.pubkey(),
+            ctx.collateral_mint,
+            ctx.lend_mint,
+            PriceSource::Pyth,
+            COLL_FEED_ID,
+            LEND_FEED_ID,
+            rules,
+        )],
+        &ctx.payer,
+    ));
 }
 
 #[test]

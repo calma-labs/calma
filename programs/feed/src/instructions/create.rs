@@ -1,5 +1,6 @@
 use crate::error::ErrorCode;
-use crate::state::{Feed, PriceSource};
+use crate::rules::validate_rules;
+use crate::state::{Feed, FeedRules, PriceSource};
 use anchor_lang::prelude::*;
 use anchor_spl::token::Mint;
 
@@ -31,6 +32,7 @@ pub fn create_handler(
     collateral_feed_id: [u8; 32],
     lend_feed_id: [u8; 32],
     max_pyth_age_secs: u32,
+    rules: FeedRules,
 ) -> Result<()> {
     let zero = [0u8; 32];
     let stored_max_pyth_age = match source {
@@ -48,6 +50,7 @@ pub fn create_handler(
                 ErrorCode::InvalidFeedId
             );
             require!(max_pyth_age_secs > 0, ErrorCode::InvalidMaxPythAge);
+            validate_rules(&rules)?;
             max_pyth_age_secs
         }
     };
@@ -73,6 +76,8 @@ pub fn create_handler(
         lend_price: 0,
         last_updated_ts: 0,
     };
-    feed._reserved = [0; 30];
+    // Manual feeds accept any rules value but the enforcement site
+    // (`set_from_pyth`) is unreachable, so the values are inert.
+    feed.rules = rules;
     Ok(())
 }

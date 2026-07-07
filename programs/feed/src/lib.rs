@@ -2,6 +2,7 @@ pub mod constants;
 pub mod error;
 pub mod instructions;
 pub mod pyth;
+pub mod rules;
 pub mod state;
 
 use anchor_lang::prelude::*;
@@ -21,6 +22,7 @@ pub mod feed {
         collateral_feed_id: [u8; 32],
         lend_feed_id: [u8; 32],
         max_pyth_age_secs: u32,
+        rules: FeedRules,
     ) -> Result<()> {
         create::create_handler(
             ctx,
@@ -28,6 +30,7 @@ pub mod feed {
             collateral_feed_id,
             lend_feed_id,
             max_pyth_age_secs,
+            rules,
         )
     }
 

@@ -40,13 +40,33 @@ pub struct FeedData {
     pub lend_decimals: u8,
 }
 
+/// Optional validation gates applied to Pyth updates. `0` is the "disabled"
+/// sentinel for every field so a zero-init `FeedRules` reproduces the legacy
+/// behavior. Fixed at feed creation; `set_from_pyth` is the only enforcement
+/// site — Manual updates ignore rules entirely.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct FeedRules {
+    /// Reject if `conf / price` exceeds this many basis points.
+    pub max_conf_bps: u16,
+    /// Reject if `|new − last| / last` exceeds `bps_per_hour × elapsed_hours`,
+    /// with the effective ceiling clamped at 10_000 bps.
+    pub max_deviation_bps_per_hour: u16,
+    /// Reject if `|price − ema_price| / ema_price` exceeds this many bps.
+    pub ema_divergence_bps: u16,
+    /// Reject if normalized price is below this floor (in PRICE_SCALE units).
+    pub min_price: u64,
+    /// Reject if normalized price is above this ceiling (in PRICE_SCALE units).
+    pub max_price: u64,
+    pub _reserved: [u8; 8],
+}
+
 #[account]
 #[derive(Copy)]
 pub struct Feed {
     pub state: FeedState,
     pub config: FeedConfig,
     pub data: FeedData,
-    pub _reserved: [u8; 30],
+    pub rules: FeedRules,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]

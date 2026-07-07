@@ -57,7 +57,12 @@ CPI types), and the WASM bindings. Fields serialize in declaration order:
 | 160 | `data.lend_mint` (Pubkey) | 32 |
 | 192 | `data.collateral_decimals` (u8) | 1 |
 | 193 | `data.lend_decimals` (u8) | 1 |
-| 194 | `_reserved` | 30 |
+| 194 | `rules.max_conf_bps` (u16) | 2 |
+| 196 | `rules.max_deviation_bps_per_hour` (u16) | 2 |
+| 198 | `rules.ema_divergence_bps` (u16) | 2 |
+| 200 | `rules.min_price` (u64) | 8 |
+| 208 | `rules.max_price` (u64) | 8 |
+| 216 | `rules._reserved` | 8 |
 
 Total body: 224 bytes. Prefer deserializing through `feed_state::Feed` over
 hard-coded offsets so tests and clients can't drift from this layout.
@@ -76,12 +81,43 @@ cargo test -p feed
 A stale `feed.so` surfaces as confusing "create failed" assertions because the
 test's instruction data no longer matches the deployed program's signature.
 
+## Optional validation rules (Pyth source only)
+
+`FeedRules` is set at `create` time and immutable. Every field uses `0` as the
+"disabled" sentinel, so a zero-init `FeedRules` reproduces the pre-rules
+behavior (staleness + source lock only). Rules apply to `set_from_pyth` only;
+the Manual source stays fully authority-trusted.
+
+| Field | Meaning | Comparison |
+|-------|---------|------------|
+| `max_conf_bps` | Reject wide Pyth spreads | `conf / price ≤ max_conf_bps` (bps) |
+| `min_price` / `max_price` | Absolute normalized bounds | `min ≤ normalized ≤ max` (PRICE_SCALE units) |
+| `ema_divergence_bps` | Guard against spot vs EMA drift | `|price − ema_price| / ema_price ≤ ema_divergence_bps` |
+| `max_deviation_bps_per_hour` | Time-scaled circuit breaker | `|new − last| / last ≤ bps_per_hour × ceil(elapsed_hours)` |
+
+The deviation budget scales with elapsed time because feeds may go long
+stretches between updates; the effective ceiling is clamped at 10_000 bps
+(100%), which gives even tightly configured feeds an eventual "any move
+accepted" horizon. The first update after `create` skips the deviation check
+because there is no prior price to compare against.
+
+`create` rejects `min_price > max_price` when both are non-zero with
+`InvalidRules`. Rule violations at update time surface as
+`ConfidenceTooWide`, `PriceOutOfBounds`, `EmaDivergenceTooLarge`, or
+`PriceDeviationTooLarge`.
+
+Ideas reserved for later (space kept in `rules._reserved`):
+
+- **Update cooldown** — minimum seconds between accepted updates.
+- **Monotonic `publish_time`** — reject updates going backwards in time.
+- **Verification-level requirement** — force Pyth `VerificationLevel::Full`
+  before mainnet.
+
 ## Known limitations
 
-- **Confidence interval ignored.** `conf` is read but not enforced; wide spreads
-  on thin assets can let borrows through on a noisy mid. Space is reserved in
-  `_reserved` for a future soft cap.
 - **Feed IDs are immutable post-create.** A typo requires recreating the feed.
   Both IDs are exposed through the WASM bindings so an operator can verify them.
 - **`last_updated_ts = min(coll, lend)`** is conservative: the slower side gates
   the pair.
+- **Rules are immutable post-create.** Tuning a rule requires recreating the
+  feed (and the pool that depends on it).

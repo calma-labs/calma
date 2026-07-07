@@ -14,4 +14,14 @@ pub enum ErrorCode {
     InvalidFeedId,
     #[msg("max_pyth_age_secs must be greater than zero for Pyth feeds")]
     InvalidMaxPythAge,
+    #[msg("Pyth confidence exceeds max_conf_bps")]
+    ConfidenceTooWide,
+    #[msg("Normalized price is outside the configured [min_price, max_price] bounds")]
+    PriceOutOfBounds,
+    #[msg("Spot price diverges from Pyth EMA by more than ema_divergence_bps")]
+    EmaDivergenceTooLarge,
+    #[msg("Price change exceeds the time-scaled deviation budget")]
+    PriceDeviationTooLarge,
+    #[msg("FeedRules values are inconsistent (e.g. min_price > max_price)")]
+    InvalidRules,
 }
