@@ -10,7 +10,12 @@ pub struct Create<'info> {
         init,
         payer = payer,
         space = 8 + std::mem::size_of::<Feed>(),
-        seeds = [b"feed", authority.key().as_ref()],
+        seeds = [
+            b"feed",
+            authority.key().as_ref(),
+            collateral_mint.key().as_ref(),
+            lend_mint.key().as_ref(),
+        ],
         bump,
     )]
     pub feed: Account<'info, Feed>,
@@ -44,7 +49,10 @@ pub fn create_handler(
             // Field is meaningless for Manual feeds — store 0 explicitly.
             0
         }
-        PriceSource::Pyth => {
+        PriceSource::Pyth | PriceSource::PythPush => {
+            // For `Pyth` these are Pyth feed_id hashes; for `PythPush` they are
+            // the sponsored `PriceUpdateV2` account pubkeys. Non-zero check is
+            // the same either way.
             require!(
                 collateral_feed_id != zero && lend_feed_id != zero,
                 ErrorCode::InvalidFeedId

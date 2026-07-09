@@ -5,8 +5,12 @@ use crate::state::{Feed, PriceSource};
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
 
+/// Consume a **sponsored** Pyth push feed. The `PriceUpdateV2` account layout is
+/// identical to the pull path (owner check via `Account<'info, PriceUpdateV2>`),
+/// but here we pin to a specific sponsored account pubkey stored in the feed
+/// config rather than matching an internal Pyth feed_id hash.
 #[derive(Accounts)]
-pub struct SetFromPyth<'info> {
+pub struct SetFromPythPush<'info> {
     #[account(
         mut,
         seeds = [
@@ -23,50 +27,45 @@ pub struct SetFromPyth<'info> {
     pub lend_price_update: Account<'info, PriceUpdateV2>,
 }
 
-pub fn set_from_pyth_handler(ctx: Context<SetFromPyth>) -> Result<()> {
+pub fn set_from_pyth_push_handler(ctx: Context<SetFromPythPush>) -> Result<()> {
     let feed = &mut ctx.accounts.feed;
     require!(
-        feed.config.source == PriceSource::Pyth,
+        feed.config.source == PriceSource::PythPush,
         ErrorCode::WrongSource
     );
 
-    let clock = Clock::get()?;
-    let max_age = feed.config.max_pyth_age_secs as u64;
+    // For sponsored push feeds we pin by account pubkey (stored in the
+    // `*_feed_id` slots at feed creation) rather than by Pyth feed_id hash.
+    require!(
+        ctx.accounts.collateral_price_update.key().to_bytes() == feed.config.collateral_feed_id,
+        ErrorCode::InvalidPushAccount
+    );
+    require!(
+        ctx.accounts.lend_price_update.key().to_bytes() == feed.config.lend_feed_id,
+        ErrorCode::InvalidPushAccount
+    );
 
-    let coll = ctx.accounts.collateral_price_update.get_price_no_older_than(
-        &clock,
-        max_age,
-        &feed.config.collateral_feed_id,
-    )?;
-    let lend = ctx.accounts.lend_price_update.get_price_no_older_than(
-        &clock,
-        max_age,
-        &feed.config.lend_feed_id,
-    )?;
+    let coll = ctx.accounts.collateral_price_update.price_message;
+    let lend = ctx.accounts.lend_price_update.price_message;
+
+    let clock = Clock::get()?;
+    let max_age = feed.config.max_pyth_age_secs as i64;
+    require!(
+        clock.unix_timestamp.saturating_sub(coll.publish_time) <= max_age
+            && clock.unix_timestamp.saturating_sub(lend.publish_time) <= max_age,
+        ErrorCode::StalePushPrice
+    );
 
     let coll_norm = normalize(coll.price, coll.exponent)?;
     let lend_norm = normalize(lend.price, lend.exponent)?;
 
-    // Rule gates. `conf` and `ema_price` share the price exponent, so they
-    // are compared against *raw* Pyth values (no double-scaling); bounds and
-    // deviation act on the PRICE_SCALE-normalized values that will actually
-    // be written to state.
     let rules = &feed.rules;
-    // `Price` returned by the SDK strips the EMA fields, so pull them off the
-    // underlying account. Matching feed IDs are already enforced by
-    // `get_price_no_older_than` above.
-    let coll_ema = ctx
-        .accounts
-        .collateral_price_update
-        .price_message
-        .ema_price;
-    let lend_ema = ctx.accounts.lend_price_update.price_message.ema_price;
     check_conf(coll.price, coll.conf, rules.max_conf_bps)?;
     check_conf(lend.price, lend.conf, rules.max_conf_bps)?;
     check_bounds(coll_norm, rules.min_price, rules.max_price)?;
     check_bounds(lend_norm, rules.min_price, rules.max_price)?;
-    check_ema_divergence(coll.price, coll_ema, rules.ema_divergence_bps)?;
-    check_ema_divergence(lend.price, lend_ema, rules.ema_divergence_bps)?;
+    check_ema_divergence(coll.price, coll.ema_price, rules.ema_divergence_bps)?;
+    check_ema_divergence(lend.price, lend.ema_price, rules.ema_divergence_bps)?;
     check_deviation(
         coll_norm,
         feed.state.collateral_price,

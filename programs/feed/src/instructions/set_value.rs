@@ -6,7 +6,12 @@ use anchor_lang::prelude::*;
 pub struct SetValue<'info> {
     #[account(
         mut,
-        seeds = [b"feed", authority.key().as_ref()],
+        seeds = [
+            b"feed",
+            authority.key().as_ref(),
+            feed.data.collateral_mint.as_ref(),
+            feed.data.lend_mint.as_ref(),
+        ],
         bump = feed.config.bump,
         constraint = feed.config.authority == authority.key(),
     )]

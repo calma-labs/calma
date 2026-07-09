@@ -12,6 +12,7 @@ pub const PRICE_SCALE: u128 = 1_000_000;
 pub enum PriceSource {
     Manual = 0,
     Pyth = 1,
+    PythPush = 2,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]

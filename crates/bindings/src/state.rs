@@ -382,9 +382,19 @@ impl FeedAccount {
         self.0.state.last_updated_ts
     }
 
+    /// Raw `PriceSource` discriminant:
+    /// - `0` = Manual (authority sets prices directly)
+    /// - `1` = Pyth (pull; `*_feed_id` are Pyth feed_id hashes; ephemeral `PriceUpdateV2`)
+    /// - `2` = PythPush (sponsored push; `*_feed_id` are the sponsored `PriceUpdateV2` account pubkeys)
     #[wasm_bindgen(getter)]
     pub fn source(&self) -> u8 {
         self.0.config.source as u8
+    }
+
+    /// True when the feed is bound to a sponsored Pyth push feed (`PriceSource::PythPush`).
+    #[wasm_bindgen(getter)]
+    pub fn is_push(&self) -> bool {
+        self.0.config.source == feed_state::PriceSource::PythPush
     }
 
     #[wasm_bindgen(getter)]

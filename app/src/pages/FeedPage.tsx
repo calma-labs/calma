@@ -1,6 +1,8 @@
 import { ActionButton } from "@/components/common/ActionButton";
 import { TokenSelect } from "@/components/ui/token-select";
+import { usePullPythFeed } from "@/hooks/program/usePullPythFeed";
 import { usePushPythFeed } from "@/hooks/program/usePushPythFeed";
+import { getPriceFeedAccountForProgram } from "@pythnetwork/pyth-solana-receiver";
 import { useFeedsByPair, type FeedByPair } from "@/hooks/program/useFeedsByPair";
 import { useCreateFeed } from "@/hooks/program/useCreateFeed";
 import { useSetFeedFromPyth } from "@/hooks/program/useSetFeedFromPyth";
@@ -8,10 +10,15 @@ import { useSetFeedManualValue } from "@/hooks/program/useSetFeedManualValue";
 import { usePythPrice } from "@/hooks/usePythPrice";
 import { usePythFeeds } from "@/hooks/usePythFeeds";
 import { type FeedRulesInput, noRules } from "@/config/feedRules";
-import { pythQueryForToken } from "@/config/pythFeeds";
+import {
+  pythQueryForToken,
+  USDC_USD_FEED_ID,
+  PLACEHOLDER_MINT,
+} from "@/config/pythFeeds";
 import { getTokenOptions } from "@/config/poolRegistry";
-import { feedPda } from "@/lib/program";
+import { connection, feedPda, feedProgram } from "@/lib/program";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
@@ -57,12 +64,34 @@ function relativeTime(unixSeconds: number): string {
   return `${Math.floor(secs / 60)}m ago`;
 }
 
-// ─── feed pusher tool ──────────────────────────────────────────────────────────
+function tryParsePubkey(s: string): PublicKey | null {
+  if (!s) return null;
+  try {
+    return new PublicKey(s);
+  } catch {
+    return null;
+  }
+}
+
+// ─── feed pusher tool (unified pull / push) ────────────────────────────────────
+
+type PusherMode = "pull" | "push";
+
+/**
+ * Sponsored push feeds live at deterministic PDAs of the receiver program;
+ * shard 0 hosts the primary sponsored set. Derive the `PriceUpdateV2` pubkey
+ * from the Pyth feed_id — no runtime API call needed.
+ */
+function pushAccountForFeedId(feedId: string): PublicKey {
+  const hex = feedId.startsWith("0x") ? feedId.slice(2) : feedId;
+  return getPriceFeedAccountForProgram(0, Buffer.from(hex, "hex"));
+}
 
 function FeedPusherTool() {
   const { connected, wallet } = useWalletConnection();
+  const [mode, setMode] = useState<PusherMode>("pull");
 
-  // Pick a token; its Pyth feed is fetched from Hermes' catalog (1:1 per token).
+  // Token / Pyth feed selection — identical UX for both modes.
   const [tokenAddr, setTokenAddr] = useState(TOKEN_OPTIONS[0]?.address ?? "");
   const tokenSymbol =
     TOKEN_OPTIONS.find((o) => o.address === tokenAddr)?.symbol ?? "";
@@ -74,42 +103,149 @@ function FeedPusherTool() {
     error: feedsError,
   } = usePythFeeds(query);
 
-  // The catalog usually returns one USD feed; if several, let the user choose.
-  // `feedId` is the explicit choice; fall back to the first match otherwise.
   const [feedId, setFeedId] = useState("");
   const feed = feeds?.find((f) => f.id === feedId) ?? feeds?.[0] ?? null;
 
   const { data: price, isLoading: priceLoading, error: priceError } =
     usePythPrice(feed ? feed.id : null);
 
-  const { mutateAsync, isPending, error, data } = usePushPythFeed();
+  // Both hooks are declared unconditionally; only the active mode's mutation
+  // is invoked below.
+  const pull = usePullPythFeed();
+  const push = usePushPythFeed();
+  const active = mode === "pull" ? pull : push;
 
+  // Token mint seeds the feed PDA together with wSOL on the lend side, so
+  // each token gets its own feed under the connected wallet.
+  const collateralMint = useMemo(
+    () => (tokenAddr ? tryParsePubkey(tokenAddr) : null),
+    [tokenAddr],
+  );
   const feedAddress =
-    connected && wallet
-      ? feedPda(new PublicKey(wallet.account.publicKey)).toBase58()
+    connected && wallet && collateralMint
+      ? feedPda(
+          new PublicKey(wallet.account.publicKey),
+          collateralMint,
+          PLACEHOLDER_MINT,
+        ).toBase58()
       : null;
 
+  // Sponsored `PriceUpdateV2` account pubkeys — only meaningful in push mode
+  // but cheap to derive so we can preview them under the feed picker.
+  const collateralPushAccount = useMemo(
+    () => (feed ? pushAccountForFeedId(feed.id) : null),
+    [feed],
+  );
+  const lendPushAccount = useMemo(
+    () => pushAccountForFeedId(USDC_USD_FEED_ID),
+    [],
+  );
+
+  // Push coverage probe: does a sponsored PriceUpdateV2 actually exist at the
+  // derived collateral address? The address is deterministic but Pyth only
+  // maintains a crank for a curated subset — if this account is missing, push
+  // won't work for this feed.
+  const pushCoverage = useQuery({
+    queryKey: [
+      "push-coverage",
+      collateralPushAccount?.toBase58() ?? null,
+    ],
+    enabled: mode === "push" && !!collateralPushAccount,
+    queryFn: async () => {
+      if (!collateralPushAccount) return null;
+      const info = await connection.getAccountInfo(collateralPushAccount);
+      return info !== null;
+    },
+  });
+
+  // Existing feed source probe: if a feed already exists at `feedAddress`,
+  // decode it and show its source so the user knows what's bound to this mint
+  // pair (feeds are immutable per (wallet, coll_mint, lend_mint)).
+  const existingFeed = useQuery<"manual" | "pyth" | "pythPush" | null>({
+    // Prefixed with `feed-account` so the push/pull hooks' invalidation covers this.
+    queryKey: ["feed-account", "source", feedAddress],
+    enabled: !!feedAddress,
+    queryFn: async () => {
+      if (!feedAddress) return null;
+      const info = await connection.getAccountInfo(new PublicKey(feedAddress));
+      if (!info) return null;
+      const decoded = feedProgram.coder.accounts.decode("feed", info.data) as {
+        config: { source: Record<string, unknown> };
+      };
+      const src = decoded.config.source;
+      return "pythPush" in src
+        ? "pythPush"
+        : "pyth" in src
+          ? "pyth"
+          : "manual" in src
+            ? "manual"
+            : null;
+    },
+  });
+
   async function handleSend() {
-    if (!feed) return;
-    await mutateAsync({ feed });
+    if (!feed || !collateralMint) return;
+    if (mode === "pull") {
+      await pull.mutateAsync({
+        feed,
+        collateralMint,
+        lendMint: PLACEHOLDER_MINT,
+      });
+    } else {
+      if (!collateralPushAccount) return;
+      await push.mutateAsync({
+        collateralPushAccount,
+        lendPushAccount,
+        collateralMint,
+        lendMint: PLACEHOLDER_MINT,
+      });
+    }
   }
+
+  const sendLabel = active.isPending
+    ? "Sending…"
+    : !connected
+      ? "Connect wallet"
+      : mode === "pull"
+        ? "Send pull oracle"
+        : "Send push oracle";
+  const sendDisabled =
+    !connected ||
+    active.isPending ||
+    !feed ||
+    (mode === "pull" && (priceLoading || !!priceError)) ||
+    (mode === "push" && !collateralPushAccount);
 
   return (
     <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] p-6">
-      <div className="flex items-center gap-2.5 mb-5">
-        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#c698e5]/15 text-[#c698e5]">
-          <Radio className="h-4 w-4" />
-        </span>
-        <h2 className="text-sm font-semibold text-[#efe0f7]/80">
-          Push Pyth Price
-        </h2>
+      <div className="flex items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#c698e5]/15 text-[#c698e5]">
+            <Radio className="h-4 w-4" />
+          </span>
+          <h2 className="text-sm font-semibold text-[#efe0f7]/80">
+            Push Pyth Price
+          </h2>
+        </div>
+        <ModeToggle mode={mode} onChange={setMode} />
       </div>
 
       <p className="text-[11px] text-[#efe0f7]/35 mb-5">
-        Select a token — its Pyth feed is looked up live from the Hermes catalog
-        — watch the price, then post a signed price update to your wallet's{" "}
-        <span className="font-mono">feed</span> account (priced against USDC/USD).
-        Creates the feed on first use.
+        {mode === "pull" ? (
+          <>
+            Select a token — its Pyth feed is looked up live from the Hermes
+            catalog — watch the price, then post a signed price update to your
+            wallet's <span className="font-mono">feed</span> account (priced
+            against USDC/USD). Creates the feed on first use.
+          </>
+        ) : (
+          <>
+            The sponsored <span className="font-mono">PriceUpdateV2</span>{" "}
+            account address is derived from the Pyth feed id via the receiver
+            program's PDA seeds (shard&nbsp;0). No Hermes VAA is posted; the
+            feed program pins directly to that account. Mainnet only.
+          </>
+        )}
       </p>
 
       <div className="flex flex-col gap-4">
@@ -155,8 +291,8 @@ function FeedPusherTool() {
           )}
         </div>
 
-        {/* live price */}
-        {feed && (
+        {/* pull-only: live price from Hermes */}
+        {mode === "pull" && feed && (
           <div className="rounded-xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-4 py-4">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Activity className="h-3 w-3 text-[#34d399]" />
@@ -185,38 +321,70 @@ function FeedPusherTool() {
           </div>
         )}
 
-        {/* target feed account */}
+        {/* push-only: derived sponsored PriceUpdateV2 pubkeys + coverage badge */}
+        {mode === "push" && collateralPushAccount && (
+          <div className="rounded-xl border border-[#c698e5]/15 bg-[#c698e5]/[0.03] px-4 py-4 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+                Collateral price account
+              </p>
+              <PushCoverageBadge
+                isLoading={pushCoverage.isLoading}
+                exists={pushCoverage.data ?? null}
+              />
+            </div>
+            <p className="font-mono text-xs text-[#efe0f7]/70 break-all">
+              {collateralPushAccount.toBase58()}
+            </p>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30 mb-1">
+                Lend price account (USDC/USD)
+              </p>
+              <p className="font-mono text-xs text-[#efe0f7]/70 break-all">
+                {lendPushAccount.toBase58()}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* target feed account + existing-source badge */}
         {feedAddress && (
           <div className="flex flex-col gap-1">
-            <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30">
-              Target feed account
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30">
+                Target feed account
+              </p>
+              <FeedSourceBadge
+                isLoading={existingFeed.isLoading}
+                source={existingFeed.data ?? null}
+              />
+            </div>
             <p className="font-mono text-xs text-[#efe0f7]/60 break-all">
               {feedAddress}
             </p>
           </div>
         )}
 
-        {error && (
+        {active.error && (
           <p className="text-[11px] text-[#d45677]">
-            {error instanceof Error ? error.message : "Unknown error"}
+            {active.error instanceof Error ? active.error.message : "Unknown error"}
           </p>
         )}
 
-        {data && (
+        {active.data && (
           <div className="rounded-xl border border-[#34d399]/25 bg-[#34d399]/5 px-4 py-3">
             <div className="flex items-center gap-1.5 mb-1">
               <CheckCircle2 className="h-3.5 w-3.5 text-[#34d399]" />
               <p className="text-xs text-[#34d399]">
-                {data.created ? "Feed created & priced" : "Price pushed"} ·{" "}
-                {data.signatures.length} tx
+                {active.data.created ? "Feed created & priced" : "Price pushed"} ·{" "}
+                {active.data.signatures.length} tx
               </p>
             </div>
             <div className="flex flex-col gap-0.5">
-              {data.signatures.map((sig) => (
+              {active.data.signatures.map((sig) => (
                 <a
                   key={sig}
-                  href={`https://solscan.io/tx/${sig}?cluster=devnet`}
+                  href={`https://solscan.io/tx/${sig}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono text-[10px] text-[#c698e5] hover:underline break-all"
@@ -232,14 +400,10 @@ function FeedPusherTool() {
           <ActionButton
             variant="primary"
             onClick={handleSend}
-            disabled={
-              !connected || isPending || priceLoading || !!priceError || !feed
-            }
-            label={
-              isPending ? "Sending…" : !connected ? "Connect wallet" : "Send pull oracle"
-            }
+            disabled={sendDisabled}
+            label={sendLabel}
             icon={
-              isPending ? (
+              active.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin text-[#17081f]" />
               ) : !connected ? (
                 <Wallet className="h-4 w-4 text-[#17081f]" />
@@ -250,6 +414,100 @@ function FeedPusherTool() {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function Pill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warn" | "muted";
+}) {
+  const toneClass =
+    tone === "ok"
+      ? "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]"
+      : tone === "warn"
+        ? "border-[#e0b64d]/40 bg-[#e0b64d]/10 text-[#e0b64d]"
+        : "border-[#c698e5]/25 bg-[#c698e5]/[0.06] text-[#efe0f7]/60";
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
+        toneClass,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function PushCoverageBadge({
+  isLoading,
+  exists,
+}: {
+  isLoading: boolean;
+  exists: boolean | null;
+}) {
+  if (isLoading) return <Pill label="Checking…" tone="muted" />;
+  if (exists === true) return <Pill label="Live sponsored" tone="ok" />;
+  if (exists === false) return <Pill label="No sponsored crank" tone="warn" />;
+  return null;
+}
+
+function FeedSourceBadge({
+  isLoading,
+  source,
+}: {
+  isLoading: boolean;
+  source: "manual" | "pyth" | "pythPush" | null;
+}) {
+  if (isLoading) return <Pill label="Checking…" tone="muted" />;
+  if (source === null) return <Pill label="Uncreated" tone="muted" />;
+  if (source === "manual") return <Pill label="Manual" tone="muted" />;
+  if (source === "pyth") return <Pill label="Pyth · pull" tone="ok" />;
+  return <Pill label="Pyth · sponsored push" tone="ok" />;
+}
+
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: PusherMode;
+  onChange: (m: PusherMode) => void;
+}) {
+  const optionClass = (isActive: boolean) =>
+    cn(
+      "px-3 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider transition-colors",
+      isActive
+        ? "bg-[#c698e5]/20 text-[#efe0f7]"
+        : "text-[#efe0f7]/40 hover:text-[#efe0f7]/70",
+    );
+  return (
+    <div
+      className="flex items-center gap-1 rounded-lg border border-[#c698e5]/15 bg-[#c698e5]/[0.03] p-0.5"
+      role="tablist"
+      aria-label="Feed source mode"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "pull"}
+        className={optionClass(mode === "pull")}
+        onClick={() => onChange("pull")}
+      >
+        Pull
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "push"}
+        className={optionClass(mode === "push")}
+        onClick={() => onChange("push")}
+      >
+        Push
+      </button>
     </div>
   );
 }

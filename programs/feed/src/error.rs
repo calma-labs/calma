@@ -24,4 +24,8 @@ pub enum ErrorCode {
     PriceDeviationTooLarge,
     #[msg("FeedRules values are inconsistent (e.g. min_price > max_price)")]
     InvalidRules,
+    #[msg("Push price update account did not match the sponsored feed pubkey")]
+    InvalidPushAccount,
+    #[msg("Push oracle price is older than max_pyth_age_secs")]
+    StalePushPrice,
 }

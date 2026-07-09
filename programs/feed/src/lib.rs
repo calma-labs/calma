@@ -46,6 +46,10 @@ pub mod feed {
         set_from_pyth::set_from_pyth_handler(ctx)
     }
 
+    pub fn set_from_pyth_push(ctx: Context<SetFromPythPush>) -> Result<()> {
+        set_from_pyth_push::set_from_pyth_push_handler(ctx)
+    }
+
     pub fn get_value(ctx: Context<GetValue>) -> Result<u64> {
         get_value::get_value_handler(ctx)
     }

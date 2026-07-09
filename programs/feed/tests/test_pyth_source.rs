@@ -150,8 +150,17 @@ fn fresh_svm() -> Ctx {
     }
 }
 
-fn feed_pda(authority: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(&[b"feed", authority.as_ref()], &feed::id()).0
+fn feed_pda(authority: &Pubkey, collateral_mint: &Pubkey, lend_mint: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[
+            b"feed",
+            authority.as_ref(),
+            collateral_mint.as_ref(),
+            lend_mint.as_ref(),
+        ],
+        &feed::id(),
+    )
+    .0
 }
 
 fn create_ix(
@@ -202,7 +211,7 @@ fn create_ix_with_rules(
         }
         .data(),
         feed::accounts::Create {
-            feed: feed_pda(authority),
+            feed: feed_pda(authority, &collateral_mint, &lend_mint),
             authority: *authority,
             collateral_mint,
             lend_mint,
@@ -215,6 +224,8 @@ fn create_ix_with_rules(
 
 fn set_value_ix(
     authority: &Pubkey,
+    collateral_mint: &Pubkey,
+    lend_mint: &Pubkey,
     collateral_price: u64,
     lend_price: u64,
 ) -> Instruction {
@@ -226,7 +237,7 @@ fn set_value_ix(
         }
         .data(),
         feed::accounts::SetValue {
-            feed: feed_pda(authority),
+            feed: feed_pda(authority, collateral_mint, lend_mint),
             authority: *authority,
         }
         .to_account_metas(None),
@@ -235,6 +246,8 @@ fn set_value_ix(
 
 fn set_from_pyth_ix(
     authority: &Pubkey,
+    collateral_mint: &Pubkey,
+    lend_mint: &Pubkey,
     coll_update: Pubkey,
     lend_update: Pubkey,
 ) -> Instruction {
@@ -242,7 +255,7 @@ fn set_from_pyth_ix(
         feed::id(),
         &feed::instruction::SetFromPyth {}.data(),
         feed::accounts::SetFromPyth {
-            feed: feed_pda(authority),
+            feed: feed_pda(authority, collateral_mint, lend_mint),
             collateral_price_update: coll_update,
             lend_price_update: lend_update,
         }
@@ -270,11 +283,11 @@ fn manual_create_and_set_value_happy_path() {
     ));
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_value_ix(&ctx.payer.pubkey(), 1_000_000, 1_000_000)],
+        &[set_value_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, 1_000_000, 1_000_000)],
         &ctx.payer,
     ));
     // Both mints in fresh_svm are decimals=6 → feed inherits them.
-    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey())).unwrap();
+    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
     assert_eq!(feed.data.collateral_decimals, 6);
     assert_eq!(feed.data.lend_decimals, 6);
@@ -344,7 +357,7 @@ fn manual_feed_rejects_set_from_pyth() {
 
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -367,7 +380,7 @@ fn pyth_feed_rejects_set_value() {
     ));
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_value_ix(&ctx.payer.pubkey(), 1_000_000, 1_000_000)],
+        &[set_value_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, 1_000_000, 1_000_000)],
         &ctx.payer,
     ));
 }
@@ -406,11 +419,11 @@ fn pyth_set_from_pyth_happy_path() {
 
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
-    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey())).unwrap();
+    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
     assert_eq!(feed.state.collateral_price, 123_450_000);
     assert_eq!(feed.state.lend_price, 1_000_000);
@@ -462,7 +475,7 @@ fn pyth_confidence_within_max_conf_bps_accepts() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -485,7 +498,7 @@ fn pyth_confidence_over_max_conf_bps_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -508,7 +521,7 @@ fn pyth_price_below_min_price_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -531,7 +544,7 @@ fn pyth_price_above_max_price_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -555,7 +568,7 @@ fn pyth_ema_divergence_over_budget_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -579,7 +592,7 @@ fn pyth_first_update_skips_deviation_check() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -605,7 +618,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
@@ -631,7 +644,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
@@ -657,7 +670,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -717,7 +730,7 @@ fn pyth_set_from_pyth_rejects_stale_update() {
 
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
