@@ -292,8 +292,8 @@ tailwind.config = {
   </div>
 </section>
 
-<!-- ============ SECTION — LIVE RATE ENGINE (curve demo, ported from v1 hero) ============ -->
-<section id="rate-engine" class="relative py-24 border-t border-rule overflow-hidden">
+<!-- ============ SECTION — LIVE RATE ENGINE (curve demo, ported from v1 hero) — HIDDEN per client request ============ -->
+<section id="rate-engine" class="hidden relative py-24 border-t border-rule overflow-hidden">
   <div class="absolute inset-0 grid-bg pointer-events-none"></div>
   <div class="max-w-page mx-auto px-6 relative z-10">
     <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-center">
@@ -381,8 +381,8 @@ tailwind.config = {
   </div>
 </section>
 
-<!-- ============ SECTION 1 — WHY CALMA (BENTO) ============ -->
-<section id="why" class="py-24 border-t border-rule">
+<!-- ============ SECTION 1 — WHY CALMA (BENTO) — HIDDEN per client request ============ -->
+<section id="why" class="hidden py-24 border-t border-rule">
   <div class="max-w-page mx-auto px-6">
     <div class="max-w-3xl">
       <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Why Calma</div>
@@ -582,7 +582,88 @@ tailwind.config = {
   </div>
 </section>
 
-<!-- ============ SECTION 2 — FOR INSTITUTIONS ============ -->
+
+<!-- ============ SECTION 4 — HOW IT WORKS — HIDDEN per client request ============ -->
+<section id="how" class="hidden py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>How it works</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">2 mechanisms, 1 outcome:<br>capital working harder.</h2>
+    </div>
+
+    <div class="mt-16 grid lg:grid-cols-2 gap-8" data-gsap-stagger>
+      <!-- Mechanism 1 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M1</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Withdraw Queue</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">When everyone wants their money out at once, lending breaks. Lenders panic, rates spike, systems crisis.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Instead of race conditions, we use a queue. You request a withdrawal, it processes in order. Predictable. Fair. No front-running.</p>
+      </div>
+
+      <!-- Mechanism 2 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M2</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Dynamic Curve</h3>
+        </div>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">Static interest curves don't adapt to real demand. Utilization spikes, but rates stay the same. Capital locks in inefficient markets.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Our curve moves in real-time. More demand → rates rise smoothly. Less demand → rates drop. Supply and demand, always balanced.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 5 — PRODUCTS ============ -->
+<section id="products" class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="max-w-3xl">
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Products</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Tailor-Make Products For Tomorrow's Finance.</h2>
+    </div>
+
+    <div class="mt-16 grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5" data-gsap-stagger>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Lending &amp; Borrowing</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Use your assets to work for you, or borrow against them for the best rates.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Looping</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">RWA and LST loops on the best markets.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Vaults</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Set up your strategy on Calma markets.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Fixed Rates</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">From variable volatility to institutional predictability.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">Funds</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Use spot and leverage positions.</p>
+      </div>
+      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
+        <div class="text-fg font-semibold text-lg tracking-tight">LP Tokens</div>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Get LP tokens from your allocation to use as collateral.</p>
+      </div>
+    </div>
+
+    <div class="mt-12 flex justify-center fade-up">
+      <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-7 py-3.5 rounded-md font-medium transition-colors">
+        Join waitlist
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SECTION 2 — FOR INSTITUTIONS (moved to end of page) ============ -->
 <section id="institutions" class="py-24 border-t border-rule">
   <div class="max-w-page mx-auto px-6">
     <div class="max-w-3xl">
@@ -671,86 +752,6 @@ tailwind.config = {
         </button>
         <p id="instStatus" class="text-xs text-center text-muted"></p>
       </form>
-    </div>
-  </div>
-</section>
-
-<!-- ============ SECTION 4 — HOW IT WORKS ============ -->
-<section id="how" class="py-24 border-t border-rule">
-  <div class="max-w-page mx-auto px-6">
-    <div class="max-w-3xl">
-      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>How it works</div>
-      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">2 mechanisms, 1 outcome:<br>capital working harder.</h2>
-    </div>
-
-    <div class="mt-16 grid lg:grid-cols-2 gap-8" data-gsap-stagger>
-      <!-- Mechanism 1 -->
-      <div class="rounded-xl border border-rule bg-ink p-8">
-        <div class="flex items-baseline gap-3 mb-5">
-          <span class="text-accent font-mono text-sm">M1</span>
-          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Withdraw Queue</h3>
-        </div>
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
-        <p class="text-soft mb-5">When everyone wants their money out at once, lending breaks. Lenders panic, rates spike, systems crisis.</p>
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
-        <p class="text-soft mb-5">Instead of race conditions, we use a queue. You request a withdrawal, it processes in order. Predictable. Fair. No front-running.</p>
-      </div>
-
-      <!-- Mechanism 2 -->
-      <div class="rounded-xl border border-rule bg-ink p-8">
-        <div class="flex items-baseline gap-3 mb-5">
-          <span class="text-accent font-mono text-sm">M2</span>
-          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Dynamic Curve</h3>
-        </div>
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
-        <p class="text-soft mb-5">Static interest curves don't adapt to real demand. Utilization spikes, but rates stay the same. Capital locks in inefficient markets.</p>
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
-        <p class="text-soft mb-5">Our curve moves in real-time. More demand → rates rise smoothly. Less demand → rates drop. Supply and demand, always balanced.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ SECTION 5 — PRODUCTS ============ -->
-<section id="products" class="py-24 border-t border-rule">
-  <div class="max-w-page mx-auto px-6">
-    <div class="max-w-3xl">
-      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Products</div>
-      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Tailor-Make Products For Tomorrow's Finance.</h2>
-    </div>
-
-    <div class="mt-16 grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5" data-gsap-stagger>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Lending &amp; Borrowing</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Use your assets to work for you, or borrow against them for the best rates.</p>
-      </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Looping</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">RWA and LST loops on the best markets.</p>
-      </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Vaults</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Set up your strategy on Calma markets.</p>
-      </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Fixed Rates</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">From variable volatility to institutional predictability.</p>
-      </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Funds</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Use spot and leverage positions.</p>
-      </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">LP Tokens</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Get LP tokens from your allocation to use as collateral.</p>
-      </div>
-    </div>
-
-    <div class="mt-12 flex justify-center fade-up">
-      <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-7 py-3.5 rounded-md font-medium transition-colors">
-        Join waitlist
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-      </button>
     </div>
   </div>
 </section>
