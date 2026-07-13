@@ -1,7 +1,7 @@
 import { PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
 import { PoolAccount, PoolWithIrm } from '@jbl/wasm-lib'
-import { connection, program } from '../../lib/program'
+import { connection, feedPda, feedProgram, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { _poolDiscriminatorFilter } from './useLendingAccount'
 
@@ -36,10 +36,26 @@ async function fetchAllPools(): Promise<PoolAccountWithKey[]> {
     )
 
 
-    return parsed.flatMap(({ pubkey, raw }, i) => {
+    return parsed.flatMap(({ pubkey, raw, feedStatePubkey }, i) => {
         const irmInfo = irmInfos[i]
         const feedInfo = feedInfos[i]
         if (!irmInfo || !feedInfo) return []
+
+        try {
+            const decoded = feedProgram.coder.accounts.decode('feed', feedInfo.data) as {
+                config: { authority: PublicKey }
+                data: { collateralMint: PublicKey; lendMint: PublicKey }
+            }
+            const expectedPda = feedPda(
+                new PublicKey(decoded.config.authority),
+                new PublicKey(decoded.data.collateralMint),
+                new PublicKey(decoded.data.lendMint),
+            )
+            if (!expectedPda.equals(feedStatePubkey)) return []
+        } catch {
+            return []
+        }
+
         const poolWithIrm = PoolWithIrm.from_bytes(raw, irmInfo.data, feedInfo.data)
         return poolWithIrm ? [{ publicKey: pubkey, account: poolWithIrm }] : []
     })

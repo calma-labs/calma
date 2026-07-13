@@ -1,4 +1,3 @@
-import { getPoolMeta } from "@/config/poolRegistry";
 import { useKlines } from "@/hooks/useKlines";
 import { buildMultiplyMeta } from "@/hooks/useMultiply";
 import { cn } from "@/lib/utils";
@@ -102,12 +101,11 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartApi = useRef<IChartApi | null>(null);
 
-  const poolMeta = useMemo(() => getPoolMeta(pool.address), [pool.address]);
   const {
     data: liveKlines,
     isLoading: klinesLoading,
     isError: klinesError,
-  } = useKlines(poolMeta.binancePerp);
+  } = useKlines(pool.binancePerp);
 
   /**
    * Resolved dataset:
@@ -118,10 +116,10 @@ export function MultiplyChart({ pool, seed }: MultiplyChartProps) {
   const allKlines = useMemo<CandlestickData<Time>[] | null>(() => {
     if (liveKlines && liveKlines.length > 0) return liveKlines;
     // Still in-flight and we expect real data → return null so the chart waits
-    if (poolMeta.binancePerp && klinesLoading) return null;
+    if (pool.binancePerp && klinesLoading) return null;
     // No symbol configured or request failed → use mock
     return generateOHLC(seed, 365);
-  }, [liveKlines, klinesLoading, klinesError, poolMeta.binancePerp, seed]);
+  }, [liveKlines, klinesLoading, klinesError, pool.binancePerp, seed]);
 
   useEffect(() => {
     if (tab !== "price") return;

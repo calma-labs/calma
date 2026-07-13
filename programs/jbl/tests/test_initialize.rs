@@ -77,7 +77,10 @@ fn test_create() {
     // ── Create feed account ───────────────────────────────────────────────────
     // The feed PDA is derived from [b"feed", authority.pubkey()].
     // `payer` is used as the feed authority so it can sign set_value.
-    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref(), collateral_mint_keypair.pubkey().as_ref(), lend_mint_keypair.pubkey().as_ref()],
+        &feed_id,
+    );
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
         &feed::instruction::Create {
@@ -85,6 +88,7 @@ fn test_create() {
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
             max_pyth_age_secs: 0,
+            rules: feed::state::FeedRules::default(),
         }
         .data(),
         feed::accounts::Create {
@@ -132,7 +136,13 @@ fn test_create() {
     );
     let irm_init_ix = Instruction::new_with_bytes(
         irm_id,
-        &irm::instruction::Initialize {}.data(),
+        &irm::instruction::Initialize {
+            points: vec![
+                irm::RatePointArgs { util_bps: 0, rate_bps: 0 },
+                irm::RatePointArgs { util_bps: 10_000, rate_bps: 500 },
+            ],
+        }
+        .data(),
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pubkey,

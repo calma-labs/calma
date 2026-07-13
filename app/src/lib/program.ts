@@ -17,7 +17,12 @@ if (typeof window !== "undefined" && !window.Buffer) {
 const endpoint =
   import.meta.env.VITE_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
 
-export const connection = new Connection(endpoint, "confirmed");
+const wsEndpoint: string | undefined = import.meta.env.VITE_SOLANA_WS_URL;
+
+export const connection = new Connection(endpoint, {
+  commitment: "confirmed",
+  ...(wsEndpoint ? { wsEndpoint } : {}),
+});
 
 // Read-only provider — no real wallet needed for data fetching
 const readOnlyProvider = new AnchorProvider(
@@ -31,6 +36,10 @@ export const program = new Program<Jbl>(IDL as unknown as Jbl, readOnlyProvider)
 export const irmProgram = new Program<Irm>(IRM_IDL as unknown as Irm, readOnlyProvider);
 export const feedProgram = new Program<Feed>(FEED_IDL as unknown as Feed, readOnlyProvider);
 export const guardProgram = new Program<Guard>(GUARD_IDL as unknown as Guard, readOnlyProvider);
+
+export const IRM_PROGRAM_ID = new PublicKey(
+  "irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk"
+);
 
 export const FEED_PROGRAM_ID = new PublicKey(
   "orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4"
@@ -58,6 +67,14 @@ export function feedPda(
       lendMint.toBuffer(),
     ],
     FEED_PROGRAM_ID,
+  )[0];
+}
+
+/** PDA of the `irm_config` account for a given pool (seeds: ["irm_config", pool]). */
+export function irmStatePda(pool: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("irm_config"), pool.toBuffer()],
+    IRM_PROGRAM_ID,
   )[0];
 }
 

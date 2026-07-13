@@ -7,20 +7,24 @@ import { useFeedsByPair, type FeedByPair } from "@/hooks/program/useFeedsByPair"
 import { useCreateFeed } from "@/hooks/program/useCreateFeed";
 import { useSetFeedFromPyth } from "@/hooks/program/useSetFeedFromPyth";
 import { useSetFeedManualValue } from "@/hooks/program/useSetFeedManualValue";
+import { refreshFeedAccount } from "@/hooks/program/refreshFeedForDevnet";
 import { usePythPrice } from "@/hooks/usePythPrice";
+import { usePythRawData } from "@/hooks/usePythRawData";
 import { usePythFeeds } from "@/hooks/usePythFeeds";
 import { type FeedRulesInput, noRules } from "@/config/feedRules";
 import {
   pythQueryForToken,
   USDC_USD_FEED_ID,
   PLACEHOLDER_MINT,
+  bytesToFeedIdHex,
 } from "@/config/pythFeeds";
-import { getTokenOptions } from "@/config/poolRegistry";
+import { getTokenOptions } from "@/lib/tokenRegistry";
 import { connection, feedPda, feedProgram } from "@/lib/program";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useWalletConnection } from "@solana/react-hooks";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, SendTransactionError, Transaction } from "@solana/web3.js";
+import { MINTER_KEYPAIR } from "@/store/wallet.store";
 import * as anchor from "@coral-xyz/anchor";
 import {
   Activity,
@@ -512,6 +516,60 @@ function ModeToggle({
   );
 }
 
+// ─── live pyth prices for a discovered feed ───────────────────────────────────
+
+function FeedLivePrices({
+  collateralFeedId,
+  lendFeedId,
+}: {
+  collateralFeedId: number[];
+  lendFeedId: number[];
+}) {
+  const collateralHex = useMemo(
+    () => bytesToFeedIdHex(collateralFeedId),
+    [collateralFeedId],
+  );
+  const lendHex = useMemo(
+    () => bytesToFeedIdHex(lendFeedId),
+    [lendFeedId],
+  );
+
+  const { data: collPrice, isLoading: cLoading } = usePythPrice(collateralHex);
+  const { data: lendPr, isLoading: lLoading } = usePythPrice(lendHex);
+
+  const loading = cLoading || lLoading;
+  const liveRatio =
+    collPrice && lendPr && lendPr.price > 0
+      ? collPrice.price / lendPr.price
+      : null;
+
+  return (
+    <div className="mt-2 grid grid-cols-3 gap-3 border-t border-[#c698e5]/10 pt-2 text-[11px]">
+      <div className="flex flex-col gap-0.5">
+        <span className="flex items-center gap-1 text-[#efe0f7]/30">
+          <Activity className="h-2.5 w-2.5 text-[#34d399]" />
+          Live ratio
+        </span>
+        <span className="font-mono text-[#efe0f7]/80 tabular-nums">
+          {loading ? "…" : liveRatio !== null ? formatPrice(liveRatio) : "—"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[#efe0f7]/30">Live coll px</span>
+        <span className="font-mono text-[#efe0f7]/60 tabular-nums">
+          {loading ? "…" : collPrice ? formatPrice(collPrice.price) : "—"}
+        </span>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[#efe0f7]/30">Live lend px</span>
+        <span className="font-mono text-[#efe0f7]/60 tabular-nums">
+          {loading ? "…" : lendPr ? formatPrice(lendPr.price) : "—"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── feed finder (by mint pair) ─────────────────────────────────────────────────
 
 /** Prices on a feed are stored scaled by 1e6 (see `PRICE_SCALE`). */
@@ -987,6 +1045,9 @@ function PythFeedUpdater({
     commit,
     reset,
   } = useSetFeedFromPyth();
+  const [bgPending, setBgPending] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
+  const [bgSignatures, setBgSignatures] = useState<string[]>([]);
 
   const refreshCtx = {
     feed: feed.publicKey,
@@ -1001,25 +1062,80 @@ function PythFeedUpdater({
     lendAccount !== null ||
     signatures.commit.length > 0;
 
+  async function handleBackground() {
+    setBgPending(true);
+    setBgError(null);
+    setBgSignatures([]);
+    try {
+      const sigs = await refreshFeedAccount(
+        connection,
+        feed.publicKey,
+        feed.collateralFeedId,
+        feed.lendFeedId,
+      );
+      setBgSignatures(sigs);
+    } catch (e) {
+      if (e instanceof SendTransactionError) {
+        const anchor = e.logs?.find((l: string) => l.includes("Error Code:") || l.includes("AnchorError"));
+        setBgError(anchor ?? e.message);
+      } else {
+        setBgError(e instanceof Error ? e.message : "Background refresh failed");
+      }
+    } finally {
+      setBgPending(false);
+    }
+  }
+
   return (
     <div className="mt-3 flex flex-col gap-2 border-t border-[#c698e5]/10 pt-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] uppercase tracking-wider text-[#efe0f7]/30">
           Refresh from Pyth Hermes
         </p>
-        {anythingLoaded && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={reset}
+            onClick={handleBackground}
+            disabled={bgPending || busy !== null}
             className={cn(
-              "text-[10px] uppercase tracking-wider text-[#efe0f7]/40",
-              "hover:text-[#efe0f7]/70",
+              "flex items-center gap-1.5 rounded-lg border border-[#efe0f7]/15 bg-[#efe0f7]/[0.04]",
+              "px-2.5 py-1 text-[10px] font-semibold text-[#efe0f7]/50",
+              "hover:bg-[#efe0f7]/[0.08] disabled:opacity-40 disabled:cursor-not-allowed",
             )}
           >
-            Reset
+            {bgPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Send className="h-3 w-3" />
+            )}
+            {bgPending ? "Sending…" : "Run as MINTER"}
           </button>
-        )}
+          {anythingLoaded && (
+            <button
+              type="button"
+              onClick={reset}
+              className={cn(
+                "text-[10px] uppercase tracking-wider text-[#efe0f7]/40",
+                "hover:text-[#efe0f7]/70",
+              )}
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
+      {bgError && <p className="text-[10px] text-[#d45677]">{bgError}</p>}
+      {bgSignatures.map((sig) => (
+        <a
+          key={sig}
+          href={`https://solscan.io/tx/${sig}?cluster=devnet`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-[10px] text-[#34d399]/80 hover:underline break-all"
+        >
+          {sig}
+        </a>
+      ))}
 
       <div className="flex flex-col gap-2">
         <FeedRefreshRow
@@ -1164,12 +1280,20 @@ function ManualFeedUpdater({
   const [lendUsd, setLendUsd] = useState("");
   const { mutateAsync, isPending, error, data: signature } =
     useSetFeedManualValue();
+  const [bgPending, setBgPending] = useState(false);
+  const [bgError, setBgError] = useState<string | null>(null);
+  const [bgSignature, setBgSignature] = useState<string | null>(null);
 
   const parsedCollateral = usdToScaledBn(collateralUsd);
   const parsedLend = usdToScaledBn(lendUsd);
   const canSubmit =
     connected &&
     isAuthority &&
+    parsedCollateral !== null &&
+    parsedLend !== null &&
+    !parsedCollateral.isZero() &&
+    !parsedLend.isZero();
+  const canBg =
     parsedCollateral !== null &&
     parsedLend !== null &&
     !parsedCollateral.isZero() &&
@@ -1184,6 +1308,34 @@ function ManualFeedUpdater({
       collateralMint,
       lendMint,
     });
+  }
+
+  async function handleBackground() {
+    if (!canBg) return;
+    setBgPending(true);
+    setBgError(null);
+    setBgSignature(null);
+    try {
+      const ix = await feedProgram.methods
+        .setValue(parsedCollateral!, parsedLend!)
+        .accountsPartial({ feed: feed.publicKey, authority: feed.authority })
+        .instruction();
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      const tx = new Transaction({ blockhash, lastValidBlockHeight, feePayer: MINTER_KEYPAIR.publicKey }).add(ix);
+      tx.sign(MINTER_KEYPAIR);
+      const sig = await connection.sendRawTransaction(tx.serialize());
+      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+      setBgSignature(sig);
+    } catch (e) {
+      if (e instanceof SendTransactionError) {
+        const anchor = e.logs?.find((l: string) => l.includes("Error Code:") || l.includes("AnchorError"));
+        setBgError(anchor ?? e.message);
+      } else {
+        setBgError(e instanceof Error ? e.message : "Background update failed");
+      }
+    } finally {
+      setBgPending(false);
+    }
   }
 
   return (
@@ -1226,7 +1378,24 @@ function ManualFeedUpdater({
               )}
             />
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleBackground}
+              disabled={!canBg || bgPending || isPending}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border border-[#efe0f7]/15 bg-[#efe0f7]/[0.04]",
+                "px-3 py-1.5 text-[11px] font-semibold text-[#efe0f7]/50",
+                "hover:bg-[#efe0f7]/[0.08] disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
+            >
+              {bgPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Send className="h-3 w-3" />
+              )}
+              {bgPending ? "Sending…" : "Run as MINTER"}
+            </button>
             <button
               type="button"
               onClick={handleSubmit}
@@ -1245,6 +1414,19 @@ function ManualFeedUpdater({
               {isPending ? "Updating…" : "Update"}
             </button>
           </div>
+          {bgError && (
+            <p className="text-[10px] text-[#d45677]">{bgError}</p>
+          )}
+          {bgSignature && (
+            <a
+              href={`https://solscan.io/tx/${bgSignature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[10px] text-[#34d399] hover:underline break-all"
+            >
+              {bgSignature}
+            </a>
+          )}
           {error && (
             <p className="text-[10px] text-[#d45677]">
               {error instanceof Error ? error.message : "Update failed"}
@@ -1373,24 +1555,30 @@ function FeedFinderTool() {
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-[11px]">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[#efe0f7]/30">Ratio (coll/lend)</span>
+                    <span className="text-[#efe0f7]/30">Program ratio</span>
                     <span className="font-mono text-[#efe0f7]/80 tabular-nums">
                       {formatRatio(f.collateralPrice, f.lendPrice)}
                     </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[#efe0f7]/30">Collateral px</span>
+                    <span className="text-[#efe0f7]/30">Program coll px</span>
                     <span className="font-mono text-[#efe0f7]/60 tabular-nums">
                       {formatScaled(f.collateralPrice)}
                     </span>
                   </div>
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-[#efe0f7]/30">Lend px</span>
+                    <span className="text-[#efe0f7]/30">Program lend px</span>
                     <span className="font-mono text-[#efe0f7]/60 tabular-nums">
                       {formatScaled(f.lendPrice)}
                     </span>
                   </div>
                 </div>
+                {(f.source === "Pyth" || f.source === "PythPush") && (
+                  <FeedLivePrices
+                    collateralFeedId={f.collateralFeedId}
+                    lendFeedId={f.lendFeedId}
+                  />
+                )}
                 <div className="mt-2 flex items-center justify-between text-[10px] text-[#efe0f7]/30">
                   <span className="font-mono">auth {shorten(f.authority.toBase58())}</span>
                   <span>
@@ -1406,6 +1594,20 @@ function FeedFinderTool() {
                 />
               </div>
             ))}
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-[10px] uppercase tracking-wider text-[#efe0f7]/35 hover:text-[#efe0f7]/60">
+                <Plus className="h-3 w-3 transition-transform group-open:rotate-45" />
+                Create another feed for this pair
+              </summary>
+              <div className="mt-3">
+                <CreateFeedCard
+                  collateralMint={collateralMint!}
+                  lendMint={lendMint!}
+                  collateralSymbol={collateralSymbol}
+                  lendSymbol={lendSymbol}
+                />
+              </div>
+            </details>
           </div>
         ) : isFetched && collateralMint && lendMint ? (
           <div className="flex flex-col gap-3">

@@ -85,7 +85,7 @@ export async function setupTest(
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
   const feedAuthority = provider.wallet.publicKey;
   const [feedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("feed"), feedAuthority.toBuffer()],
+    [Buffer.from("feed"), feedAuthority.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
     feedProgram.programId
   );
 
@@ -133,7 +133,10 @@ export async function setupTest(
   // Initialize the IRM for this pool (unless the caller supplied an explicit rate program).
   if (!opts.rateProgram) {
     await irmProgram.methods
-      .initialize()
+      .initialize([
+        { utilBps: 0, rateBps: 0 },
+        { utilBps: 10_000, rateBps: 500 },
+      ])
       .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
       .signers([payer, authority])
       .rpc();
@@ -154,7 +157,13 @@ export async function setupTest(
   // Manual price source: feed ids must be all-zero and max_pyth_age is ignored.
   if (!(await connection.getAccountInfo(feedPda))) {
     await feedProgram.methods
-      .create({ manual: {} }, Array(32).fill(0), Array(32).fill(0), 0)
+      .create(
+        { manual: {} },
+        Array(32).fill(0),
+        Array(32).fill(0),
+        0,
+        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+      )
       .accounts({
         authority: feedAuthority,
         collateralMint,
@@ -169,12 +178,12 @@ export async function setupTest(
   // the CPI inside create reads a non-zero value.
   await feedProgram.methods
     .setValue(new BN(1_000_000), new BN(1_000_000))
-    .accounts({ authority: feedAuthority })
+    .accounts({ authority: feedAuthority, feed: feedPda })
     .rpc();
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent)
+    .create(ltvPercent, 90)
     .accounts({
       pool,
       collateralMint,
@@ -230,7 +239,7 @@ export async function setFeedPrice(
 ): Promise<void> {
   await setup.feedProgram.methods
     .setValue(new BN(collateralPrice), new BN(lendPrice))
-    .accounts({ authority: setup.feedAuthority })
+    .accounts({ authority: setup.feedAuthority, feed: setup.feedPda })
     .rpc();
 }
 

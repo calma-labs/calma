@@ -96,7 +96,10 @@ fn test_flow() {
 
     // ── Feed account ──────────────────────────────────────────────────────────
     // payer is both the feed authority and the pool payer — it can sign set_value.
-    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref(), col_mint.as_ref(), lend_mint.as_ref()],
+        &feed_id,
+    );
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
         &feed::instruction::Create {
@@ -104,6 +107,7 @@ fn test_flow() {
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
             max_pyth_age_secs: 0,
+            rules: feed::state::FeedRules::default(),
         }
         .data(),
         feed::accounts::Create {
@@ -129,7 +133,13 @@ fn test_flow() {
     );
     let irm_init_ix = Instruction::new_with_bytes(
         irm_id,
-        &irm::instruction::Initialize {}.data(),
+        &irm::instruction::Initialize {
+            points: vec![
+                irm::RatePointArgs { util_bps: 0, rate_bps: 0 },
+                irm::RatePointArgs { util_bps: 10_000, rate_bps: 500 },
+            ],
+        }
+        .data(),
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pk,

@@ -85,6 +85,7 @@ export function ClosePositionModal({
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),
       collateralMint: new PublicKey(poolData.collateral_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       userCollateralAta,
       userLendAta,
       debtRaw: new BN(debtRaw.toString()),

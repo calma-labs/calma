@@ -94,6 +94,7 @@ export function PoolDetailPage() {
     await withdrawMutation.mutateAsync({
       pool: poolPubKey,
       collateralMint: new PublicKey(poolData.collateral_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       userTokenAccount,
       amount: rawAmount,
     });

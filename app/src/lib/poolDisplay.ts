@@ -1,4 +1,4 @@
-import { getPoolMeta } from '@/config/poolRegistry'
+import { getTokenMeta } from '@/lib/tokenRegistry'
 import { PoolWithIrm } from '@jbl/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import type { Pool } from '@/types/pool'
@@ -13,15 +13,26 @@ import type { Pool } from '@/types/pool'
  */
 export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolWithIrm, lendDecimals: number): Pool {
     const addr = publicKey.toBase58()
-    const meta = getPoolMeta(addr)
+    const lendMintAddr = new PublicKey(pd.lend_mint).toBase58()
+    const collateralMintAddr = new PublicKey(pd.collateral_mint).toBase58()
+
+    const meta = getTokenMeta(lendMintAddr)
+    const collateralMeta = getTokenMeta(collateralMintAddr)
+
     const lendScale = 10 ** lendDecimals
 
     return {
         id: addr,
         address: addr,
-        ...meta,
-        category: meta.category,
-        binancePerp: meta.binancePerp,
+        name: meta?.name ?? 'Unknown',
+        symbol: meta?.symbol ?? 'Unknown',
+        icon: meta?.icon ?? '',
+        category: meta?.category ?? 'volatile',
+        binancePerp: meta?.binancePerp,
+        lendSymbol: meta?.symbol ?? 'Unknown',
+        lendIcon: meta?.icon ?? '',
+        collateralSymbol: collateralMeta?.symbol ?? 'Unknown',
+        collateralIcon: collateralMeta?.icon ?? '',
         account: pd,
         supplyAPY: pd.supply_apy_bps() / 100,
         borrowAPY: pd.borrow_apy_bps() / 100,

@@ -5,6 +5,11 @@ import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
 import { setupTest, participateInPool, TestSetup } from "./utils";
 
+const FLAT_100_BPS = [
+    { utilBps: 0, rateBps: 100 },
+    { utilBps: 10_000, rateBps: 100 },
+];
+
 describe("irm initialize", () => {
     const provider = AnchorProvider.env();
     anchor.setProvider(provider);
@@ -30,9 +35,9 @@ describe("irm initialize", () => {
         );
     });
 
-    it("initializes irm config with default flat 100 bps curve", async () => {
+    it("initializes irm config with flat 100 bps curve", async () => {
         await program.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({
                 pool,
                 authority: authority.publicKey,
@@ -43,13 +48,14 @@ describe("irm initialize", () => {
 
         const config = await program.account.irmState.fetch(irmConfig);
         expect(config.pool.toString()).to.equal(pool.toString());
-        const c0 = config.model.curves[0];
-        expect(c0.b.toNumber()).to.equal(100);
-        expect(c0.enabled).to.not.equal(0);
+        expect(config.model.points[0].utilBps).to.equal(0);
+        expect(config.model.points[0].rateBps).to.equal(100);
+        expect(config.model.points[1].utilBps).to.equal(10_000);
+        expect(config.model.points[1].rateBps).to.equal(100);
+        expect(config.model.len).to.equal(2);
     });
 
-    it("calculates borrow rate from default flat curve", async () => {
-        // default: flat 100 bps regardless of utilization
+    it("calculates borrow rate from flat 100 bps curve", async () => {
         const result = await program.methods
             .borrowRate(new BN(5000))
             .accounts({ pool })
@@ -70,7 +76,7 @@ describe("irm initialize", () => {
         );
 
         await irmProgram.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
             .signers([payer, authority])
             .rpc();
@@ -126,7 +132,7 @@ describe("irm initialize", () => {
         );
 
         await program.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({
                 pool: pool2,
                 authority: authority.publicKey,

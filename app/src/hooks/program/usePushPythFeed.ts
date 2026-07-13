@@ -92,8 +92,9 @@ export function usePushPythFeed() {
             if (existing) {
                 const source = existing.config.source as Record<string, unknown>
                 if (!('pythPush' in source)) {
+                    const kind = 'pyth' in source ? 'Pyth pull' : 'Manual'
                     throw new Error(
-                        "This mint pair's feed is not a Pyth push feed — it can't accept sponsored push updates.",
+                        `This mint pair's feed is a ${kind} feed — it can't accept sponsored push updates. Feeds are immutable; use a different mint pair.`,
                     )
                 }
                 const boundColl = existing.config.collateralFeedId as number[]

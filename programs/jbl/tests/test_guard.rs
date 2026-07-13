@@ -177,7 +177,10 @@ fn prepare_pool(
         Pubkey::find_program_address(&[b"lend_vault", pool_pubkey.as_ref()], &program_id);
     let (lp_mint, _) =
         Pubkey::find_program_address(&[b"lp_mint", pool_pubkey.as_ref()], &program_id);
-    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref(), collateral_mint.as_ref(), lend_mint.as_ref()],
+        &feed_id,
+    );
     let (irm_config, _) =
         Pubkey::find_program_address(&[b"irm_config", pool_pubkey.as_ref()], &irm_id);
 
@@ -189,6 +192,7 @@ fn prepare_pool(
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
             max_pyth_age_secs: 0,
+            rules: feed::state::FeedRules::default(),
         }
         .data(),
         feed::accounts::Create {
@@ -228,7 +232,13 @@ fn prepare_pool(
     );
     let irm_init_ix = Instruction::new_with_bytes(
         irm_id,
-        &irm::instruction::Initialize {}.data(),
+        &irm::instruction::Initialize {
+            points: vec![
+                irm::RatePointArgs { util_bps: 0, rate_bps: 0 },
+                irm::RatePointArgs { util_bps: 10_000, rate_bps: 500 },
+            ],
+        }
+        .data(),
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pubkey,

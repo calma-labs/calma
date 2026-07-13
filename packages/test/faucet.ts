@@ -214,7 +214,7 @@ describe("hardcoded minter faucet", () => {
       const irmProgram = anchor.workspace.Irm as anchor.Program<Irm>;
       const feedAuthority = provider.wallet.publicKey;
       const [feedPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("feed"), feedAuthority.toBuffer()],
+        [Buffer.from("feed"), feedAuthority.toBuffer(), testMint.toBuffer(), lendMint.toBuffer()],
         feedProgram.programId
       );
       const [irmConfigPda] = PublicKey.findProgramAddressSync(
@@ -224,14 +224,27 @@ describe("hardcoded minter faucet", () => {
 
       if (!(await connection.getAccountInfo(feedPda))) {
         await feedProgram.methods
-          .create()
-          .accounts({ authority: feedAuthority, payer: payer.publicKey })
+          .create(
+            { manual: {} },
+            Array(32).fill(0),
+            Array(32).fill(0),
+            0,
+            { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+          )
+          .accounts({ authority: feedAuthority, collateralMint: testMint, lendMint, payer: payer.publicKey })
           .signers([payer])
           .rpc();
       }
+      await feedProgram.methods
+        .setValue(new BN(1_000_000), new BN(1_000_000))
+        .accounts({ authority: feedAuthority, feed: feedPda })
+        .rpc();
 
       await irmProgram.methods
-        .initialize()
+        .initialize([
+          { utilBps: 0, rateBps: 0 },
+          { utilBps: 10_000, rateBps: 500 },
+        ])
         .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
         .signers([payer, authority])
         .rpc();
@@ -247,7 +260,7 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75)
+        .create(75, 90)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint

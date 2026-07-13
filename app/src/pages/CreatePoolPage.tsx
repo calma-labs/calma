@@ -1,10 +1,11 @@
 import { BackButton } from "@/components/common/BackButton";
 import { IrmCurveChart, type IrmPoint } from "@/components/pool/charts/IrmCurveChart";
+import { FeedPairPanel } from "@/components/pool/FeedPairPanel";
 import {
   useCreateLendingPool,
   type CreatePoolResult,
 } from "@/hooks/program/useCreateLendingPool";
-import { getTokenOptions } from "@/config/poolRegistry";
+import { getTokenOptions } from "@/lib/tokenRegistry";
 import { TokenSelect } from "@/components/ui/token-select";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -16,10 +17,11 @@ import {
   ExternalLink,
   Loader2,
   Plus,
+  Radio,
   Settings2,
   ShieldCheck,
 } from "lucide-react";
-import { useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -226,6 +228,23 @@ export function CreatePoolPage() {
   const mintsReady = !!lendAddr && !!collateralAddr && lendAddr !== collateralAddr;
   const canSubmit = connected && mintsReady;
 
+  const collateralSymbol = useMemo(
+    () => TOKEN_OPTIONS.find((o) => o.address === collateralAddr)?.symbol ?? "",
+    [collateralAddr],
+  );
+  const lendSymbol = useMemo(
+    () => TOKEN_OPTIONS.find((o) => o.address === lendAddr)?.symbol ?? "",
+    [lendAddr],
+  );
+  const collateralMintPk = useMemo(
+    () => (collateralAddr ? new PublicKey(collateralAddr) : null),
+    [collateralAddr],
+  );
+  const lendMintPk = useMemo(
+    () => (lendAddr ? new PublicKey(lendAddr) : null),
+    [lendAddr],
+  );
+
   const { mutateAsync, isPending } = useCreateLendingPool({
     onCreated: (r) => setResult(r),
   });
@@ -368,6 +387,25 @@ export function CreatePoolPage() {
                   ? "Lend and collateral tokens must be different"
                   : "Select both tokens"}
               </p>
+            )}
+          </Section>
+
+          {/* Price Feed */}
+          <Section
+            title="Price Feed"
+            icon={<Radio className="h-4 w-4" />}
+          >
+            {!mintsReady ? (
+              <p className="text-xs text-surface-foreground/35">
+                Select both tokens above to configure the price feed.
+              </p>
+            ) : (
+              <FeedPairPanel
+                collateralMint={collateralMintPk!}
+                lendMint={lendMintPk!}
+                collateralSymbol={collateralSymbol}
+                lendSymbol={lendSymbol}
+              />
             )}
           </Section>
 

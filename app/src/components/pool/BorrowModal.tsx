@@ -81,6 +81,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     await borrowMutation.mutateAsync({
       pool: new PublicKey(pool.address),
       lendMint: new PublicKey(poolData.lend_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       amount: rawAmount,
     });
 

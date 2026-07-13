@@ -43,7 +43,6 @@ export function useCreateFeed() {
 
             const payer = new PublicKey(wallet.account.publicKey)
 
-            // `feed` is a PDA of [b"feed", authority] — Anchor auto-derives it.
             const createIx = await feedProgram.methods
                 .create(
                     { pyth: {} },

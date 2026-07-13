@@ -1,16 +1,15 @@
 import { useWalletConnection } from '@solana/react-hooks'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, irmProgram, program as readonlyProgram } from '../../lib/program'
+import { connection, feedPda, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmProgram, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
 
-const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
-const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4')
-
-/** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
-const POOL_SPACE = 41_256
+/** Space needed for a Pool account (8-byte discriminator + zero-copy struct).
+ * Must stay in sync with the on-chain `POOL_SPACE` constant exported by jbl.
+ * Source of truth: `target/idl/jbl.json` → constants[name=POOL_SPACE].value */
+const POOL_SPACE = 49_528
 
 export interface IrmRatePointInput {
     /** Utilization in basis points (0..=10_000). First point must be 0. */
@@ -56,10 +55,7 @@ async function createPool(
         IRM_PROGRAM_ID,
     )
 
-    const [feedState] = PublicKey.findProgramAddressSync(
-        [Buffer.from('feed'), payer.toBuffer()],
-        FEED_PROGRAM_ID,
-    )
+    const feedState = feedPda(payer, params.collateralMint, params.lendMint)
 
     const ratePoints = (params.ratePoints ?? DEFAULT_RATE_POINTS).map((p) => ({
         utilBps: p.utilBps,

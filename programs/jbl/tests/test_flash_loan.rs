@@ -129,7 +129,10 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let (lp_mint_pda, _) = find_lp_mint_pda(&pool_pubkey, &program_id);
 
     // ── Feed account (payer is authority so it can sign set_value) ────────────
-    let (feed_pda, _) = Pubkey::find_program_address(&[b"feed", payer.pubkey().as_ref()], &feed_id);
+    let (feed_pda, _) = Pubkey::find_program_address(
+        &[b"feed", payer.pubkey().as_ref(), collateral_mint_kp.pubkey().as_ref(), lend_mint_kp.pubkey().as_ref()],
+        &feed_id,
+    );
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
         &feed::instruction::Create {
@@ -137,6 +140,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
             max_pyth_age_secs: 0,
+            rules: feed::state::FeedRules::default(),
         }
         .data(),
         feed::accounts::Create {
@@ -183,7 +187,13 @@ fn setup(seed_lend_amount: u64) -> Setup {
     );
     let irm_init_ix = Instruction::new_with_bytes(
         irm_id,
-        &irm::instruction::Initialize {}.data(),
+        &irm::instruction::Initialize {
+            points: vec![
+                irm::RatePointArgs { util_bps: 0, rate_bps: 0 },
+                irm::RatePointArgs { util_bps: 10_000, rate_bps: 500 },
+            ],
+        }
+        .data(),
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pubkey,

@@ -38,6 +38,8 @@ export interface FeedByPair {
     lastUpdatedTs: number
     collateralFeedId: number[]
     lendFeedId: number[]
+    /** Raw wire bytes (discriminator included) for WASM parsing via `FeedAccount.from_bytes`. */
+    rawAccountData: Uint8Array
 }
 
 /** Coerce Anchor's BN/number/bigint scalars into a bigint. */
@@ -90,6 +92,7 @@ async function fetchFeedsByPair(
             lastUpdatedTs: Number(toBigInt(state.lastUpdatedTs)),
             collateralFeedId: config.collateralFeedId as number[],
             lendFeedId: config.lendFeedId as number[],
+            rawAccountData: new Uint8Array(account.data),
         }
     })
 }

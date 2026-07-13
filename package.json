@@ -14,11 +14,15 @@
     "build": "bun run wasm && bun run --filter @jbl/app build",
     "preview": "bun run --filter @jbl/app preview",
     "test": "npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 './packages/test/*.ts'",
+    "test:surfpool": "npx ts-mocha -p ./packages/test/tsconfig.json -t 600000 './packages/test/surfpool.ts'",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
   "devDependencies": {
     "prettier": "^3.8.3",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@solana/surfpool": "^1.4.0"
   }
 }

@@ -1,6 +1,6 @@
 import { useValidLendingAccounts } from "@/hooks/program/useValidLendingAccounts";
 import { useFaucet, useFaucetAll } from "@/hooks/useFaucet";
-import { getPoolMeta } from "@/config/poolRegistry";
+import { getTokenMeta } from "@/lib/tokenRegistry";
 import { cn } from "@/lib/utils";
 import { PublicKey } from "@solana/web3.js";
 import { Droplets, Loader2 } from "lucide-react";
@@ -65,19 +65,26 @@ export function FaucetMenu() {
       return;
     }
 
-    // Pools are already validated — just build mint → {symbol, icon} from registry
+    // Build mint → {symbol, icon} by looking up each mint address directly.
     const mintMeta = new Map<string, { mint: PublicKey; symbol: string; icon: string }>();
     for (const p of pools) {
-      const meta = getPoolMeta(p.publicKey.toBase58());
-      mintMeta.set(new PublicKey(p.account.collateral_mint).toBase58(), {
-        mint: new PublicKey(p.account.collateral_mint),
-        symbol: meta.collateralSymbol,
-        icon: meta.collateralIcon,
+      const collateralMint = new PublicKey(p.account.collateral_mint);
+      const lendMint = new PublicKey(p.account.lend_mint);
+      const collateralMintAddr = collateralMint.toBase58();
+      const lendMintAddr = lendMint.toBase58();
+
+      const collateralMeta = getTokenMeta(collateralMintAddr);
+      mintMeta.set(collateralMintAddr, {
+        mint: collateralMint,
+        symbol: collateralMeta?.symbol ?? 'Unknown',
+        icon: collateralMeta?.icon ?? '',
       });
-      mintMeta.set(new PublicKey(p.account.lend_mint).toBase58(), {
-        mint: new PublicKey(p.account.lend_mint),
-        symbol: meta.lendSymbol,
-        icon: meta.lendIcon,
+
+      const lendMeta = getTokenMeta(lendMintAddr);
+      mintMeta.set(lendMintAddr, {
+        mint: lendMint,
+        symbol: lendMeta?.symbol ?? 'Unknown',
+        icon: lendMeta?.icon ?? '',
       });
     }
 

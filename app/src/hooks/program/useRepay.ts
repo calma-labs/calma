@@ -2,6 +2,7 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
@@ -32,7 +33,7 @@ export function useRepay() {
             const tx = await program.methods
                 .repay(amount)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .accounts({ pool, lendMint, authority } as any)
+                .accounts({ pool, lendMint, authority, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool) } as any)
                 .transaction()
 
             tx.feePayer = authority

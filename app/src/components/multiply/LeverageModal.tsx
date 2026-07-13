@@ -100,6 +100,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),
       collateralMint: new PublicKey(poolData.collateral_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       userCollateralAta,
       userLendAta,
       amountRaw,

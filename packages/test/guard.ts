@@ -162,16 +162,27 @@ describe("jbl create with guard", () => {
 
     // Create the feed once (shared across both sub-tests).
     [feedPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("feed"), payer.publicKey.toBuffer()],
+      [Buffer.from("feed"), payer.publicKey.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
       feedProgram.programId
     );
     if (!(await provider.connection.getAccountInfo(feedPda))) {
       await feedProgram.methods
-        .create()
-        .accounts({ authority: payer.publicKey, payer: payer.publicKey })
+        .create(
+          { manual: {} },
+          Array(32).fill(0),
+          Array(32).fill(0),
+          0,
+          { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+        )
+        .accounts({ authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
         .signers([payer])
         .rpc();
     }
+    await feedProgram.methods
+      .setValue(new BN(1_000_000), new BN(1_000_000))
+      .accounts({ authority: payer.publicKey, feed: feedPda })
+      .signers([payer])
+      .rpc();
 
     // Deploy a guard owned by guardAuthority.
     guardPda = findGuardPda(guardAuthority.publicKey, guardProgram.programId);
@@ -193,7 +204,10 @@ describe("jbl create with guard", () => {
     );
 
     await irmProgram.methods
-      .initialize()
+      .initialize([
+        { utilBps: 0, rateBps: 0 },
+        { utilBps: 10_000, rateBps: 500 },
+      ])
       .accounts({ pool, authority: poolAuthority.publicKey, payer: payer.publicKey })
       .signers([payer, poolAuthority])
       .rpc();
@@ -208,7 +222,7 @@ describe("jbl create with guard", () => {
     });
 
     await jblProgram.methods
-      .create(75)
+      .create(75, 90)
       .accounts({
         pool,
         collateralMint,

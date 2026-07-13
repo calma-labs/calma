@@ -1,4 +1,4 @@
-import { getPoolMeta } from '@/config/poolRegistry'
+import { getTokenMeta } from '@/lib/tokenRegistry'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
 import type {
     BorrowPosition,
@@ -54,14 +54,15 @@ export function useLendPositions(enabled = true) {
 
             // Rough earned estimate (~1 month at current APY). No historical data on-chain.
             const earnedEstimate = +(supplied * (pool.account.supply_apy_bps() / 10_000) / 12).toFixed(4)
-            const meta = getPoolMeta(pool.publicKey.toBase58())
+            const lendMeta = getTokenMeta(new PublicKey(pool.account.lend_mint).toBase58())
+            const collateralMeta = getTokenMeta(new PublicKey(pool.account.collateral_mint).toBase58())
 
             return [{
                 id: pool.publicKey.toBase58(),
-                asset: meta.symbol,
-                icon: meta.icon,
-                collateralAsset: meta.collateralSymbol,
-                collateralIcon: meta.collateralIcon,
+                asset: lendMeta?.symbol ?? 'Unknown',
+                icon: lendMeta?.icon ?? '',
+                collateralAsset: collateralMeta?.symbol ?? 'Unknown',
+                collateralIcon: collateralMeta?.icon ?? '',
                 supplied,
                 apy: pool.account.supply_apy_bps() / 100,
                 earned: earnedEstimate,
@@ -108,16 +109,17 @@ export function useBorrowPositions(enabled = true) {
             const healthFactorBps = pool.account.health_factor(pos)
             const liqPriceBps = pool.account.liq_price(pos)
 
-            const meta = getPoolMeta(pool.publicKey.toBase58())
+            const lendMeta = getTokenMeta(new PublicKey(pool.account.lend_mint).toBase58())
+            const collateralMeta = getTokenMeta(new PublicKey(pool.account.collateral_mint).toBase58())
 
             return [{
                 id: pool.publicKey.toBase58(),
                 poolId: pool.publicKey.toBase58(),
-                collateralAsset: meta.collateralSymbol,
-                collateralIcon: meta.collateralIcon,
+                collateralAsset: collateralMeta?.symbol ?? 'Unknown',
+                collateralIcon: collateralMeta?.icon ?? '',
                 collateralAmount,
-                borrowedAsset: meta.lendSymbol,
-                borrowedIcon: meta.lendIcon,
+                borrowedAsset: lendMeta?.symbol ?? 'Unknown',
+                borrowedIcon: lendMeta?.icon ?? '',
                 debtAmount,
                 borrowAPY: pool.account.borrow_apy_bps() / 100,
                 supplyAPY: pool.account.supply_apy_bps() / 100,

@@ -63,7 +63,7 @@ export function ParticipateModal({
   }
 
   const canSubmit =
-    !!amount && parseFloat(amount) > 0 && !isPending && !!wallet;
+    !!amount && parseFloat(amount) > 0 && parseFloat(amount) <= limit && limit > 0 && !isPending && !!wallet;
 
   return (
     <div
