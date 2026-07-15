@@ -18,20 +18,13 @@ pub mod feed {
 
     pub fn create(
         ctx: Context<Create>,
+        id: u8,
         source: PriceSource,
         collateral_feed_id: [u8; 32],
         lend_feed_id: [u8; 32],
-        max_pyth_age_secs: u32,
         rules: FeedRules,
     ) -> Result<()> {
-        create::create_handler(
-            ctx,
-            source,
-            collateral_feed_id,
-            lend_feed_id,
-            max_pyth_age_secs,
-            rules,
-        )
+        create::create_handler(ctx, id, source, collateral_feed_id, lend_feed_id, rules)
     }
 
     pub fn set_value(

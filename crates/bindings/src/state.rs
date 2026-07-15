@@ -140,6 +140,17 @@ impl PoolAccount {
         self.0.max_feed_age_secs
     }
 
+    /// Delegates to `state::Pool::is_feed_snapshot_stale`. Given the feed's
+    /// on-chain `last_updated_ts` and the expected clock at borrow-tx landing,
+    /// returns `true` iff `borrow` / `withdraw_collateral` / `borrow_with_hedge`
+    /// would reject the price as `StaleOracle`. Distinct from
+    /// `FeedAccount::is_pyth_price_stale`, which only asks whether a *fresh
+    /// Hermes update* could be posted; the on-chain snapshot may still be
+    /// valid on its own.
+    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
+        self.0.is_feed_snapshot_stale(feed_last_updated_ts, clock_ts)
+    }
+
     /// IRM state (IRM config) pubkey as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn irm_state(&self) -> Vec<u8> {
@@ -403,8 +414,8 @@ impl FeedAccount {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn max_pyth_age_secs(&self) -> u32 {
-        self.0.config.max_pyth_age_secs
+    pub fn max_age_ms(&self) -> u32 {
+        self.0.rules.max_age_ms
     }
 
     #[wasm_bindgen(getter)]
@@ -426,13 +437,13 @@ impl FeedAccount {
     /// Collateral mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
     #[wasm_bindgen(getter)]
     pub fn collateral_mint(&self) -> Vec<u8> {
-        self.0.data.collateral_mint.to_bytes().to_vec()
+        self.0.collateral_mint.to_bytes().to_vec()
     }
 
     /// Lend mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
     #[wasm_bindgen(getter)]
     pub fn lend_mint(&self) -> Vec<u8> {
-        self.0.data.lend_mint.to_bytes().to_vec()
+        self.0.lend_mint.to_bytes().to_vec()
     }
 
     /// Collateral Pyth feed ID as raw 32 bytes.
@@ -475,6 +486,14 @@ impl FeedAccount {
     #[wasm_bindgen(getter)]
     pub fn max_price(&self) -> u64 {
         self.0.rules.max_price
+    }
+
+    /// Delegates to `feed_state::Feed::is_pyth_price_stale`. Callers pass their
+    /// expected `set_from_pyth[_push]` landing time (usually `now +
+    /// tx_confirmation_margin`) so the UI can predict `PriceTooOld` /
+    /// `StalePushPrice` and disable the action before spending a transaction.
+    pub fn is_pyth_price_stale(&self, publish_time: i64, clock_ts: i64) -> bool {
+        self.0.is_pyth_price_stale(publish_time, clock_ts)
     }
 }
 
@@ -908,6 +927,120 @@ impl RateHedgeMatchAccount {
     }
 }
 
+// ── feed freshness ────────────────────────────────────────────────────────────
+
+/// Result of the combined feed freshness check — both the on-chain snapshot
+/// gate and the Hermes-price gate. Produced by [`FeedFreshnessResult::check`].
+#[wasm_bindgen]
+pub struct FeedFreshnessResult {
+    /// True when borrow/withdraw would revert `StaleOracle` and a Hermes refresh
+    /// cannot fix it (source isn't pull-Pyth, or Hermes prices are themselves too old).
+    pub will_fail: bool,
+    /// True when the on-chain snapshot exceeds `pool.max_feed_age_secs`.
+    pub snapshot_stale: bool,
+    /// Seconds since the on-chain snapshot was last written.
+    pub snapshot_age_secs: i64,
+    /// True when the collateral Hermes price is too old for `feed.rules.max_age_ms`.
+    pub hermes_coll_stale: bool,
+    /// True when the lend Hermes price is too old for `feed.rules.max_age_ms`.
+    pub hermes_lend_stale: bool,
+    /// Age (seconds) of the collateral Hermes price. 0 when unavailable.
+    pub hermes_coll_age_secs: i64,
+    /// Age (seconds) of the lend Hermes price. 0 when unavailable.
+    pub hermes_lend_age_secs: i64,
+    /// Pool-level max feed age in seconds (for display).
+    pub pool_max_age_secs: u32,
+    /// Feed-level Pyth max age in seconds, derived from `rules.max_age_ms` (for display).
+    pub feed_max_age_secs: u32,
+}
+
+#[wasm_bindgen]
+impl FeedFreshnessResult {
+    /// Evaluate the full feed freshness state.
+    ///
+    /// * `pool` – parsed pool account
+    /// * `feed` – parsed feed account
+    /// * `coll_hermes_ts` – Hermes `publish_time` for the collateral side (Unix seconds);
+    ///   pass `0` when unavailable or when the feed is not pull-Pyth.
+    /// * `lend_hermes_ts` – same for the lend side.
+    /// * `now` – current Unix timestamp in seconds.
+    ///
+    /// When `snapshot_stale` is false the Hermes timestamps are ignored and both
+    /// Hermes fields are returned as `false`/`0`. The caller is therefore free to
+    /// skip the Hermes fetch entirely when the snapshot is fresh — call `check`
+    /// once with `0, 0` to obtain the snapshot result, and only fetch Hermes (and
+    /// call `check` again with real timestamps) when `snapshot_stale` is true.
+    pub fn check(
+        pool: &PoolAccount,
+        feed: &FeedAccount,
+        coll_hermes_ts: i64,
+        lend_hermes_ts: i64,
+        now: i64,
+    ) -> FeedFreshnessResult {
+        let snapshot_age_secs = now.saturating_sub(feed.0.state.last_updated_ts);
+        let snapshot_stale = pool.0.is_feed_snapshot_stale(feed.0.state.last_updated_ts, now);
+        let pool_max_age_secs = pool.0.max_feed_age_secs;
+        let feed_max_age_secs = feed.0.rules.max_age_ms / 1000;
+
+        if !snapshot_stale {
+            return FeedFreshnessResult {
+                will_fail: false,
+                snapshot_stale: false,
+                snapshot_age_secs,
+                hermes_coll_stale: false,
+                hermes_lend_stale: false,
+                hermes_coll_age_secs: 0,
+                hermes_lend_age_secs: 0,
+                pool_max_age_secs,
+                feed_max_age_secs,
+            };
+        }
+
+        // Stale snapshot, but the source can't be refreshed by the app.
+        if feed.0.config.source != feed_state::PriceSource::Pyth {
+            return FeedFreshnessResult {
+                will_fail: true,
+                snapshot_stale: true,
+                snapshot_age_secs,
+                hermes_coll_stale: false,
+                hermes_lend_stale: false,
+                hermes_coll_age_secs: 0,
+                hermes_lend_age_secs: 0,
+                pool_max_age_secs,
+                feed_max_age_secs,
+            };
+        }
+
+        // Stale snapshot + pull-Pyth: check whether Hermes prices are fresh enough.
+        let hermes_coll_stale =
+            coll_hermes_ts == 0 || feed.0.is_pyth_price_stale(coll_hermes_ts, now);
+        let hermes_lend_stale =
+            lend_hermes_ts == 0 || feed.0.is_pyth_price_stale(lend_hermes_ts, now);
+        let hermes_coll_age_secs = if coll_hermes_ts == 0 {
+            0
+        } else {
+            now.saturating_sub(coll_hermes_ts)
+        };
+        let hermes_lend_age_secs = if lend_hermes_ts == 0 {
+            0
+        } else {
+            now.saturating_sub(lend_hermes_ts)
+        };
+
+        FeedFreshnessResult {
+            will_fail: hermes_coll_stale || hermes_lend_stale,
+            snapshot_stale: true,
+            snapshot_age_secs,
+            hermes_coll_stale,
+            hermes_lend_stale,
+            hermes_coll_age_secs,
+            hermes_lend_age_secs,
+            pool_max_age_secs,
+            feed_max_age_secs,
+        }
+    }
+}
+
 // ── standalone display helpers ────────────────────────────────────────────────
 
 /// Effective leverage of a position in basis points: `collateral / (collateral − debt) × 10_000`.
@@ -1023,7 +1156,7 @@ mod tests {
     /// not a filler. A zeroed body is a valid `Manual` feed (source = 0).
     fn feed_wire() -> Vec<u8> {
         use anchor_lang::Discriminator;
-        let mut v = vec![0u8; DISCRIMINATOR + 224];
+        let mut v = vec![0u8; DISCRIMINATOR + 225];
         v[..DISCRIMINATOR].copy_from_slice(&Feed::DISCRIMINATOR);
         v
     }

@@ -9,7 +9,6 @@ import { useSetFeedFromPyth } from "@/hooks/program/useSetFeedFromPyth";
 import { useSetFeedManualValue } from "@/hooks/program/useSetFeedManualValue";
 import { refreshFeedAccount } from "@/hooks/program/refreshFeedForDevnet";
 import { usePythPrice } from "@/hooks/usePythPrice";
-import { usePythRawData } from "@/hooks/usePythRawData";
 import { usePythFeeds } from "@/hooks/usePythFeeds";
 import { type FeedRulesInput, noRules } from "@/config/feedRules";
 import {
@@ -125,14 +124,9 @@ function FeedPusherTool() {
     () => (tokenAddr ? tryParsePubkey(tokenAddr) : null),
     [tokenAddr],
   );
-  const feedAddress =
-    connected && wallet && collateralMint
-      ? feedPda(
-          new PublicKey(wallet.account.publicKey),
-          collateralMint,
-          PLACEHOLDER_MINT,
-        ).toBase58()
-      : null;
+  const feedAddress = collateralMint
+    ? feedPda(collateralMint, PLACEHOLDER_MINT).toBase58()
+    : null;
 
   // Sponsored `PriceUpdateV2` account pubkeys — only meaningful in push mode
   // but cheap to derive so we can preview them under the feed picker.
@@ -605,6 +599,7 @@ interface RulesInputStrings {
   emaDivergenceBps: string;
   minPriceUsd: string;
   maxPriceUsd: string;
+  maxAgeSecs: string;
 }
 
 /** Parse a form field: empty → 0; otherwise expect a non-negative number. */
@@ -649,6 +644,8 @@ function validateRulesInputs(v: RulesInputStrings): string | null {
   if (min > 0 && max > 0 && min > max) {
     return "Min price cannot exceed max price.";
   }
+  const age = Number(v.maxAgeSecs.trim());
+  if (!Number.isFinite(age) || age <= 0) return "Max age must be a positive number (seconds).";
   return null;
 }
 
@@ -666,6 +663,7 @@ function buildRulesInput(v: RulesInputStrings): FeedRulesInput {
     emaDivergenceBps: parseOptional(v.emaDivergenceBps) ?? 0,
     minPrice: usdToScaledBn(v.minPriceUsd) ?? new anchor.BN(0),
     maxPrice: usdToScaledBn(v.maxPriceUsd) ?? new anchor.BN(0),
+    maxAgeMs: Math.round(Number(v.maxAgeSecs.trim()) * 1000),
   };
 }
 
@@ -738,6 +736,7 @@ function CreateFeedCard({
   const [emaDivergenceBps, setEmaDivergenceBps] = useState("");
   const [minPriceUsd, setMinPriceUsd] = useState("");
   const [maxPriceUsd, setMaxPriceUsd] = useState("");
+  const [maxAgeSecs, setMaxAgeSecs] = useState("10");
 
   const collateralFeed =
     collateralFeeds?.find((f) => f.id === collateralChoice) ??
@@ -767,6 +766,7 @@ function CreateFeedCard({
     emaDivergenceBps,
     minPriceUsd,
     maxPriceUsd,
+    maxAgeSecs,
   });
 
   async function handleCreate() {
@@ -777,6 +777,7 @@ function CreateFeedCard({
       emaDivergenceBps,
       minPriceUsd,
       maxPriceUsd,
+      maxAgeSecs,
     });
     await mutateAsync({
       collateralMint,
@@ -945,6 +946,13 @@ function CreateFeedCard({
               value={maxPriceUsd}
               onChange={setMaxPriceUsd}
               placeholder="e.g. 1000000"
+            />
+            <RuleInput
+              label="Max age (seconds)"
+              hint="Reject Pyth prices older than this. Required (> 0)."
+              value={maxAgeSecs}
+              onChange={setMaxAgeSecs}
+              placeholder="e.g. 10"
             />
           </div>
           {rulesError && (

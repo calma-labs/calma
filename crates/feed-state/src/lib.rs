@@ -27,16 +27,13 @@ pub struct FeedConfig {
     pub authority: Pubkey,
     pub source: PriceSource,
     pub bump: u8,
-    pub _pad: [u8; 2],
-    pub max_pyth_age_secs: u32,
+    pub _pad: [u8; 6],
     pub collateral_feed_id: [u8; 32],
     pub lend_feed_id: [u8; 32],
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FeedData {
-    pub collateral_mint: Pubkey,
-    pub lend_mint: Pubkey,
     pub collateral_decimals: u8,
     pub lend_decimals: u8,
 }
@@ -58,16 +55,37 @@ pub struct FeedRules {
     pub min_price: u64,
     /// Reject if normalized price is above this ceiling (in PRICE_SCALE units).
     pub max_price: u64,
-    pub _reserved: [u8; 8],
+    /// Reject if the Pyth price is older than this many milliseconds. Required
+    /// (> 0) for Pyth / PythPush feeds; `0` disables the check (Manual feeds).
+    pub max_age_ms: u32,
+    pub _reserved: [u8; 4],
 }
 
 #[account]
 #[derive(Copy)]
 pub struct Feed {
+    pub collateral_mint: Pubkey,
+    pub lend_mint: Pubkey,
+    pub id: u8,
     pub state: FeedState,
     pub config: FeedConfig,
     pub data: FeedData,
     pub rules: FeedRules,
+}
+
+impl Feed {
+    /// `true` iff a Pyth price with `publish_time` would fail the freshness
+    /// gate when consumed at wall-clock `clock_ts`. `0` in `rules.max_age_ms`
+    /// disables the check (returns `false`). Exposed to the browser via the
+    /// wasm bindings so the UI can predict `StalePushPrice` before submitting.
+    pub fn is_pyth_price_stale(&self, publish_time: i64, clock_ts: i64) -> bool {
+        let max_age_ms = self.rules.max_age_ms;
+        if max_age_ms == 0 {
+            return false;
+        }
+        let elapsed_ms = clock_ts.saturating_sub(publish_time).saturating_mul(1_000);
+        elapsed_ms > max_age_ms as i64
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]

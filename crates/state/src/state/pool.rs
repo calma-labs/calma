@@ -108,4 +108,21 @@ impl Pool {
             self.market.assets_in_queue,
         )
     }
+
+    /// `true` iff a feed snapshot with `feed_last_updated_ts` would trip
+    /// this pool's `StaleOracle` gate when read at wall-clock `clock_ts`.
+    /// Single source of truth for the borrow / withdraw / hedge freshness
+    /// check in `programs/jbl/src/hooks/oracle.rs`; the wasm bindings expose
+    /// this so the UI can predict `StaleOracle` and skip / prompt a refresh
+    /// before submitting the tx.
+    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
+        Self::snapshot_stale_at(feed_last_updated_ts, clock_ts, self.max_feed_age_secs)
+    }
+
+    /// Same predicate as [`is_feed_snapshot_stale`] but with `max_age_secs`
+    /// passed explicitly — the `create` instruction runs the check *before*
+    /// a `Pool` exists to bind the config to.
+    pub fn snapshot_stale_at(feed_last_updated_ts: i64, clock_ts: i64, max_age_secs: u32) -> bool {
+        clock_ts.saturating_sub(feed_last_updated_ts) > max_age_secs as i64
+    }
 }

@@ -55,7 +55,7 @@ async function createPool(
         IRM_PROGRAM_ID,
     )
 
-    const feedState = feedPda(payer, params.collateralMint, params.lendMint)
+    const feedState = feedPda(params.collateralMint, params.lendMint)
 
     const ratePoints = (params.ratePoints ?? DEFAULT_RATE_POINTS).map((p) => ({
         utilBps: p.utilBps,

@@ -162,17 +162,17 @@ describe("jbl create with guard", () => {
 
     // Create the feed once (shared across both sub-tests).
     [feedPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("feed"), payer.publicKey.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
+      [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
       feedProgram.programId
     );
     if (!(await provider.connection.getAccountInfo(feedPda))) {
       await feedProgram.methods
         .create(
+          0,
           { manual: {} },
           Array(32).fill(0),
           Array(32).fill(0),
-          0,
-          { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+          { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
         )
         .accounts({ authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
         .signers([payer])

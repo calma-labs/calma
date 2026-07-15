@@ -61,7 +61,9 @@ async function expectUndercollateralized(setup: TestSetup) {
         await borrow(setup, BORROW_AMOUNT);
         expect.fail("expected borrow to be rejected as undercollateralized");
     } catch (e: any) {
-        expect(e.message).to.include("Undercollateralized");
+        const msg = e.message as string;
+        if (msg.includes("expected") && msg.includes("to be rejected")) throw e;
+        expect(msg).to.include("Undercollateralized");
     }
 }
 

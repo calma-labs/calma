@@ -12,7 +12,7 @@ pub enum ErrorCode {
     ZeroPrice,
     #[msg("Feed ID is invalid for the configured source")]
     InvalidFeedId,
-    #[msg("max_pyth_age_secs must be greater than zero for Pyth feeds")]
+    #[msg("rules.max_age_ms must be greater than zero for Pyth feeds")]
     InvalidMaxPythAge,
     #[msg("Pyth confidence exceeds max_conf_bps")]
     ConfidenceTooWide,
@@ -26,6 +26,6 @@ pub enum ErrorCode {
     InvalidRules,
     #[msg("Push price update account did not match the sponsored feed pubkey")]
     InvalidPushAccount,
-    #[msg("Push oracle price is older than max_pyth_age_secs")]
+    #[msg("Pyth price is older than rules.max_age_ms")]
     StalePushPrice,
 }

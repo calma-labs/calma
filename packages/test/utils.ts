@@ -85,7 +85,7 @@ export async function setupTest(
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
   const feedAuthority = provider.wallet.publicKey;
   const [feedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("feed"), feedAuthority.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
+    [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
     feedProgram.programId
   );
 
@@ -154,15 +154,15 @@ export async function setupTest(
   });
 
   // Create the feed account once; skip if already exists (shared provider wallet key).
-  // Manual price source: feed ids must be all-zero and max_pyth_age is ignored.
+  // Manual price source: feed ids must be all-zero and age rule is inert.
   if (!(await connection.getAccountInfo(feedPda))) {
     await feedProgram.methods
       .create(
+        0,
         { manual: {} },
         Array(32).fill(0),
         Array(32).fill(0),
-        0,
-        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
       )
       .accounts({
         authority: feedAuthority,

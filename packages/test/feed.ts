@@ -29,7 +29,7 @@ describe("feed", () => {
         lendMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
 
         [feedPda] = PublicKey.findProgramAddressSync(
-            [Buffer.from("feed"), authority.publicKey.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
+            [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
             program.programId,
         );
     });
@@ -37,11 +37,11 @@ describe("feed", () => {
     it("create initialises the feed account with prices = 0", async () => {
         await program.methods
             .create(
+                0,
                 { manual: {} },
                 Array(32).fill(0),
                 Array(32).fill(0),
-                0,
-                { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+                { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
             )
             .accounts({
                 authority: authority.publicKey,

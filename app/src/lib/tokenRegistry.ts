@@ -12,55 +12,55 @@ export interface TokenMeta {
 }
 
 const TOKENS: Record<string, TokenMeta> = {
-    '7o6D8yQ5Lh6TtCHvSsba61katHH5yu9Uc3HNz6ud8jGZ': {
+    '44mNsB4NYSKkiYoMKSFUMEGBf4quVougL6ysMe31K2g3': {
         name: 'Tether USD',
         symbol: 'USDT',
         icon: USDT_ICON,
         category: 'stablecoin',
     },
-    '5ACU6KVLxkiWhnpk3XQ5buVHDzVKWskQZowVPJ3nL7Uk': {
+    '4kY3uzmTxM1qf6HfCzbCFZUTSugmLLnQtSzYTu4vN1fW': {
         name: 'Tesla',
         symbol: 'TSLAx',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FTSLAx.png&dpr=2&quality=80',
         category: 'volatile',
         binancePerp: 'TSLAUSDT',
     },
-    '9yrNzB6mLc4HTqA5jrZdAsWCbojyxDG6dNqAeFMGW4x8': {
+    'AGHxCxihk844DKNo2QzaUt6uwPYXC218EJPwRGDW35o2': {
         name: 'Nvidia',
         symbol: 'NVDAx',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FNVDAx.png&dpr=2&quality=80',
         category: 'volatile',
         binancePerp: 'NVDAUSDT',
     },
-    '6cE4YR7WmMQJiN88gP3uEbDtdDVCQ9BMUFScNJFAqFpb': {
+    'FvWNHAaXSB7NkWsov63w41kpjeNNYN9Sp57ZUUyHWxWn': {
         name: 'Circle',
         symbol: 'CRCLx',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fxstocks-metadata.backed.fi%2Flogos%2Ftokens%2FCRCLx.png&dpr=2&quality=80',
         category: 'volatile',
         binancePerp: 'CRCLUSDT',
     },
-    'CLG3cmT4c1hrBW7vUouhvDZ3fXhv7j5BvsLkAaf7js2V': {
+    '5BgNgJhkjj9JLJAvCF69YVBtHmMVUVh8asyNweUg5NXg': {
         name: 'Marinade Staked SOL',
         symbol: 'mSOL',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fraw.githubusercontent.com%2Fsolana-labs%2Ftoken-list%2Fmain%2Fassets%2Fmainnet%2FmSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So%2Flogo.png&dpr=2&quality=80',
         category: 'lsd',
         binancePerp: 'SOLUSDT',
     },
-    'GhTVtceExcwpT4LN5QjNgFpgWBztQyjyq2KcsWyx6HYG': {
+    'GCwUw2JFagtyCFZuNYDCRw3BzGTr2rXyXu5WdqEmQUKo': {
         name: 'Prime',
         symbol: 'PRIME',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fstorage.googleapis.com%2Fhastra-cdn-prod%2Fspl%2Fprimetoken.png&dpr=2&quality=80',
         category: 'volatile',
     },
     // USDC — used as collateral in multiple pools
-    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': {
+    '9C3H4vxVsC9anDqg74xiVhqvaBV5hDURWXstcBuFWJro': {
         name: 'USD Coin',
         symbol: 'USDC',
         icon: USDC_ICON,
         category: 'stablecoin',
     },
     // SOL — used as collateral in mSOL pool
-    'So11111111111111111111111111111111111111112': {
+    'CgXKQx1zDq5Vk9xuBK22y7ZPZaweHrDwrChL5KP6gycU': {
         name: 'Solana',
         symbol: 'SOL',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2Fraw.githubusercontent.com%2Fsolana-labs%2Ftoken-list%2Fmain%2Fassets%2Fmainnet%2FSo11111111111111111111111111111111111111112%2Flogo.png&dpr=2&quality=80',
@@ -68,14 +68,14 @@ const TOKENS: Record<string, TokenMeta> = {
         binancePerp: 'SOLUSDT',
     },
     // USDG — used as collateral in CRCLx pool
-    'USDGkkjxMPfRpNpM74F8diNBYXnFkBD4iqiQaFXCYFN': {
+    '7g1QtUtc9fXgBM9t8qW67x645ghdAopikNWk6j75Tqb3': {
         name: 'Global Dollar',
         symbol: 'USDG',
         icon: 'https://wsrv.nl/?w=32&h=32&url=https%3A%2F%2F424565.fs1.hubspotusercontent-na1.net%2Fhubfs%2F424565%2FGDN-USDG-Token-512x512.png&dpr=2&quality=80',
         category: 'stablecoin',
     },
     // CASH — used as collateral in PRIME pool
-    'CASHVDm2wsJXfhj6VWxb7GiMdoLc17Du7paH4bNr5woT': {
+    'muB8FqzMVs7BsqYuPRoA1yyxYCfHPywBEBd4trSZWQ6': {
         name: 'Cash',
         symbol: 'CASH',
         icon: 'https://token-metadata.bridge.xyz/images/cash.png',

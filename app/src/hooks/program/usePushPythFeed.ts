@@ -2,7 +2,7 @@ import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { noRules } from '../../config/feedRules'
-import { MAX_PYTH_AGE_SECS } from '../../config/pythFeeds'
+import { MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
 import { connection, feedPda, feedProgram } from '../../lib/program'
 import { signV1WithSession } from '../../lib/transactions'
 
@@ -71,7 +71,7 @@ export function usePushPythFeed() {
             if (!connected || !wallet?.signTransaction) throw new Error('Wallet not connected')
 
             const payer = new PublicKey(wallet.account.publicKey)
-            const feedAccount = feedPda(payer, collateralMint, lendMint)
+            const feedAccount = feedPda(collateralMint, lendMint)
 
             const collBytes = pubkeyToBytes(collateralPushAccount)
             const lendBytes = pubkeyToBytes(lendPushAccount)
@@ -107,13 +107,14 @@ export function usePushPythFeed() {
             } else {
                 const createIx = await feedProgram.methods
                     .create(
+                        0,
                         { pythPush: {} },
                         collBytes,
                         lendBytes,
-                        MAX_PYTH_AGE_SECS,
-                        noRules(),
+                        { ...noRules(), maxAgeMs: MAX_PYTH_AGE_MS },
                     )
                     .accounts({
+                        feed: feedAccount,
                         authority: payer,
                         collateralMint,
                         lendMint,

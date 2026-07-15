@@ -11,9 +11,9 @@ pub struct SetFromPyth<'info> {
         mut,
         seeds = [
             b"feed",
-            feed.config.authority.as_ref(),
-            feed.data.collateral_mint.as_ref(),
-            feed.data.lend_mint.as_ref(),
+            feed.collateral_mint.as_ref(),
+            feed.lend_mint.as_ref(),
+            &[feed.id],
         ],
         bump = feed.config.bump,
     )]
@@ -31,16 +31,16 @@ pub fn set_from_pyth_handler(ctx: Context<SetFromPyth>) -> Result<()> {
     );
 
     let clock = Clock::get()?;
-    let max_age = feed.config.max_pyth_age_secs as u64;
+    let max_age_secs = (feed.rules.max_age_ms / 1_000) as u64;
 
     let coll = ctx.accounts.collateral_price_update.get_price_no_older_than(
         &clock,
-        max_age,
+        max_age_secs,
         &feed.config.collateral_feed_id,
     )?;
     let lend = ctx.accounts.lend_price_update.get_price_no_older_than(
         &clock,
-        max_age,
+        max_age_secs,
         &feed.config.lend_feed_id,
     )?;
 

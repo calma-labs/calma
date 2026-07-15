@@ -23,6 +23,7 @@ const FEED_SO: &[u8] = include_bytes!("../../../target/deploy/feed.so");
 
 const COLL_FEED_ID: [u8; 32] = [0x11u8; 32];
 const LEND_FEED_ID: [u8; 32] = [0x22u8; 32];
+const MAX_AGE_MS: u32 = 60_000;
 
 /// Creates a fresh SPL Token Mint via the built-in token program LiteSVM
 /// preloads. Returns the mint pubkey. `payer` funds account creation and
@@ -150,13 +151,13 @@ fn fresh_svm() -> Ctx {
     }
 }
 
-fn feed_pda(authority: &Pubkey, collateral_mint: &Pubkey, lend_mint: &Pubkey) -> Pubkey {
+fn feed_pda(collateral_mint: &Pubkey, lend_mint: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
         &[
             b"feed",
-            authority.as_ref(),
             collateral_mint.as_ref(),
             lend_mint.as_ref(),
+            &[0u8],
         ],
         &feed::id(),
     )
@@ -172,6 +173,7 @@ fn create_ix(
     coll_feed_id: [u8; 32],
     lend_feed_id: [u8; 32],
 ) -> Instruction {
+    let max_age_ms = if matches!(source, PriceSource::Pyth) { MAX_AGE_MS } else { 0 };
     create_ix_with_rules(
         payer,
         authority,
@@ -180,7 +182,7 @@ fn create_ix(
         source,
         coll_feed_id,
         lend_feed_id,
-        FeedRules::default(),
+        FeedRules { max_age_ms, ..Default::default() },
     )
 }
 
@@ -194,24 +196,18 @@ fn create_ix_with_rules(
     lend_feed_id: [u8; 32],
     rules: FeedRules,
 ) -> Instruction {
-    // For Pyth-source feeds the param is required; for Manual it's ignored.
-    let max_pyth_age_secs = if matches!(source, PriceSource::Pyth) {
-        60
-    } else {
-        0
-    };
     Instruction::new_with_bytes(
         feed::id(),
         &feed::instruction::Create {
+            id: 0,
             source,
             collateral_feed_id: coll_feed_id,
             lend_feed_id,
-            max_pyth_age_secs,
             rules,
         }
         .data(),
         feed::accounts::Create {
-            feed: feed_pda(authority, &collateral_mint, &lend_mint),
+            feed: feed_pda(&collateral_mint, &lend_mint),
             authority: *authority,
             collateral_mint,
             lend_mint,
@@ -237,7 +233,7 @@ fn set_value_ix(
         }
         .data(),
         feed::accounts::SetValue {
-            feed: feed_pda(authority, collateral_mint, lend_mint),
+            feed: feed_pda(collateral_mint, lend_mint),
             authority: *authority,
         }
         .to_account_metas(None),
@@ -245,7 +241,6 @@ fn set_value_ix(
 }
 
 fn set_from_pyth_ix(
-    authority: &Pubkey,
     collateral_mint: &Pubkey,
     lend_mint: &Pubkey,
     coll_update: Pubkey,
@@ -255,7 +250,7 @@ fn set_from_pyth_ix(
         feed::id(),
         &feed::instruction::SetFromPyth {}.data(),
         feed::accounts::SetFromPyth {
-            feed: feed_pda(authority, collateral_mint, lend_mint),
+            feed: feed_pda(collateral_mint, lend_mint),
             collateral_price_update: coll_update,
             lend_price_update: lend_update,
         }
@@ -287,12 +282,12 @@ fn manual_create_and_set_value_happy_path() {
         &ctx.payer,
     ));
     // Both mints in fresh_svm are decimals=6 → feed inherits them.
-    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint)).unwrap();
+    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
     assert_eq!(feed.data.collateral_decimals, 6);
     assert_eq!(feed.data.lend_decimals, 6);
-    assert_eq!(feed.data.collateral_mint, ctx.collateral_mint);
-    assert_eq!(feed.data.lend_mint, ctx.lend_mint);
+    assert_eq!(feed.collateral_mint, ctx.collateral_mint);
+    assert_eq!(feed.lend_mint, ctx.lend_mint);
 }
 
 #[test]
@@ -357,7 +352,7 @@ fn manual_feed_rejects_set_from_pyth() {
 
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -419,11 +414,11 @@ fn pyth_set_from_pyth_happy_path() {
 
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
-    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint)).unwrap();
+    let feed_account = ctx.svm.get_account(&feed_pda(&ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
     assert_eq!(feed.state.collateral_price, 123_450_000);
     assert_eq!(feed.state.lend_price, 1_000_000);
@@ -434,6 +429,7 @@ fn pyth_set_from_pyth_happy_path() {
 /// Common setup for rule tests: pin the clock, create a Pyth-source feed with
 /// the given rules, and return the fixture context plus the pinned timestamp.
 fn setup_pyth_feed_with_rules(rules: FeedRules) -> (Ctx, i64) {
+    let rules = FeedRules { max_age_ms: MAX_AGE_MS, ..rules };
     let mut ctx = fresh_svm();
     let now: i64 = 1_700_000_000;
     ctx.svm.set_sysvar::<Clock>(&Clock {
@@ -475,7 +471,7 @@ fn pyth_confidence_within_max_conf_bps_accepts() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -498,7 +494,7 @@ fn pyth_confidence_over_max_conf_bps_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -521,7 +517,7 @@ fn pyth_price_below_min_price_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -544,7 +540,7 @@ fn pyth_price_above_max_price_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -568,7 +564,7 @@ fn pyth_ema_divergence_over_budget_rejects() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -592,7 +588,7 @@ fn pyth_first_update_skips_deviation_check() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -618,7 +614,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
@@ -644,7 +640,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 
@@ -670,7 +666,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
     );
     assert!(send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }
@@ -724,13 +720,13 @@ fn pyth_set_from_pyth_rejects_stale_update() {
 
     let coll_pk = Pubkey::new_unique();
     let lend_pk = Pubkey::new_unique();
-    // Collateral well past MAX_PYTH_AGE_SECS (60s) → SDK returns PriceTooOld.
+    // Collateral well past MAX_AGE_MS (60_000 ms) → SDK returns PriceTooOld.
     write_pyth_price_update(&mut ctx.svm, coll_pk, COLL_FEED_ID, 12_345, -2, now - 1_000);
     write_pyth_price_update(&mut ctx.svm, lend_pk, LEND_FEED_ID, 1_000_000, -6, now);
 
     assert!(!send_ixs(
         &mut ctx.svm,
-        &[set_from_pyth_ix(&ctx.payer.pubkey(), &ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
+        &[set_from_pyth_ix(&ctx.collateral_mint, &ctx.lend_mint, coll_pk, lend_pk)],
         &ctx.payer,
     ));
 }

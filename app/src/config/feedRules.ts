@@ -16,7 +16,9 @@ export interface FeedRulesInput {
     minPrice: anchor.BN
     /** Reject if normalized price is above this ceiling (PRICE_SCALE units). `0` disables. */
     maxPrice: anchor.BN
-    /** Trailing padding kept for future rule fields. */
+    /** Reject if Pyth price age exceeds this many milliseconds. Required (> 0) for Pyth feeds; `0` disables. */
+    maxAgeMs: number
+    /** Trailing padding. */
     reserved: number[]
 }
 
@@ -32,6 +34,7 @@ export function noRules(): FeedRulesInput {
         emaDivergenceBps: 0,
         minPrice: new anchor.BN(0),
         maxPrice: new anchor.BN(0),
-        reserved: Array<number>(8).fill(0),
+        maxAgeMs: 0,
+        reserved: Array<number>(4).fill(0),
     }
 }

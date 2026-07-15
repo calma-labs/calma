@@ -8,9 +8,9 @@ pub struct SetValue<'info> {
         mut,
         seeds = [
             b"feed",
-            authority.key().as_ref(),
-            feed.data.collateral_mint.as_ref(),
-            feed.data.lend_mint.as_ref(),
+            feed.collateral_mint.as_ref(),
+            feed.lend_mint.as_ref(),
+            &[feed.id],
         ],
         bump = feed.config.bump,
         constraint = feed.config.authority == authority.key(),

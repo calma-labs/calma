@@ -10,19 +10,22 @@ import { queryKeys } from '../../lib/queryKeys'
  *
  * Layout (see `crates/feed-state/src/lib.rs`):
  *   0    discriminator            [8]
- *   8    state                    [24]  (collateral_price u64, lend_price u64, last_updated_ts i64)
- *   32   config.authority         [32]
- *   64   config.source            [1]
- *   65   config.bump              [1]
- *   66   config._pad              [2]
- *   68   config.max_pyth_age_secs [4]
- *   72   config.collateral_feed_id[32]
- *   104  config.lend_feed_id      [32]
- *   136  data.collateral_mint     [32]  ← memcmp target
- *   168  data.lend_mint           [32]  ← memcmp target
+ *   8    collateral_mint          [32]  ← memcmp target
+ *   40   lend_mint                [32]  ← memcmp target
+ *   72   id                       [1]
+ *   73   state                    [24]  (collateral_price u64, lend_price u64, last_updated_ts i64)
+ *   97   config.authority         [32]
+ *   129  config.source            [1]
+ *   130  config.bump              [1]
+ *   131  config._pad              [6]
+ *   137  config.collateral_feed_id[32]
+ *   169  config.lend_feed_id      [32]
+ *   201  data.collateral_decimals [1]
+ *   202  data.lend_decimals       [1]
+ *   203  rules                    [30]
  */
-const COLLATERAL_MINT_OFFSET = 136
-const LEND_MINT_OFFSET = 168
+const COLLATERAL_MINT_OFFSET = 8
+const LEND_MINT_OFFSET = 40
 
 /** A decoded `Feed` account paired with its on-chain address. */
 export interface FeedByPair {
@@ -77,16 +80,15 @@ async function fetchFeedsByPair(
     return accounts.map(({ pubkey, account }) => {
         // The coder decodes struct fields as camelCase (matching the generated
         // types), even though the on-chain layout / IDL is snake_case.
-        const decoded = feedProgram.coder.accounts.decode('feed', account.data)
+        const decoded = feedProgram.coder.accounts.decode('feed', account.data) as Record<string, any>
         const config = decoded.config as Record<string, any>
         const state = decoded.state as Record<string, any>
-        const data = decoded.data as Record<string, any>
         return {
             publicKey: pubkey,
             authority: new PublicKey(config.authority),
             source: enumVariant(config.source),
-            collateralMint: new PublicKey(data.collateralMint),
-            lendMint: new PublicKey(data.lendMint),
+            collateralMint: new PublicKey(decoded.collateralMint),
+            lendMint: new PublicKey(decoded.lendMint),
             collateralPrice: toBigInt(state.collateralPrice),
             lendPrice: toBigInt(state.lendPrice),
             lastUpdatedTs: Number(toBigInt(state.lastUpdatedTs)),

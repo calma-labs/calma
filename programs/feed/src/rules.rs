@@ -101,6 +101,17 @@ pub fn check_deviation(
     Ok(())
 }
 
+/// Reject if `clock_ts − publish_time` (in seconds) exceeds `max_age_ms`
+/// milliseconds. `max_age_ms == 0` disables the check (returns `Ok`).
+pub fn check_max_age(publish_time: i64, clock_ts: i64, max_age_ms: u32) -> Result<()> {
+    if max_age_ms == 0 {
+        return Ok(());
+    }
+    let elapsed_ms = clock_ts.saturating_sub(publish_time).saturating_mul(1_000);
+    require!(elapsed_ms <= max_age_ms as i64, ErrorCode::StalePushPrice);
+    Ok(())
+}
+
 /// Cross-field validation applied at `create` time (Pyth source only).
 pub fn validate_rules(rules: &FeedRules) -> Result<()> {
     if rules.min_price > 0 && rules.max_price > 0 {
@@ -175,6 +186,29 @@ mod tests {
         assert!(check_deviation(new_over, last, 1_000, 1_000 + 3_600, 100).is_err());
         // Same +200 bps move accepted over 2 hours.
         assert!(check_deviation(new_over, last, 1_000, 1_000 + 7_200, 100).is_ok());
+    }
+
+    #[test]
+    fn max_age_disabled_when_zero() {
+        assert!(check_max_age(1_700_000_000, 1_700_001_000, 0).is_ok());
+    }
+
+    #[test]
+    fn max_age_within_limit_accepts() {
+        // 30s elapsed × 1000 = 30_000 ms ≤ 60_000 ms limit.
+        assert!(check_max_age(1_700_000_000, 1_700_000_030, 60_000).is_ok());
+    }
+
+    #[test]
+    fn max_age_at_limit_accepts() {
+        // Exactly 60s elapsed = 60_000 ms = limit.
+        assert!(check_max_age(1_700_000_000, 1_700_000_060, 60_000).is_ok());
+    }
+
+    #[test]
+    fn max_age_over_limit_rejects() {
+        // 61s elapsed = 61_000 ms > 60_000 ms limit.
+        assert!(check_max_age(1_700_000_000, 1_700_000_061, 60_000).is_err());
     }
 
     #[test]

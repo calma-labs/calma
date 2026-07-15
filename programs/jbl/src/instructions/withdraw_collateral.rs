@@ -104,7 +104,7 @@ pub fn withdraw_collateral_handler<'a>(
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
     let (utilization, max_feed_age) = {
         let pool = ctx.accounts.pool.load()?;
-        (pool.calculate_utilization(), pool.max_feed_age_secs as i64)
+        (pool.calculate_utilization(), pool.max_feed_age_secs)
     };
     let oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),

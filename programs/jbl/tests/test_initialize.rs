@@ -75,19 +75,18 @@ fn test_create() {
     let (lp_mint_pda, _) = find_lp_mint_pda(&pool_pubkey, &program_id);
 
     // ── Create feed account ───────────────────────────────────────────────────
-    // The feed PDA is derived from [b"feed", authority.pubkey()].
     // `payer` is used as the feed authority so it can sign set_value.
     let (feed_pda, _) = Pubkey::find_program_address(
-        &[b"feed", payer.pubkey().as_ref(), collateral_mint_keypair.pubkey().as_ref(), lend_mint_keypair.pubkey().as_ref()],
+        &[b"feed", collateral_mint_keypair.pubkey().as_ref(), lend_mint_keypair.pubkey().as_ref(), &[0u8]],
         &feed_id,
     );
     let feed_create_ix = Instruction::new_with_bytes(
         feed_id,
         &feed::instruction::Create {
+            id: 0,
             source: feed::state::PriceSource::Manual,
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
-            max_pyth_age_secs: 0,
             rules: feed::state::FeedRules::default(),
         }
         .data(),

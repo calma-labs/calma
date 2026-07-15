@@ -7,7 +7,7 @@ import { noRules } from '../../config/feedRules'
 import {
     feedIdToBytes,
     hermesId,
-    MAX_PYTH_AGE_SECS,
+    MAX_PYTH_AGE_MS,
     USDC_USD_FEED_ID,
     type PythFeed,
 } from '../../config/pythFeeds'
@@ -65,7 +65,7 @@ export function usePullPythFeed() {
             if (!connected || !wallet?.signTransaction) throw new Error('Wallet not connected')
 
             const payer = new PublicKey(wallet.account.publicKey)
-            const feedAccount = feedPda(payer, collateralMint, lendMint)
+            const feedAccount = feedPda(collateralMint, lendMint)
 
             const collBytes = feedIdToBytes(feed.id)
             const lendBytes = feedIdToBytes(USDC_USD_FEED_ID)
@@ -102,8 +102,9 @@ export function usePullPythFeed() {
                 }
             } else {
                 const createIx = await feedProgram.methods
-                    .create({ pyth: {} }, collBytes, lendBytes, MAX_PYTH_AGE_SECS, noRules())
+                    .create(0, { pyth: {} }, collBytes, lendBytes, { ...noRules(), maxAgeMs: MAX_PYTH_AGE_MS })
                     .accounts({
+                        feed: feedAccount,
                         authority: payer,
                         collateralMint,
                         lendMint,

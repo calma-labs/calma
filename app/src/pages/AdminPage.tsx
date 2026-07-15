@@ -1,9 +1,9 @@
 import { ActionButton } from "@/components/common/ActionButton";
-import { useCreateMint } from "@/hooks/program/useCreateMint";
+import { useCreateMints } from "@/hooks/program/useCreateMint";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
 import { Keypair } from "@solana/web3.js";
-import { CheckCircle2, Copy, Loader2, Plus, RefreshCw, Radio, ShieldAlert, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Copy, Loader2, Plus, RefreshCw, Radio, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { NavLink } from "react-router";
 
@@ -40,30 +40,56 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
 // ─── create mint tool ─────────────────────────────────────────────────────────
 
+type MintEntry = { keypair: Keypair; confirmed: boolean };
+
 function CreateMintTool() {
   const [decimals, setDecimals] = useState("6");
-  const [keypair, setKeypair] = useState<Keypair>(() => Keypair.generate());
-  const [confirmed, setConfirmed] = useState(false);
-  const { mutateAsync, isPending, error } = useCreateMint();
-
-  const mintAddress = keypair.publicKey.toBase58();
+  const [entries, setEntries] = useState<MintEntry[]>(() => [
+    { keypair: Keypair.generate(), confirmed: false },
+  ]);
+  const { mutateAsync, isPending, error } = useCreateMints();
 
   const decimalsNum = parseInt(decimals, 10);
   const decimalsValid =
     decimals !== "" && !isNaN(decimalsNum) && decimalsNum >= 0 && decimalsNum <= 18;
+  const allConfirmed = entries.every((e) => e.confirmed);
+  const unconfirmedCount = entries.filter((e) => !e.confirmed).length;
 
-  function regenerate() {
-    setKeypair(Keypair.generate());
-    setConfirmed(false);
+  function addEntry() {
+    setEntries((prev) => [...prev, { keypair: Keypair.generate(), confirmed: false }]);
+  }
+
+  function removeEntry(idx: number) {
+    setEntries((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function regenerateEntry(idx: number) {
+    setEntries((prev) =>
+      prev.map((e, i) => (i === idx ? { keypair: Keypair.generate(), confirmed: false } : e)),
+    );
+  }
+
+  function reset() {
+    setEntries([{ keypair: Keypair.generate(), confirmed: false }]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!decimalsValid) return;
-    setConfirmed(false);
-    await mutateAsync({ decimals: decimalsNum, mintKeypair: keypair });
-    setConfirmed(true);
+    const mintKeypairs = entries.filter((e) => !e.confirmed).map((e) => e.keypair);
+    await mutateAsync({ decimals: decimalsNum, mintKeypairs });
+    setEntries((prev) => prev.map((e) => ({ ...e, confirmed: true })));
   }
+
+  const submitLabel = isPending
+    ? unconfirmedCount > 1
+      ? `Creating ${unconfirmedCount}…`
+      : "Creating…"
+    : allConfirmed
+      ? "Created"
+      : unconfirmedCount > 1
+        ? `Create ${unconfirmedCount} Mints`
+        : "Create Mint";
 
   return (
     <div className="rounded-2xl border border-[#c698e5]/12 bg-[#c698e5]/[0.025] p-6">
@@ -75,59 +101,11 @@ function CreateMintTool() {
       </div>
 
       <p className="text-[11px] text-[#efe0f7]/35 mb-5">
-        Creates a new SPL token mint with <span className="font-mono">MINTER_KEYPAIR</span> as the
-        mint authority.
+        Creates SPL token mints with <span className="font-mono">MINTER_KEYPAIR</span> as the mint
+        authority. All mints share the same decimals.
       </p>
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        {/* Mint address — shown before and after */}
-        <div
-          className={cn(
-            "rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors duration-300",
-            confirmed
-              ? "border-[#34d399]/25 bg-[#34d399]/5"
-              : "border-[#c698e5]/15 bg-[#c698e5]/[0.03]",
-          )}
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <p
-                className={cn(
-                  "text-[10px] uppercase tracking-wider",
-                  confirmed ? "text-[#34d399]/60" : "text-[#efe0f7]/30",
-                )}
-              >
-                Mint Address
-              </p>
-              {confirmed && (
-                <CheckCircle2 className="h-3 w-3 text-[#34d399]" />
-              )}
-            </div>
-            <p className="font-mono text-xs text-[#efe0f7]/80 break-all">{mintAddress}</p>
-          </div>
-          <div className="flex shrink-0 gap-1">
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(mintAddress)}
-              title="Copy address"
-              className="rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#c698e5]/10 hover:text-[#c698e5] transition-colors cursor-pointer"
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            {!confirmed && (
-              <button
-                type="button"
-                onClick={regenerate}
-                title="Generate new address"
-                disabled={isPending}
-                className="rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#c698e5]/10 hover:text-[#c698e5] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="decimals"
@@ -142,7 +120,10 @@ function CreateMintTool() {
             max={18}
             step={1}
             value={decimals}
-            onChange={(e) => { setDecimals(e.target.value); setConfirmed(false); }}
+            onChange={(e) => {
+              setDecimals(e.target.value);
+              setEntries((prev) => prev.map((en) => ({ ...en, confirmed: false })));
+            }}
             placeholder="6"
             className={cn(
               "w-full rounded-xl border bg-[#c698e5]/[0.04] px-4 py-2.5 text-sm text-[#efe0f7]",
@@ -158,6 +139,85 @@ function CreateMintTool() {
           )}
         </div>
 
+        {/* Mint entries */}
+        <div className="flex flex-col gap-2">
+          {entries.map((entry, idx) => {
+            const addr = entry.keypair.publicKey.toBase58();
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors duration-300",
+                  entry.confirmed
+                    ? "border-[#34d399]/25 bg-[#34d399]/5"
+                    : "border-[#c698e5]/15 bg-[#c698e5]/[0.03]",
+                )}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p
+                      className={cn(
+                        "text-[10px] uppercase tracking-wider",
+                        entry.confirmed ? "text-[#34d399]/60" : "text-[#efe0f7]/30",
+                      )}
+                    >
+                      {entries.length > 1 ? `Mint ${idx + 1}` : "Mint Address"}
+                    </p>
+                    {entry.confirmed && <CheckCircle2 className="h-3 w-3 text-[#34d399]" />}
+                  </div>
+                  <p className="font-mono text-xs text-[#efe0f7]/80 break-all">{addr}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(addr)}
+                    title="Copy address"
+                    className="rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#c698e5]/10 hover:text-[#c698e5] transition-colors cursor-pointer"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  {!entry.confirmed && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => regenerateEntry(idx)}
+                        title="Generate new address"
+                        disabled={isPending}
+                        className="rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#c698e5]/10 hover:text-[#c698e5] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                      {entries.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeEntry(idx)}
+                          title="Remove"
+                          disabled={isPending}
+                          className="rounded-lg p-1.5 text-[#efe0f7]/40 hover:bg-[#d45677]/15 hover:text-[#d45677] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!allConfirmed && (
+          <button
+            type="button"
+            onClick={addEntry}
+            disabled={isPending}
+            className="flex items-center gap-1.5 self-start text-xs text-[#efe0f7]/40 hover:text-[#c698e5] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add mint
+          </button>
+        )}
+
         {error && (
           <p className="text-[11px] text-[#d45677]">
             {error instanceof Error ? error.message : "Unknown error"}
@@ -165,27 +225,27 @@ function CreateMintTool() {
         )}
 
         <div className="flex items-center justify-between pt-1">
-          {confirmed ? (
+          {allConfirmed ? (
             <button
               type="button"
-              onClick={regenerate}
+              onClick={reset}
               className="flex items-center gap-1.5 text-xs text-[#efe0f7]/40 hover:text-[#efe0f7]/70 transition-colors cursor-pointer"
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              Create another
+              Create more
             </button>
           ) : (
             <span />
           )}
           <ActionButton
             variant="primary"
-            disabled={isPending || !decimalsValid || confirmed}
+            disabled={isPending || !decimalsValid || allConfirmed}
             title=""
-            label={isPending ? "Creating…" : confirmed ? "Created" : "Create Mint"}
+            label={submitLabel}
             icon={
               isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin text-[#17081f]" />
-              ) : confirmed ? (
+              ) : allConfirmed ? (
                 <CheckCircle2 className="h-4 w-4 text-[#17081f]" />
               ) : (
                 <Plus className="h-4 w-4 text-[#17081f]" />

@@ -46,7 +46,8 @@ const NO_RULES = {
   emaDivergenceBps: 0,
   minPrice: new BN(0),
   maxPrice: new BN(0),
-  reserved: Array(8).fill(0),
+  maxAgeMs: 0,
+  reserved: Array(4).fill(0),
 };
 
 // Pre-derive the two sponsored accounts so they're visible at describe time.
@@ -140,16 +141,16 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
 
     // Create the PythPush feed pinned to the two sponsored account pubkeys.
     [feedPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("feed"), authority.publicKey.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
+      [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
       feed.programId,
     );
     await feed.methods
       .create(
+        0,
         { pythPush: {} },
         Array.from(collateralPush.toBytes()),
         Array.from(lendPush.toBytes()),
-        3_600_000, // large max-age so any clock skew won't block
-        NO_RULES,
+        { ...NO_RULES, maxAgeMs: 3_600_000 }, // large max-age so any clock skew won't block
       )
       .accounts({ authority: authority.publicKey, collateralMint, lendMint, payer: payer.publicKey })
       .signers([payer, authority])

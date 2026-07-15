@@ -153,7 +153,7 @@ pub fn borrow_with_hedge_handler<'a>(
     // ── 2. Accrue interest + LTV check + share calculation ───────────────────
     let (utilization, max_feed_age) = {
         let pool = ctx.accounts.pool.load()?;
-        (pool.calculate_utilization(), pool.max_feed_age_secs as i64)
+        (pool.calculate_utilization(), pool.max_feed_age_secs)
     };
     let oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),

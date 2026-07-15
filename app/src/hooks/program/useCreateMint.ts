@@ -21,51 +21,68 @@ export interface CreateMintResult {
     mint: PublicKey
 }
 
-async function createMint(
-    params: CreateMintParams,
+export interface CreateMintsParams {
+    decimals: number
+    mintKeypairs: Keypair[]
+}
+
+async function createMints(
+    params: CreateMintsParams,
     wallet: Parameters<typeof signAndSendV1>[1],
     payer: PublicKey,
-): Promise<CreateMintResult> {
-    const { mintKeypair } = params
+): Promise<CreateMintResult[]> {
+    const { mintKeypairs, decimals } = params
     const lamports = await getMinimumBalanceForRentExemptMint(connection)
 
     await handleTransaction(
         async () => {
             const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
             const tx = new Transaction({ blockhash, lastValidBlockHeight, feePayer: payer })
-            tx.add(
-                SystemProgram.createAccount({
-                    fromPubkey: payer,
-                    newAccountPubkey: mintKeypair.publicKey,
-                    space: MINT_SIZE,
-                    lamports,
-                    programId: TOKEN_PROGRAM_ID,
-                }),
-                createInitializeMint2Instruction(
-                    mintKeypair.publicKey,
-                    params.decimals,
-                    MINTER_KEYPAIR.publicKey,
-                    null,
-                ),
-            )
-            tx.partialSign(mintKeypair)
+            for (const kp of mintKeypairs) {
+                tx.add(
+                    SystemProgram.createAccount({
+                        fromPubkey: payer,
+                        newAccountPubkey: kp.publicKey,
+                        space: MINT_SIZE,
+                        lamports,
+                        programId: TOKEN_PROGRAM_ID,
+                    }),
+                    createInitializeMint2Instruction(kp.publicKey, decimals, MINTER_KEYPAIR.publicKey, null),
+                )
+            }
+            for (const kp of mintKeypairs) tx.partialSign(kp)
             return tx
         },
         wallet,
-        { loadingMessage: 'Creating mint…', successMessage: 'Mint created' },
+        {
+            loadingMessage: mintKeypairs.length > 1 ? `Creating ${mintKeypairs.length} mints…` : 'Creating mint…',
+            successMessage: mintKeypairs.length > 1 ? `${mintKeypairs.length} mints created` : 'Mint created',
+        },
     )
 
-    return { mint: mintKeypair.publicKey }
+    return mintKeypairs.map(kp => ({ mint: kp.publicKey }))
 }
 
 export function useCreateMint() {
     const { connected, wallet } = useWalletConnection()
 
     return useMutation({
-        mutationFn: (params: CreateMintParams) => {
+        mutationFn: ({ decimals, mintKeypair }: CreateMintParams) => {
             if (!connected || !wallet) throw new Error('Wallet not connected')
             const payer = new PublicKey(wallet.account.publicKey)
-            return createMint(params, wallet, payer)
+            return createMints({ decimals, mintKeypairs: [mintKeypair] }, wallet, payer)
+        },
+    })
+}
+
+export function useCreateMints() {
+    const { connected, wallet } = useWalletConnection()
+
+    return useMutation({
+        mutationFn: (params: CreateMintsParams) => {
+            if (!connected || !wallet) throw new Error('Wallet not connected')
+            const payer = new PublicKey(wallet.account.publicKey)
+            return createMints(params, wallet, payer)
         },
     })
 }

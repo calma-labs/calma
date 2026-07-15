@@ -50,21 +50,20 @@ export const GUARD_PROGRAM_ID = new PublicKey(
 );
 
 /**
- * PDA of the `feed` account for a given (authority, collateral mint, lend mint)
- * triple. Seeds: `["feed", authority, collateral_mint, lend_mint]`. A single
- * wallet may own multiple feeds — one per distinct mint pair.
+ * PDA of the `feed` account for a given (collateral mint, lend mint, id) triple.
+ * Seeds: `["feed", collateral_mint, lend_mint, id]`.
  */
 export function feedPda(
-  authority: PublicKey,
   collateralMint: PublicKey,
   lendMint: PublicKey,
+  id = 0,
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
     [
       Buffer.from("feed"),
-      authority.toBuffer(),
       collateralMint.toBuffer(),
       lendMint.toBuffer(),
+      Buffer.from([id]),
     ],
     FEED_PROGRAM_ID,
   )[0];

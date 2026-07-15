@@ -5,6 +5,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::Mint;
 
 #[derive(Accounts)]
+#[instruction(id: u8)]
 pub struct Create<'info> {
     #[account(
         init,
@@ -12,9 +13,9 @@ pub struct Create<'info> {
         space = 8 + std::mem::size_of::<Feed>(),
         seeds = [
             b"feed",
-            authority.key().as_ref(),
             collateral_mint.key().as_ref(),
             lend_mint.key().as_ref(),
+            &[id],
         ],
         bump,
     )]
@@ -33,49 +34,43 @@ pub struct Create<'info> {
 
 pub fn create_handler(
     ctx: Context<Create>,
+    id: u8,
     source: PriceSource,
     collateral_feed_id: [u8; 32],
     lend_feed_id: [u8; 32],
-    max_pyth_age_secs: u32,
     rules: FeedRules,
 ) -> Result<()> {
     let zero = [0u8; 32];
-    let stored_max_pyth_age = match source {
+    match source {
         PriceSource::Manual => {
             require!(
                 collateral_feed_id == zero && lend_feed_id == zero,
                 ErrorCode::InvalidFeedId
             );
-            // Field is meaningless for Manual feeds — store 0 explicitly.
-            0
         }
         PriceSource::Pyth | PriceSource::PythPush => {
-            // For `Pyth` these are Pyth feed_id hashes; for `PythPush` they are
-            // the sponsored `PriceUpdateV2` account pubkeys. Non-zero check is
-            // the same either way.
             require!(
                 collateral_feed_id != zero && lend_feed_id != zero,
                 ErrorCode::InvalidFeedId
             );
-            require!(max_pyth_age_secs > 0, ErrorCode::InvalidMaxPythAge);
+            require!(rules.max_age_ms > 0, ErrorCode::InvalidMaxPythAge);
             validate_rules(&rules)?;
-            max_pyth_age_secs
         }
-    };
+    }
 
     let feed = &mut ctx.accounts.feed;
+    feed.collateral_mint = ctx.accounts.collateral_mint.key();
+    feed.lend_mint = ctx.accounts.lend_mint.key();
+    feed.id = id;
     feed.config = crate::state::FeedConfig {
         authority: ctx.accounts.authority.key(),
         source,
         bump: ctx.bumps.feed,
-        _pad: [0; 2],
-        max_pyth_age_secs: stored_max_pyth_age,
+        _pad: [0; 6],
         collateral_feed_id,
         lend_feed_id,
     };
     feed.data = crate::state::FeedData {
-        collateral_mint: ctx.accounts.collateral_mint.key(),
-        lend_mint: ctx.accounts.lend_mint.key(),
         collateral_decimals: ctx.accounts.collateral_mint.decimals,
         lend_decimals: ctx.accounts.lend_mint.decimals,
     };

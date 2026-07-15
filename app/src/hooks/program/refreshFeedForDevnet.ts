@@ -1,6 +1,6 @@
 import { HermesClient } from '@pythnetwork/hermes-client'
 import { PythSolanaReceiver } from '@pythnetwork/pyth-solana-receiver'
-import { PoolAccount } from '@jbl/wasm-lib'
+import { FeedAccount, PoolAccount } from '@jbl/wasm-lib'
 import {
     Connection,
     Keypair,
@@ -16,6 +16,14 @@ const HERMES_ENDPOINT =
     import.meta.env.VITE_HERMES_URL ?? 'https://hermes.pyth.network'
 
 const hermes = new HermesClient(HERMES_ENDPOINT)
+
+/**
+ * Wall-clock slack (seconds) between calling `is_pyth_price_stale` and the
+ * `set_from_pyth` tx actually landing. Covers Hermes fetch → tx build →
+ * `sendAll` confirmation. Predicting against `now + margin` prevents burning
+ * two txs on a price that will trip `PriceTooOld` on-chain.
+ */
+export const PYTH_REFRESH_LATENCY_MARGIN_SECS = 15
 
 /**
  * True when the RPC endpoint is a devnet cluster. Deny-lists mainnet substrings
@@ -61,13 +69,13 @@ export async function refreshFeedAccount(
 
     log.push({ checkpoint: 'start', feed: feedPubkey.toBase58(), collHex, lendHex, wallClock: now() })
 
-    // Read max_pyth_age_secs from the feed so we can validate Hermes prices
+    // Read max_age_ms from the feed rules so we can validate Hermes prices
     // before spending two transactions posting a VAA that will be rejected.
     const feedInfo = await connection.getAccountInfo(feedPubkey)
     const maxPythAgeSecs: number = feedInfo
-        ? (feedProgram.coder.accounts.decode('feed', feedInfo.data) as {
-              config: { maxPythAgeSecs: number }
-          }).config.maxPythAgeSecs
+        ? ((feedProgram.coder.accounts.decode('feed', feedInfo.data) as {
+              rules: { maxAgeMs: number }
+          }).rules.maxAgeMs ?? 60_000) / 1000
         : 60
     log.push({ checkpoint: 'feed_config', maxPythAgeSecs })
 
@@ -207,17 +215,20 @@ export async function refreshFeedForDevnet(
 
     const feedInfo = await connection.getAccountInfo(feedAccount)
     if (!feedInfo) return
-    const decoded = feedProgram.coder.accounts.decode('feed', feedInfo.data) as {
-        config: {
-            source: Record<string, unknown>
-            collateralFeedId: number[]
-            lendFeedId: number[]
-        }
-    }
-    if (!('pyth' in decoded.config.source)) return
+    const feedAcct = FeedAccount.from_bytes(feedInfo.data)
+    if (!feedAcct || feedAcct.source !== 1) return // 1 = PriceSource::Pyth (pull)
 
-    const collHex = bytesToFeedIdHex(decoded.config.collateralFeedId)
-    const lendHex = bytesToFeedIdHex(decoded.config.lendFeedId)
+    // Skip when the on-chain snapshot is still fresh enough for the pool's
+    // own `StaleOracle` gate — the caller's action will pass regardless of
+    // whether Hermes currently has a fresh update. This mirrors the UI's
+    // `useFeedFreshness`: refresh freshness ≠ snapshot freshness.
+    const nowSecs = BigInt(Math.floor(Date.now() / 1000))
+    if (!decodedPool.is_feed_snapshot_stale(BigInt(feedAcct.last_updated_ts), nowSecs)) {
+        return
+    }
+
+    const collHex = bytesToFeedIdHex(Array.from(feedAcct.collateral_feed_id))
+    const lendHex = bytesToFeedIdHex(Array.from(feedAcct.lend_feed_id))
 
     const res = await hermes.getLatestPriceUpdates(
         [hermesId(collHex), hermesId(lendHex)],
@@ -225,6 +236,27 @@ export async function refreshFeedForDevnet(
     )
     const updateData = res.binary.data
     if (!updateData?.length) throw new Error('Hermes returned no price update data')
+
+    // Ask the wasm binding (single source of truth for the on-chain gate)
+    // whether the price will still be fresh at expected tx-landing time. If
+    // stale, abort now — posting the VAA would succeed but `set_from_pyth`
+    // would revert with `PriceTooOld` (0x3e80), wasting two txs.
+    const expectedClockTs = BigInt(
+        Math.floor(Date.now() / 1000) + PYTH_REFRESH_LATENCY_MARGIN_SECS,
+    )
+    for (const [label, hex] of [['collateral', collHex], ['lend', lendHex]] as const) {
+        const parsed = res.parsed?.find((p) => hermesId(p.id) === hermesId(hex))
+        const publishTime = parsed?.price?.publish_time
+        if (publishTime == null) continue
+        if (feedAcct.is_pyth_price_stale(BigInt(publishTime), expectedClockTs)) {
+            const ageSecs = Math.floor(Date.now() / 1000) - publishTime
+            throw new Error(
+                `${label} Pyth price is ${ageSecs}s old (feed max ` +
+                `${feedAcct.max_age_ms / 1000}s). Waiting for Pyth to publish a ` +
+                `fresher update for feed ID ${hex.slice(0, 8)}…`,
+            )
+        }
+    }
 
     const receiver = new PythSolanaReceiver({
         connection,

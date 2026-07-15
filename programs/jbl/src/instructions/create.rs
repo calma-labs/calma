@@ -114,7 +114,7 @@ pub fn create_handler(
     let _oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),
         ctx.accounts.feed_state.to_account_info(),
-        max_feed_age_secs as i64,
+        max_feed_age_secs,
     )?;
 
     // ── Fetch initial IRM rate before load_init ───────────────────────────────

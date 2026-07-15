@@ -74,26 +74,6 @@ function feedSelectOptions(
   }));
 }
 
-// ─── badges ───────────────────────────────────────────────────────────────────
-
-function Pill({ label, tone }: { label: string; tone: "ok" | "warn" | "muted" }) {
-  const toneClass =
-    tone === "ok"
-      ? "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]"
-      : tone === "warn"
-        ? "border-[#e0b64d]/40 bg-[#e0b64d]/10 text-[#e0b64d]"
-        : "border-[#c698e5]/25 bg-[#c698e5]/[0.06] text-[#efe0f7]/60";
-  return (
-    <span
-      className={cn(
-        "rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider",
-        toneClass,
-      )}
-    >
-      {label}
-    </span>
-  );
-}
 
 // ─── live Pyth prices for a feed pair ────────────────────────────────────────
 
@@ -578,6 +558,7 @@ interface RulesInputStrings {
   emaDivergenceBps: string;
   minPriceUsd: string;
   maxPriceUsd: string;
+  maxAgeSecs: string;
 }
 
 function parseOptional(field: string): number | null {
@@ -605,6 +586,8 @@ function validateRulesInputs(v: RulesInputStrings): string | null {
   if (min === null) return "Min price must be a non-negative number.";
   if (max === null) return "Max price must be a non-negative number.";
   if (min > 0 && max > 0 && min > max) return "Min price cannot exceed max price.";
+  const age = Number(v.maxAgeSecs.trim());
+  if (!Number.isFinite(age) || age <= 0) return "Max age must be a positive number (seconds).";
   return null;
 }
 
@@ -616,6 +599,7 @@ function buildRulesInput(v: RulesInputStrings): FeedRulesInput {
     emaDivergenceBps: parseOptional(v.emaDivergenceBps) ?? 0,
     minPrice: usdToScaledBn(v.minPriceUsd) ?? new anchor.BN(0),
     maxPrice: usdToScaledBn(v.maxPriceUsd) ?? new anchor.BN(0),
+    maxAgeMs: Math.round(Number(v.maxAgeSecs.trim()) * 1000),
   };
 }
 
@@ -683,6 +667,7 @@ function CreateFeedCard({
   const [emaDivergenceBps, setEmaDivergenceBps] = useState("");
   const [minPriceUsd, setMinPriceUsd] = useState("");
   const [maxPriceUsd, setMaxPriceUsd] = useState("");
+  const [maxAgeSecs, setMaxAgeSecs] = useState("10");
 
   const collateralFeed =
     collateralFeeds?.find((f) => f.id === collateralChoice) ??
@@ -712,6 +697,7 @@ function CreateFeedCard({
     emaDivergenceBps,
     minPriceUsd,
     maxPriceUsd,
+    maxAgeSecs,
   });
 
   async function handleCreate() {
@@ -722,6 +708,7 @@ function CreateFeedCard({
       emaDivergenceBps,
       minPriceUsd,
       maxPriceUsd,
+      maxAgeSecs,
     });
     await mutateAsync({ collateralMint, lendMint, collateralFeedId, lendFeedId, rules });
   }
@@ -864,6 +851,13 @@ function CreateFeedCard({
               value={maxPriceUsd}
               onChange={setMaxPriceUsd}
               placeholder="e.g. 1000000"
+            />
+            <RuleInput
+              label="Max age (seconds)"
+              hint="Reject Pyth prices older than this. Required (> 0)."
+              value={maxAgeSecs}
+              onChange={setMaxAgeSecs}
+              placeholder="e.g. 10"
             />
           </div>
           {rulesError && <p className="mt-3 text-[11px] text-[#d45677]">{rulesError}</p>}

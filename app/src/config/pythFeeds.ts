@@ -39,8 +39,8 @@ export const PLACEHOLDER_MINT = new PublicKey(
     'So11111111111111111111111111111111111111112',
 )
 
-/** Freshness window (seconds) stored on a Pyth feed at create time. */
-export const MAX_PYTH_AGE_SECS = 60
+/** Freshness window (milliseconds) stored in `rules.max_age_ms` at feed create time. */
+export const MAX_PYTH_AGE_MS = 60_000
 
 /**
  * Derive a Pyth catalog search query from a whitelisted token symbol.

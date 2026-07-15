@@ -2,14 +2,16 @@ import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FeedRulesInput, noRules } from '../../config/feedRules'
-import { feedIdToBytes, MAX_PYTH_AGE_SECS } from '../../config/pythFeeds'
-import { connection, feedProgram } from '../../lib/program'
+import { feedIdToBytes, MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
+import { connection, feedPda, feedProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 
 export interface CreateFeedParams {
     collateralMint: PublicKey
     lendMint: PublicKey
+    /** Differentiator allowing multiple feeds for the same mint pair. Defaults to 0. */
+    id?: number
     /** Pyth feed id (hex) for the collateral side. */
     collateralFeedId: string
     /** Pyth feed id (hex) for the lend side. */
@@ -35,6 +37,7 @@ export function useCreateFeed() {
         mutationFn: async ({
             collateralMint,
             lendMint,
+            id = 0,
             collateralFeedId,
             lendFeedId,
             rules,
@@ -43,15 +46,20 @@ export function useCreateFeed() {
 
             const payer = new PublicKey(wallet.account.publicKey)
 
+            const effectiveRules: FeedRulesInput = rules ?? {
+                ...noRules(),
+                maxAgeMs: MAX_PYTH_AGE_MS,
+            }
             const createIx = await feedProgram.methods
                 .create(
+                    id,
                     { pyth: {} },
                     feedIdToBytes(collateralFeedId),
                     feedIdToBytes(lendFeedId),
-                    MAX_PYTH_AGE_SECS,
-                    rules ?? noRules(),
+                    effectiveRules,
                 )
                 .accounts({
+                    feed: feedPda(collateralMint, lendMint, id),
                     authority: payer,
                     collateralMint,
                     lendMint,

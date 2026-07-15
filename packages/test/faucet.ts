@@ -214,7 +214,7 @@ describe("hardcoded minter faucet", () => {
       const irmProgram = anchor.workspace.Irm as anchor.Program<Irm>;
       const feedAuthority = provider.wallet.publicKey;
       const [feedPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("feed"), feedAuthority.toBuffer(), testMint.toBuffer(), lendMint.toBuffer()],
+        [Buffer.from("feed"), testMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
         feedProgram.programId
       );
       const [irmConfigPda] = PublicKey.findProgramAddressSync(
@@ -225,11 +225,11 @@ describe("hardcoded minter faucet", () => {
       if (!(await connection.getAccountInfo(feedPda))) {
         await feedProgram.methods
           .create(
+            0,
             { manual: {} },
             Array(32).fill(0),
             Array(32).fill(0),
-            0,
-            { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+            { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
           )
           .accounts({ authority: feedAuthority, collateralMint: testMint, lendMint, payer: payer.publicKey })
           .signers([payer])

@@ -1,6 +1,6 @@
 use crate::error::ErrorCode;
 use crate::pyth::normalize;
-use crate::rules::{check_bounds, check_conf, check_deviation, check_ema_divergence};
+use crate::rules::{check_bounds, check_conf, check_deviation, check_ema_divergence, check_max_age};
 use crate::state::{Feed, PriceSource};
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
@@ -15,9 +15,9 @@ pub struct SetFromPythPush<'info> {
         mut,
         seeds = [
             b"feed",
-            feed.config.authority.as_ref(),
-            feed.data.collateral_mint.as_ref(),
-            feed.data.lend_mint.as_ref(),
+            feed.collateral_mint.as_ref(),
+            feed.lend_mint.as_ref(),
+            &[feed.id],
         ],
         bump = feed.config.bump,
     )]
@@ -49,12 +49,8 @@ pub fn set_from_pyth_push_handler(ctx: Context<SetFromPythPush>) -> Result<()> {
     let lend = ctx.accounts.lend_price_update.price_message;
 
     let clock = Clock::get()?;
-    let max_age = feed.config.max_pyth_age_secs as i64;
-    require!(
-        clock.unix_timestamp.saturating_sub(coll.publish_time) <= max_age
-            && clock.unix_timestamp.saturating_sub(lend.publish_time) <= max_age,
-        ErrorCode::StalePushPrice
-    );
+    check_max_age(coll.publish_time, clock.unix_timestamp, feed.rules.max_age_ms)?;
+    check_max_age(lend.publish_time, clock.unix_timestamp, feed.rules.max_age_ms)?;
 
     let coll_norm = normalize(coll.price, coll.exponent)?;
     let lend_norm = normalize(lend.price, lend.exponent)?;

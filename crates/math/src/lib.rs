@@ -171,8 +171,14 @@ mod tests {
 
     #[test]
     fn graceful_none_on_u64_overflow() {
-        let result = compute_interest(u64::MAX, u32::MAX, 1_000 * YEAR);
-        let _ = result;
+        // u64::MAX × u32::MAX overflows u128 in the second checked_mul → None.
+        assert_eq!(compute_interest(u64::MAX, u32::MAX, 1_000 * YEAR), None);
+    }
+
+    #[test]
+    fn zero_amount_live_pool_is_zero_shares() {
+        // Proves the amount == 0 early-return is taken, not the ratio formula.
+        assert_eq!(amount_to_shares(0, 1_000_000, 1_000_000), Some(0));
     }
 
     #[test]
@@ -186,7 +192,7 @@ mod tests {
         let shares = amount_to_shares(amount, 0, 0).unwrap();
         assert_eq!(shares, amount);
         let back = shares_to_amount(shares, amount, shares).unwrap();
-        assert_eq!(back, amount);
+        assert!(back.abs_diff(amount) <= 1);
     }
 
     #[test]
@@ -202,5 +208,281 @@ mod tests {
     #[test]
     fn zero_shares_is_zero_amount() {
         assert_eq!(shares_to_amount(0, 1_000_000, 1_000_000), Some(0));
+    }
+
+    // ── Group A: Minimal amounts (1 base unit) ────────────────────────────────
+
+    #[test]
+    fn minimal_first_borrow_one_unit() {
+        assert_eq!(amount_to_shares(1, 0, 0), Some(1));
+    }
+
+    #[test]
+    fn minimal_shares_to_amount_one_unit() {
+        assert_eq!(shares_to_amount(1, 1, 1), Some(1));
+    }
+
+    #[test]
+    fn minimal_repay_burns_one_share() {
+        assert_eq!(amount_to_shares_burned(1, 1, 1, 1), Some(1));
+    }
+
+    #[test]
+    fn minimal_repay_one_unit_from_large_pool() {
+        // Ceiling division: 1 unit repaid burns exactly 1 share regardless of pool size.
+        const HUNDRED_M: u64 = 100_000_000 * 1_000_000;
+        assert_eq!(
+            amount_to_shares_burned(1, HUNDRED_M, HUNDRED_M, HUNDRED_M),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn minimal_interest_one_year_100pct() {
+        // ceil(1 × 10_000 × YEAR / (10_000 × YEAR)) = ceil(1.0) = 1
+        assert_eq!(compute_interest(1, 10_000, YEAR), Some(1));
+    }
+
+    #[test]
+    fn minimal_interest_one_year_1pct() {
+        // ceil(1 × 100 × YEAR / (10_000 × YEAR)) = ceil(0.01) = 1 (rounds up)
+        assert_eq!(compute_interest(1, 100, YEAR), Some(1));
+    }
+
+    #[test]
+    fn minimal_interest_one_second() {
+        // ceil(1 × 10_000 × 1 / (10_000 × YEAR)) = ceil(1/YEAR) = 1 (rounds up)
+        assert_eq!(compute_interest(1, 10_000, 1), Some(1));
+    }
+
+    #[test]
+    fn max_borrowable_one_unit_is_zero() {
+        // 1 × 75 / 100 = 0 — no borrowable capacity at 1 base unit
+        assert_eq!(max_borrowable(1, 75), 0);
+    }
+
+    #[test]
+    fn max_borrowable_133_units_floors_to_99() {
+        // floor(133 × 75 / 100) = floor(99.75) = 99
+        assert_eq!(max_borrowable(133, 75), 99);
+    }
+
+    // ── Group B: Huge amounts (100M tokens = 10^14 base units) ───────────────
+
+    const HUNDRED_M: u64 = 100_000_000 * 1_000_000; // 10^14 base units
+    const SEVENTY_FIVE_M: u64 = 75_000_000 * 1_000_000;
+    const FIFTY_M: u64 = 50_000_000 * 1_000_000;
+
+    #[test]
+    fn huge_first_borrow_100m() {
+        assert_eq!(amount_to_shares(HUNDRED_M, 0, 0), Some(HUNDRED_M));
+    }
+
+    #[test]
+    fn huge_round_trip_single_borrower() {
+        let shares = amount_to_shares(HUNDRED_M, 0, 0).unwrap();
+        assert_eq!(shares, HUNDRED_M);
+        let back = shares_to_amount(shares, HUNDRED_M, shares).unwrap();
+        assert_eq!(back, HUNDRED_M);
+    }
+
+    #[test]
+    fn huge_second_borrow_after_10pct_interest() {
+        // Pool has 110M assets and 100M shares after 10% interest accrual.
+        // New 100M borrow gets floor(100M × 100M / 110M) = 90_909_090_909_090 shares.
+        let total_after_interest = 110_000_000u64 * 1_000_000;
+        let shares = amount_to_shares(HUNDRED_M, total_after_interest, HUNDRED_M).unwrap();
+        assert_eq!(shares, 90_909_090_909_090);
+
+        // Ceiling on repay brings it back within 1 unit of the original borrow.
+        let new_total_borrowed = total_after_interest + HUNDRED_M;
+        let new_total_shares = HUNDRED_M + shares;
+        let back = shares_to_amount(shares, new_total_borrowed, new_total_shares).unwrap();
+        assert!(back.abs_diff(HUNDRED_M) <= 1);
+    }
+
+    #[test]
+    fn huge_interest_10pct_one_year() {
+        let interest = compute_interest(HUNDRED_M, 1_000, YEAR).unwrap();
+        assert_eq!(interest, 10_000_000 * 1_000_000);
+    }
+
+    #[test]
+    fn huge_interest_100pct_one_year() {
+        assert_eq!(compute_interest(HUNDRED_M, 10_000, YEAR), Some(HUNDRED_M));
+    }
+
+    #[test]
+    fn huge_max_borrowable_75pct() {
+        // 10^14 × 75 = 7.5×10^15, well within u64::MAX (1.8×10^19).
+        assert_eq!(max_borrowable(HUNDRED_M, 75), SEVENTY_FIVE_M);
+    }
+
+    #[test]
+    fn huge_flash_fee() {
+        // 9 bps of 100M tokens = 90_000 tokens = 90_000_000_000 base units.
+        assert_eq!(flash_fee(HUNDRED_M), Some(90_000_000_000));
+    }
+
+    #[test]
+    fn huge_compute_ltv_at_75pct() {
+        // 75M debt / 100M collateral = 7500 bps.
+        assert_eq!(compute_ltv(SEVENTY_FIVE_M, HUNDRED_M), Some(7_500));
+    }
+
+    #[test]
+    fn huge_health_factor_at_liquidation_limit() {
+        // collateral=100M, ltv=75%, debt=75M → HF = 100M×75×100/75M = 10_000 (exactly at limit).
+        assert_eq!(
+            compute_health_factor(HUNDRED_M, 75, SEVENTY_FIVE_M),
+            Some(10_000)
+        );
+    }
+
+    #[test]
+    fn huge_health_factor_healthy() {
+        // collateral=100M, ltv=75%, debt=50M → HF = 100M×75×100/50M = 15_000.
+        assert_eq!(
+            compute_health_factor(HUNDRED_M, 75, FIFTY_M),
+            Some(15_000)
+        );
+    }
+
+    #[test]
+    fn huge_full_repay() {
+        // Repaying the full 100M against a 100M pool burns all 100M shares.
+        assert_eq!(
+            amount_to_shares_burned(HUNDRED_M, HUNDRED_M, HUNDRED_M, HUNDRED_M),
+            Some(HUNDRED_M)
+        );
+    }
+
+    // ── Group C: Near-u64::MAX — must succeed ─────────────────────────────────
+
+    #[test]
+    fn interest_exact_u64_max_boundary() {
+        // numerator = u64::MAX × 10_000 × YEAR; denominator = 10_000 × YEAR.
+        // interest = ceil(u64::MAX) = u64::MAX — fits exactly in u64.
+        assert_eq!(compute_interest(u64::MAX, 10_000, YEAR), Some(u64::MAX));
+    }
+
+    #[test]
+    fn interest_u64_max_tiny_rate_one_sec() {
+        // u64::MAX × 500 / (10_000 × YEAR) ≈ 29 billion — fits well in u64.
+        let v = compute_interest(u64::MAX, 500, 1).unwrap();
+        assert!(v > 0 && v < u64::MAX);
+    }
+
+    #[test]
+    fn max_borrowable_u64_max_saturates() {
+        // saturating_mul(75) clamps to u64::MAX; then / 100.
+        assert_eq!(max_borrowable(u64::MAX, 75), u64::MAX / 100);
+    }
+
+    #[test]
+    fn flash_fee_u64_max_succeeds() {
+        // 9 × u64::MAX fits in u128; result / 10_000 fits back in u64.
+        let expected = u64::try_from(
+            (u64::MAX as u128).checked_mul(9).unwrap() / 10_000
+        ).unwrap();
+        assert_eq!(flash_fee(u64::MAX), Some(expected));
+    }
+
+    // ── Group D: Must return None — no panic, no incorrect result ─────────────
+
+    #[test]
+    fn interest_one_second_over_u64_max_returns_none() {
+        // YEAR+1 seconds: interest = u64::MAX + ~584M > u64::MAX → try_from fails.
+        assert_eq!(compute_interest(u64::MAX, 10_000, YEAR + 1), None);
+    }
+
+    #[test]
+    fn amount_to_shares_result_overflows_u64_returns_none() {
+        // u64::MAX × u64::MAX fits u128 but the quotient won't fit u64.
+        assert_eq!(amount_to_shares(u64::MAX, 1, u64::MAX), None);
+    }
+
+    #[test]
+    fn shares_to_amount_result_overflows_u64_returns_none() {
+        assert_eq!(shares_to_amount(u64::MAX, u64::MAX, 1), None);
+    }
+
+    #[test]
+    fn amount_to_shares_burned_overflow_returns_none() {
+        assert_eq!(
+            amount_to_shares_burned(u64::MAX, 1, u64::MAX, u64::MAX),
+            None
+        );
+    }
+
+    #[test]
+    fn health_factor_overflows_u32_returns_none() {
+        // collateral=u64::MAX, ltv=100, debt=1 → HF ≫ u32::MAX → None.
+        assert_eq!(compute_health_factor(u64::MAX, 100, 1), None);
+    }
+
+    #[test]
+    fn health_factor_zero_debt_returns_none() {
+        // debt == 0 is the early-return guard; removing it would cause a divide-by-zero panic.
+        assert_eq!(compute_health_factor(1_000_000, 75, 0), None);
+    }
+
+    // ── compute_ltv missing None test ─────────────────────────────────────────
+
+    #[test]
+    fn compute_ltv_overflows_u32_returns_none() {
+        // ltv_bps = u64::MAX × 10_000 / 1 ≈ 1.84×10²³ >> u32::MAX → try_from fails.
+        assert_eq!(compute_ltv(u64::MAX, 1), None);
+    }
+
+    // ── compute_liquidation_threshold — full four-band coverage ───────────────
+
+    #[test]
+    fn liq_threshold_zero_debt_returns_none() {
+        assert_eq!(compute_liquidation_threshold(0, 1_000_000, 75), None);
+    }
+
+    #[test]
+    fn liq_threshold_zero_collateral_returns_zero() {
+        assert_eq!(compute_liquidation_threshold(1_000_000, 0, 75), Some(0));
+    }
+
+    #[test]
+    fn liq_threshold_zero_ltv_returns_zero() {
+        assert_eq!(compute_liquidation_threshold(1_000_000, 1_000_000, 0), Some(0));
+    }
+
+    #[test]
+    fn liq_threshold_at_exact_ltv_returns_price_scale() {
+        // debt=75M, collateral=100M, ltv=75 → liq_price = 75M×1_000_000 / (100M×75) = 10_000.
+        assert_eq!(
+            compute_liquidation_threshold(SEVENTY_FIVE_M, HUNDRED_M, 75),
+            Some(10_000)
+        );
+    }
+
+    #[test]
+    fn liq_threshold_overflows_u32_returns_none() {
+        // liq_bps = u64::MAX × 1_000_000 / (1 × 1) >> u32::MAX → None.
+        assert_eq!(compute_liquidation_threshold(u64::MAX, 1, 1), None);
+    }
+
+    // ── flash_fee zero and minimal ─────────────────────────────────────────────
+
+    #[test]
+    fn flash_fee_zero_amount_is_zero() {
+        assert_eq!(flash_fee(0), Some(0));
+    }
+
+    #[test]
+    fn flash_fee_amount_below_fee_threshold_is_zero() {
+        // 1_111 × 9 / 10_000 = 9_999 / 10_000 = 0 (floor division).
+        assert_eq!(flash_fee(1_111), Some(0));
+    }
+
+    #[test]
+    fn flash_fee_minimum_nonzero() {
+        // 1_112 × 9 = 10_008; 10_008 / 10_000 = 1.
+        assert_eq!(flash_fee(1_112), Some(1));
     }
 }

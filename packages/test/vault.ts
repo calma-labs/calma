@@ -48,7 +48,7 @@ describe("pool creation (create)", () => {
             lendMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
 
             [feedPda] = PublicKey.findProgramAddressSync(
-                [Buffer.from("feed"), feedAuthority.toBuffer(), collateralMint.toBuffer(), lendMint.toBuffer()],
+                [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
                 feedProgram.programId
             );
 
@@ -83,11 +83,11 @@ describe("pool creation (create)", () => {
             if (!(await provider.connection.getAccountInfo(feedPda))) {
                 await feedProgram.methods
                     .create(
+                        0,
                         { manual: {} },
                         Array(32).fill(0),
                         Array(32).fill(0),
-                        0,
-                        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), reserved: Array(8).fill(0) }
+                        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
                     )
                     .accounts({ authority: feedAuthority, collateralMint, lendMint, payer: payer.publicKey })
                     .signers([payer])
