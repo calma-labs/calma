@@ -1,4 +1,4 @@
-import { MAX_MULTIPLY } from "@/hooks/useMultiply";
+import { maxLeverageForLtv } from "@/hooks/useMultiply";
 import { formatUSD } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
@@ -34,20 +34,21 @@ interface MultiplyStatsGridProps {
 }
 
 export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
-  const maxNetAPY = pool.account.leveraged_net_apy(MAX_MULTIPLY);
+  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent);
+  const maxNetAPY = pool.account.leveraged_net_apy(maxLeverage);
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       <StatCard
         label="Max Multiplier"
-        value={`${MAX_MULTIPLY}×`}
+        value={`${maxLeverage}×`}
         sub="leverage cap"
         accent="text-surface-accent"
       />
       <StatCard
         label="Max Net APY"
         value={`${maxNetAPY.toFixed(2)}%`}
-        sub={`at ${MAX_MULTIPLY}× leverage`}
+        sub={`at ${maxLeverage}× leverage`}
         accent="text-success"
       />
       <StatCard

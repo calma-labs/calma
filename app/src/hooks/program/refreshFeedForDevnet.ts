@@ -22,8 +22,14 @@ const hermes = new HermesClient(HERMES_ENDPOINT)
  * `set_from_pyth` tx actually landing. Covers Hermes fetch → tx build →
  * `sendAll` confirmation. Predicting against `now + margin` prevents burning
  * two txs on a price that will trip `PriceTooOld` on-chain.
+ *
+ * MUST stay well under the feed's `max_age`: the gate is `elapsed > max_age`,
+ * so a margin ≥ max_age makes the preflight unsatisfiable for *every* Pyth
+ * update (even one published this instant lands `margin`s old). Solana
+ * confirmation is a couple seconds, so 2s is realistic; the call site further
+ * clamps it to `max_age − 1` as a hard guard for tight feeds.
  */
-export const PYTH_REFRESH_LATENCY_MARGIN_SECS = 15
+export const PYTH_REFRESH_LATENCY_MARGIN_SECS = 2
 
 /**
  * True when the RPC endpoint is a devnet cluster. Deny-lists mainnet substrings
@@ -241,19 +247,30 @@ export async function refreshFeedForDevnet(
     // whether the price will still be fresh at expected tx-landing time. If
     // stale, abort now — posting the VAA would succeed but `set_from_pyth`
     // would revert with `PriceTooOld` (0x3e80), wasting two txs.
-    const expectedClockTs = BigInt(
-        Math.floor(Date.now() / 1000) + PYTH_REFRESH_LATENCY_MARGIN_SECS,
-    )
+    // Clamp the latency margin to `max_age − 1s`: with `elapsed > max_age` as
+    // the gate, a margin ≥ max_age would reject every possible update. `0`
+    // disables the on-chain check, so no clamp is needed there.
+    const maxAgeSecs = feedAcct.max_age_ms / 1000
+    const nowTs = Math.floor(Date.now() / 1000)
+    const marginSecs =
+        maxAgeSecs > 0
+            ? Math.min(PYTH_REFRESH_LATENCY_MARGIN_SECS, maxAgeSecs - 1)
+            : PYTH_REFRESH_LATENCY_MARGIN_SECS
+    const expectedClockTs = BigInt(nowTs + marginSecs)
     for (const [label, hex] of [['collateral', collHex], ['lend', lendHex]] as const) {
         const parsed = res.parsed?.find((p) => hermesId(p.id) === hermesId(hex))
         const publishTime = parsed?.price?.publish_time
         if (publishTime == null) continue
         if (feedAcct.is_pyth_price_stale(BigInt(publishTime), expectedClockTs)) {
-            const ageSecs = Math.floor(Date.now() / 1000) - publishTime
+            // Report the age the gate actually judged (at expected landing),
+            // not the wall-clock age now — otherwise a "2s old" message looks
+            // fresh while the gate rejected it against `now + margin`.
+            const ageAtLandingSecs = nowTs + marginSecs - publishTime
             throw new Error(
-                `${label} Pyth price is ${ageSecs}s old (feed max ` +
-                `${feedAcct.max_age_ms / 1000}s). Waiting for Pyth to publish a ` +
-                `fresher update for feed ID ${hex.slice(0, 8)}…`,
+                `${label} Pyth price will be ${ageAtLandingSecs}s old at tx ` +
+                `landing (feed max ${maxAgeSecs}s, incl. ${marginSecs}s latency ` +
+                `margin). Waiting for Pyth to publish a fresher update for feed ` +
+                `ID ${hex.slice(0, 8)}…`,
             )
         }
     }

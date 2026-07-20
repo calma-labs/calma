@@ -1,7 +1,7 @@
 import { HermesClient } from '@pythnetwork/hermes-client'
 import { FeedAccount, FeedFreshnessResult, PoolAccount } from '@jbl/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { bytesToFeedIdHex, hermesId } from '../../config/pythFeeds'
 import { connection } from '../../lib/program'
@@ -11,7 +11,7 @@ const HERMES_ENDPOINT =
     import.meta.env.VITE_HERMES_URL ?? 'https://hermes.pyth.network'
 const hermes = new HermesClient(HERMES_ENDPOINT)
 
-const REFETCH_INTERVAL_MS = 20_000
+const REFETCH_INTERVAL_MS = 1_000
 
 /** On-chain scale for `feed.state.{collateral,lend}_price` — see PRICE_SCALE in feed-state. */
 const PRICE_SCALE = 1_000_000
@@ -196,7 +196,7 @@ function computeFreshness(snapshot: FeedSnapshot, nowSecs: number): FeedFreshnes
  * The button disables only on `willFail`.
  */
 export function useFeedFreshness(pool: PublicKey | null | undefined) {
-    const { data: snapshot, refetch } = useQuery({
+    const { data: snapshot } = useQuery({
         queryKey: ['feed-snapshot', pool?.toBase58() ?? ''],
         queryFn: () => fetchSnapshot(pool!),
         enabled: !!pool,
@@ -210,13 +210,6 @@ export function useFeedFreshness(pool: PublicKey | null | undefined) {
         () => (snapshot ? computeFreshness(snapshot, now) : undefined),
         [snapshot, now],
     )
-
-    const willFail = data?.willFail ?? false
-    useEffect(() => {
-        if (!willFail) return
-        const id = setInterval(() => { refetch() }, 3_000)
-        return () => clearInterval(id)
-    }, [willFail, refetch])
 
     return { data }
 }

@@ -173,7 +173,7 @@ impl<M: Market, I, P: Position, O, S> Core<M, I, P, O, S> {
         transfer(amount).map_err(MathError::Transfer)
     }
 
-    fn max_borrow_capacity(&self, collateral: u64, oracle_price: u64) -> Option<u64> {
+    pub fn max_borrow_capacity(&self, collateral: u64, oracle_price: u64) -> Option<u64> {
         u64::try_from(
             (collateral as u128)
                 .checked_mul(oracle_price as u128)?
@@ -459,5 +459,148 @@ impl<M: Market, I, P: Position, O: Oracle> Core<M, I, P, O, Accrued> {
         *self.position.collateral_deposited_mut() = remaining;
         transfer(amount).map_err(MathError::Transfer)?;
         Ok(remaining)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone, Copy)]
+    struct TestMarket {
+        supply_a: u64,
+        supply_s: u64,
+        borrow_a: u64,
+        borrow_s: u64,
+        last_update: i64,
+        aiq: u64,
+        ltv: u8,
+    }
+    impl Market for TestMarket {
+        fn total_supply_assets(&self) -> u64 { self.supply_a }
+        fn total_supply_shares(&self) -> u64 { self.supply_s }
+        fn total_borrow_assets(&self) -> u64 { self.borrow_a }
+        fn total_borrow_shares(&self) -> u64 { self.borrow_s }
+        fn last_update(&self) -> i64 { self.last_update }
+        fn fee(&self) -> u64 { 0 }
+        fn assets_in_queue(&self) -> u64 { self.aiq }
+        fn ltv_percent(&self) -> u8 { self.ltv }
+        fn total_supply_assets_mut(&mut self) -> &mut u64 { &mut self.supply_a }
+        fn total_supply_shares_mut(&mut self) -> &mut u64 { &mut self.supply_s }
+        fn assets_in_queue_mut(&mut self) -> &mut u64 { &mut self.aiq }
+        fn total_borrow_assets_mut(&mut self) -> &mut u64 { &mut self.borrow_a }
+        fn total_borrow_shares_mut(&mut self) -> &mut u64 { &mut self.borrow_s }
+        fn last_update_mut(&mut self) -> &mut i64 { &mut self.last_update }
+    }
+
+    #[derive(Clone, Copy)]
+    struct TestPosition { collateral: u64, debt_shares: u64 }
+    impl Position for TestPosition {
+        fn collateral_deposited(&self) -> u64 { self.collateral }
+        fn debt_shares(&self) -> u64 { self.debt_shares }
+        fn collateral_deposited_mut(&mut self) -> &mut u64 { &mut self.collateral }
+        fn debt_shares_mut(&mut self) -> &mut u64 { &mut self.debt_shares }
+    }
+
+    #[derive(Clone, Copy)]
+    struct TestIrm { rate_bps: u32, current_ts: i64 }
+    impl IrmRate for TestIrm {
+        fn rate_bps(&self) -> u32 { self.rate_bps }
+        fn current_ts(&self) -> i64 { self.current_ts }
+    }
+
+    #[derive(Clone, Copy)]
+    struct TestOracle { price: u64 }
+    impl Oracle for TestOracle {
+        fn price(&self) -> u64 { self.price }
+    }
+
+    /// Replays the exact on-chain full-repay sequence against the live devnet
+    /// state that reported `MathOverflow`: pool 2a2xed at util≈24.75%
+    /// (borrow_a=2_475_005, borrow_s=2_474_904), position debt_shares=2_474_904,
+    /// IRM rate=154 bps, 50 s elapsed. Must NOT overflow — proving the reported
+    /// error came from a stale deployed binary, not current source.
+    #[test]
+    fn full_repay_on_reported_devnet_state_does_not_overflow() {
+        let market = TestMarket {
+            supply_a: 10_000_000,
+            supply_s: 10_000_000,
+            borrow_a: 2_475_005,
+            borrow_s: 2_474_904,
+            last_update: 1_784_229_466,
+            aiq: 0,
+            ltv: 97,
+        };
+        let position = TestPosition { collateral: 1_000_000_000, debt_shares: 2_474_904 };
+        let irm = TestIrm { rate_bps: 154, current_ts: 1_784_229_516 };
+
+        let mut core = Core::new(market)
+            .with_irm(irm)
+            .with_position(position)
+            .accrue_interest()
+            .expect("accrue_interest must not overflow");
+
+        // Full repay: on-chain caller passes u64::MAX; Core caps at total_due.
+        let (repaid, burned) = match core.repay(u64::MAX, |_| Ok::<(), ()>(())) {
+            Ok(v) => v,
+            Err(_) => panic!("repay must not overflow"),
+        };
+
+        assert_eq!(burned, 2_474_904, "burns entire debt");
+        assert_eq!(core.position.debt_shares(), 0, "position cleared");
+        assert_eq!(core.market.total_borrow_shares(), 0, "pool borrow shares cleared");
+        // Interest accrued over 50 s at 154 bps on 2_475_005 rounds up to 1 unit.
+        assert_eq!(repaid, 2_475_006);
+        assert_eq!(core.market.total_borrow_assets(), 0, "pool borrow assets cleared");
+    }
+
+    /// Borrow capacity boundary via the real `Core::borrow` op (the same gate the
+    /// program enforces): capacity =
+    /// collateral × oracle_price / PRICE_SCALE × ltv / 100.
+    /// Here 1_000_000 collateral × 1.0 price × 75% = 750_000 lend units.
+    /// Borrowing exactly the capacity succeeds; one unit more is rejected
+    /// `Undercollateralized`.
+    #[test]
+    fn borrow_at_capacity_succeeds_one_over_fails() {
+        let market = TestMarket {
+            supply_a: 10_000_000,
+            supply_s: 10_000_000,
+            borrow_a: 0,
+            borrow_s: 0,
+            last_update: 1_784_229_466,
+            aiq: 0,
+            ltv: 75,
+        };
+        let position = TestPosition { collateral: 1_000_000, debt_shares: 0 };
+        let irm = TestIrm { rate_bps: 154, current_ts: 1_784_229_516 };
+        let oracle = TestOracle { price: PRICE_SCALE as u64 };
+
+        let fresh = || {
+            Core::new(market)
+                .with_position(position)
+                .with_oracle(oracle)
+                .with_irm(irm)
+                .accrue_interest()
+                .expect("accrue must not overflow")
+        };
+
+        const CAPACITY: u64 = 750_000;
+
+        // Exactly at capacity: succeeds, minting the first-borrow 1:1 shares.
+        let mut at_cap = fresh();
+        match at_cap.borrow(CAPACITY, |_| Ok::<(), ()>(())) {
+            Ok(shares) => assert_eq!(shares, CAPACITY, "first borrow mints 1:1 shares"),
+            Err(_) => panic!("borrow at exact capacity must succeed"),
+        }
+
+        // One unit over capacity: rejected by the LTV gate.
+        let mut over_cap = fresh();
+        assert!(
+            matches!(
+                over_cap.borrow(CAPACITY + 1, |_| Ok::<(), ()>(())),
+                Err(MathError::Undercollateralized)
+            ),
+            "borrowing capacity + 1 must be Undercollateralized"
+        );
     }
 }

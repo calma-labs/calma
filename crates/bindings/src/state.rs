@@ -731,13 +731,18 @@ impl PoolWithIrm {
             .map(|(amount, _)| amount)
     }
 
-    /// Maximum borrowable amount (raw lend units) for `position` at the pool's
-    /// LTV — same formula as the on-chain borrow check.
+    /// Maximum gross borrowable amount (raw lend units) for `position` at the
+    /// pool's LTV and current oracle price — the exact ceiling the on-chain
+    /// borrow check enforces via `Core::max_borrow_capacity`. Collateral value is
+    /// converted to lend units through the feed price; callers subtract
+    /// `debt_amount` for remaining headroom.
     pub fn max_borrowable(&self, position: &UserPositionAccount) -> u64 {
-        math::max_borrowable(
-            position.0.collateral_deposited,
-            self.pool.0.market.ltv_percent,
-        )
+        let core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_oracle(self.feed);
+        let oracle_price = core.oracle_price();
+        core.max_borrow_capacity(position.0.collateral_deposited, oracle_price)
+            .unwrap_or(0)
     }
 
     /// Loan-to-Value of `position` in basis points, using accrued debt.

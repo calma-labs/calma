@@ -65,6 +65,9 @@ pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64
     if shares == 0 {
         return Some(0);
     }
+    if total_debt_shares == 0 {
+        return None;
+    }
     let numer = (shares as u128).checked_mul(total_borrowed as u128)?;
     let result = numer.div_ceil(total_debt_shares as u128);
     u64::try_from(result).ok()
@@ -119,11 +122,6 @@ pub fn amount_to_shares_burned(
     let shares = shares.div_ceil(total_borrowed as u128);
     let shares = u64::try_from(shares).ok()?.min(max_shares);
     Some(shares)
-}
-
-/// Mirrors the on-chain LTV check in `borrow_handler`.
-pub fn max_borrowable(collateral: u64, ltv_percent: u8) -> u64 {
-    collateral.saturating_mul(ltv_percent as u64) / 100
 }
 
 #[cfg(test)]
@@ -210,6 +208,12 @@ mod tests {
         assert_eq!(shares_to_amount(0, 1_000_000, 1_000_000), Some(0));
     }
 
+    #[test]
+    fn nonzero_shares_zero_total_shares_returns_none() {
+        // Inconsistent state (e.g. stale pool data during a race condition) must not panic.
+        assert_eq!(shares_to_amount(1, 1_000_000, 0), None);
+    }
+
     // ── Group A: Minimal amounts (1 base unit) ────────────────────────────────
 
     #[test]
@@ -255,18 +259,6 @@ mod tests {
         assert_eq!(compute_interest(1, 10_000, 1), Some(1));
     }
 
-    #[test]
-    fn max_borrowable_one_unit_is_zero() {
-        // 1 × 75 / 100 = 0 — no borrowable capacity at 1 base unit
-        assert_eq!(max_borrowable(1, 75), 0);
-    }
-
-    #[test]
-    fn max_borrowable_133_units_floors_to_99() {
-        // floor(133 × 75 / 100) = floor(99.75) = 99
-        assert_eq!(max_borrowable(133, 75), 99);
-    }
-
     // ── Group B: Huge amounts (100M tokens = 10^14 base units) ───────────────
 
     const HUNDRED_M: u64 = 100_000_000 * 1_000_000; // 10^14 base units
@@ -310,12 +302,6 @@ mod tests {
     #[test]
     fn huge_interest_100pct_one_year() {
         assert_eq!(compute_interest(HUNDRED_M, 10_000, YEAR), Some(HUNDRED_M));
-    }
-
-    #[test]
-    fn huge_max_borrowable_75pct() {
-        // 10^14 × 75 = 7.5×10^15, well within u64::MAX (1.8×10^19).
-        assert_eq!(max_borrowable(HUNDRED_M, 75), SEVENTY_FIVE_M);
     }
 
     #[test]
@@ -371,12 +357,6 @@ mod tests {
         // u64::MAX × 500 / (10_000 × YEAR) ≈ 29 billion — fits well in u64.
         let v = compute_interest(u64::MAX, 500, 1).unwrap();
         assert!(v > 0 && v < u64::MAX);
-    }
-
-    #[test]
-    fn max_borrowable_u64_max_saturates() {
-        // saturating_mul(75) clamps to u64::MAX; then / 100.
-        assert_eq!(max_borrowable(u64::MAX, 75), u64::MAX / 100);
     }
 
     #[test]

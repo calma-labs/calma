@@ -1,4 +1,6 @@
 import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
+import { useFeedFreshness } from "@/hooks/program/useFeedFreshness";
+import { OracleTable } from "@/components/common/OracleTable";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
 import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
@@ -48,6 +50,10 @@ export function ClosePositionModal({
   const closeMutation = useCloseMultiply();
   const isPending = closeMutation.isPending;
 
+  const poolPubKey = useMemo(() => new PublicKey(pool.address), [pool.address]);
+  const { data: freshness } = useFeedFreshness(poolPubKey);
+  const feedStale = freshness?.willFail ?? false;
+
   // Raw debt derived from debt shares via WASM (interest accrued to now)
   const debtRaw = useMemo(
     () => poolData.debt_amount(userPosition) ?? 0n,
@@ -68,10 +74,9 @@ export function ClosePositionModal({
   }
 
   async function handleSubmit() {
-    if (!confirmed || !wallet || isPending) return;
+    if (!confirmed || !wallet || isPending || feedStale) return;
 
     const walletPubKey = new PublicKey(wallet.account.publicKey);
-    const poolPubKey = new PublicKey(pool.address);
     const userCollateralAta = getAssociatedTokenAddressSync(
       new PublicKey(poolData.collateral_mint),
       walletPubKey,
@@ -222,12 +227,14 @@ export function ClosePositionModal({
             </span>
           </label>
 
+          {freshness && <OracleTable freshness={freshness} />}
+
           <button
-            disabled={!confirmed || isPending}
+            disabled={!confirmed || isPending || feedStale}
             onClick={handleSubmit}
             className={cn(
               "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2",
-              confirmed && !isPending
+              confirmed && !isPending && !feedStale
                 ? "bg-destructive text-white hover:bg-destructive/80 cursor-pointer"
                 : "bg-surface-accent/12 text-surface-foreground/20 cursor-not-allowed",
             )}
@@ -237,6 +244,8 @@ export function ClosePositionModal({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Closing…
               </>
+            ) : feedStale ? (
+              "Oracle stale"
             ) : (
               "Close Position"
             )}

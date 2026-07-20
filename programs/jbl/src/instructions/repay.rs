@@ -88,7 +88,7 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
             .accrue_interest()
-            .ok_or(crate::error::ErrorCode::MathOverflow)?;
+            .ok_or(crate::error::ErrorCode::InterestAccrualOverflow)?;
         let result = core
             .repay(amount, |amt| {
                 require!(
@@ -97,7 +97,17 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
                 );
                 ctx.accounts.transfer_lend_to_vault(amt)
             })
-            .map_err(crate::error::ErrorCode::from)?;
+            .map_err(|e| match e {
+                // Preserve the concrete error raised inside the transfer closure
+                // (e.g. InsufficientFunds) instead of collapsing it to MathOverflow.
+                math::MathError::Transfer(e) => e,
+                // The only arithmetic step in `repay` is the debt share→amount
+                // valuation; surface it distinctly from interest accrual above.
+                math::MathError::Arithmetic => {
+                    crate::error::ErrorCode::DebtValuationOverflow.into()
+                }
+                other => crate::error::ErrorCode::from(other).into(),
+            })?;
         pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         result

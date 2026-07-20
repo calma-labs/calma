@@ -8,6 +8,7 @@ import type { TokenBalance, WalletBalances } from '../types/wallet'
 // This allows anyone to mint test tokens and use mock swap without being the mint authority
 const MINTER_SECRET_KEY = new Uint8Array([164, 83, 220, 177, 59, 188, 88, 49, 200, 58, 85, 66, 67, 49, 29, 78, 136, 239, 249, 139, 109, 48, 103, 122, 207, 63, 58, 166, 208, 94, 29, 195, 235, 76, 64, 246, 35, 186, 222, 243, 110, 94, 56, 145, 95, 144, 26, 200, 237, 159, 61, 219, 114, 138, 224, 39, 254, 99, 89, 216, 19, 83, 205, 82])
 export const MINTER_KEYPAIR = Keypair.fromSecretKey(MINTER_SECRET_KEY)
+// GqWFPtJTX4jVAQxX17vMbzwtY97PsZk7gaEtVuMjtk6D
 export const MINTER_PUBKEY = MINTER_KEYPAIR.publicKey
 
 interface WalletBalancesState {

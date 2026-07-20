@@ -23,14 +23,14 @@ export interface OpenMultiplyParams {
     userCollateralAta: PublicKey
     /** User's lend ATA — receives flash-borrowed lend tokens; source for flash repay. */
     userLendAta: PublicKey
-    /** Initial collateral (raw, no decimals). This is the user's own capital. */
+    /** Own capital added this action (raw, no decimals). Deposited as collateral. */
     amountRaw: anchor.BN
-    /** Desired leverage multiplier, e.g. 2.5 for 2.5×. */
+    /** Leverage applied to this action's capital, e.g. 2.5 for 2.5×. */
     leverage: number
 }
 
 /**
- * Open a leveraged (multiply) position via a flash-loan loop.
+ * Open (or add a leveraged tranche to) a multiply position via a flash-loan loop.
  *
  * Transaction sequence:
  *   1. depositCollateral(amount)              — user's own capital
@@ -40,9 +40,10 @@ export interface OpenMultiplyParams {
  *   5. borrow(extra + fee)                    — lend tokens to cover flash repay
  *   6. flashRepay(extra + fee)
  *
- * Resulting on-chain state:
- *   collateralDeposited ≈ amount × L
- *   debtShares > 0 (debt ≈ amount × (L−1))
+ * Adds `amount × L` collateral and `amount × (L−1)` debt. All steps are additive
+ * on-chain, so calling this against an existing position stacks another tranche;
+ * each tranche's own LTV is `(L−1)/L ≤ pool LTV`, so the whole position stays
+ * within LTV as long as `L ≤ 1/(1−LTV)` (see `maxLeverageForLtv`).
  *
  * The user pays zero lend tokens net — the flash fee is embedded in the borrow.
  * The user must hold `amountRaw` collateral tokens before calling this.

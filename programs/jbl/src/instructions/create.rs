@@ -140,6 +140,10 @@ pub fn create_handler(
     pool.market.total_supply_shares = 0;
     pool.market.total_borrow_assets = 0;
     pool.market.total_borrow_shares = 0;
+    // Stamp explicitly rather than relying on the `accrue_interest` side effect
+    // below — a 0 `last_update` on a pool that later accrues borrow assets makes
+    // `elapsed` span the entire unix epoch and overflows `compute_interest`.
+    pool.market.last_update = Clock::get()?.unix_timestamp;
     pool.market.fee = 0;
     pool.market.assets_in_queue = 0;
     pool.market.ltv_percent = ltv_percent;

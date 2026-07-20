@@ -58,4 +58,8 @@ pub enum ErrorCode {
     FeedSetValueMissing,
     #[msg("max_feed_age_secs must be greater than zero")]
     InvalidMaxFeedAge,
+    #[msg("Interest accrual computation overflowed")]
+    InterestAccrualOverflow,
+    #[msg("Debt share-to-amount valuation overflowed")]
+    DebtValuationOverflow,
 }
