@@ -1,6 +1,6 @@
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { position_leverage_bps, type PoolWithIrm } from "@jbl/wasm-lib";
+import { position_leverage_bps, type PoolWithIrm } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";

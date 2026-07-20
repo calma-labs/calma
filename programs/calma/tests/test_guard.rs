@@ -3,7 +3,7 @@ use common::{create_mint_ixs, send_ixs, try_send_ixs};
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
-use jbl::state::Pool;
+use calma::state::Pool;
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
     anchor_spl::token::spl_token,
@@ -14,7 +14,7 @@ use {
 
 fn setup_svm() -> (LiteSVM, Keypair, Keypair, Keypair) {
     let mut svm = LiteSVM::new();
-    svm.add_program(jbl::id(), include_bytes!("../../../target/deploy/jbl.so"))
+    svm.add_program(calma::id(), include_bytes!("../../../target/deploy/calma.so"))
         .unwrap();
     svm.add_program(feed::id(), include_bytes!("../../../target/deploy/feed.so"))
         .unwrap();
@@ -95,7 +95,7 @@ fn guard_add(svm: &mut LiteSVM, guard_pda: &Pubkey, guard_authority: &Keypair, p
     send_ixs(svm, &[ix], guard_authority, &[guard_authority]);
 }
 
-/// Build a `jbl::create` instruction, optionally including a guard.
+/// Build a `calma::create` instruction, optionally including a guard.
 fn create_pool_ix(
     program_id: Pubkey,
     feed_id: Pubkey,
@@ -119,12 +119,12 @@ fn create_pool_ix(
     };
     Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create {
+        &calma::instruction::Create {
             ltv_percent: 75,
             max_feed_age_secs: 90u32,
         }
         .data(),
-        jbl::accounts::Create {
+        calma::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
             collateral_vault,
@@ -163,7 +163,7 @@ fn prepare_pool(
     collateral_mint: Pubkey,
     lend_mint: Pubkey,
 ) -> PoolSetup {
-    let program_id = jbl::id();
+    let program_id = calma::id();
     let feed_id = feed::id();
     let irm_id = irm::id();
 
@@ -278,7 +278,7 @@ fn test_create_with_guard_whitelisted() {
     let setup = prepare_pool(&mut svm, &payer, col_mint_kp.pubkey(), lend_mint_kp.pubkey());
 
     let ix = create_pool_ix(
-        jbl::id(),
+        calma::id(),
         feed::id(),
         setup.feed_pda,
         irm::id(),
@@ -309,7 +309,7 @@ fn test_create_with_guard_not_whitelisted() {
     let setup = prepare_pool(&mut svm, &payer, col_mint_kp.pubkey(), lend_mint_kp.pubkey());
 
     let ix = create_pool_ix(
-        jbl::id(),
+        calma::id(),
         feed::id(),
         setup.feed_pda,
         irm::id(),

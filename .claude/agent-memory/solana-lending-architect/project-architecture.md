@@ -1,46 +1,46 @@
 ---
 name: project-architecture
-description: Monorepo structure, crate roles, WASM build pipeline, and key account types for jbl lending protocol
+description: Monorepo structure, crate roles, WASM build pipeline, and key account types for calma lending protocol
 metadata:
   type: project
 ---
 
-JBL is a Solana-based DeFi lending protocol inspired by Morpho. Monorepo at `/home/mateo/code/jbl`.
+Calma is a Solana-based DeFi lending protocol inspired by Morpho. Monorepo at `/home/mateo/code/calma`.
 
 ## Cargo workspace members
-- `programs/jbl` — Anchor on-chain lending program (13 instructions)
+- `programs/calma` — Anchor on-chain lending program (13 instructions)
 - `programs/irm` — Anchor on-chain IRM (Interest Rate Model) program
-- `crates/jbl-state` — Account type definitions (Pool, UserPosition, RateHedgeOffer, etc.) — compiled to both BPF and WASM
-- `crates/jbl-math` — Pure Rust math (compute_interest, amount_to_shares, etc.) — compiled to both BPF and WASM
-- `crates/jbl-irm` — IrmState + PiecewiseLinearModel fee logic — compiled to both BPF and WASM
-- `crates/jbl-wasm` — wasm-bindgen WASM bridge (cdylib + rlib), exports to `packages/wasm-lib/`
+- `crates/calma-state` — Account type definitions (Pool, UserPosition, RateHedgeOffer, etc.) — compiled to both BPF and WASM
+- `crates/math` — Pure Rust math (compute_interest, amount_to_shares, etc.) — compiled to both BPF and WASM
+- `crates/calma-irm` — IrmState + PiecewiseLinearModel fee logic — compiled to both BPF and WASM
+- `crates/calma-wasm` — wasm-bindgen WASM bridge (cdylib + rlib), exports to `packages/wasm-lib/`
 
 ## Key account types
-- `Pool` (jbl-state): 41,232 bytes zero-copy, contains `market: Market` (supply/borrow assets/shares, last_update, fee, assets_in_queue), references `rate_program` and `rate_state` pubkeys pointing to the IRM
-- `IrmState` (jbl-irm): 232 bytes zero-copy, contains `pool: Pubkey`, `model: PiecewiseLinearModel`, `authority: Pubkey`, `bump: u8`
+- `Pool` (calma-state): 41,232 bytes zero-copy, contains `market: Market` (supply/borrow assets/shares, last_update, fee, assets_in_queue), references `rate_program` and `rate_state` pubkeys pointing to the IRM
+- `IrmState` (calma-irm): 232 bytes zero-copy, contains `pool: Pubkey`, `model: PiecewiseLinearModel`, `authority: Pubkey`, `bump: u8`
 - `PiecewiseLinearModel`: 4 `LinearSegment` curves; `get_fee_bps(utilization_bps: u64) -> u32` returns borrow rate
 
 ## WASM binding pattern
-- `crates/jbl-wasm/src/state.rs`: `#[wasm_bindgen]` wrapper structs (`PoolAccount`, `UserPositionAccount`, `IrmConfigAccount`)
+- `crates/calma-wasm/src/state.rs`: `#[wasm_bindgen]` wrapper structs (`PoolAccount`, `UserPositionAccount`, `IrmConfigAccount`)
 - `from_bytes(data: &[u8]) -> Option<Self>` strips 8-byte Anchor discriminator, bytemuck::pod_read_unaligned
-- `crates/jbl-wasm/src/exports.rs`: `#[no_mangle]` C-ABI exports for wasmtime integration tests
+- `crates/calma-wasm/src/exports.rs`: `#[no_mangle]` C-ABI exports for wasmtime integration tests
 
 ## Token transfer pattern (current)
-Token transfers happen **entirely inside `programs/jbl`** — `jbl-math` contains zero transfer logic.
+Token transfers happen **entirely inside `programs/calma`** — `math` contains zero transfer logic.
 The Anchor instruction handlers follow a strict two-phase pattern:
-1. Call `jbl_math::Core` methods which mutate `market`/`position` state and return numeric results (amounts, shares).
+1. Call `math::Core` methods which mutate `market`/`position` state and return numeric results (amounts, shares).
 2. The handler uses those results to drive `anchor_spl::token::transfer` / `mint_to` / `burn` CPIs.
 The split is clean: math crate = pure bookkeeping, program = side effects.
 
-Oracle abstraction (prior commits) established the pattern: a Solana-specific struct (`OracleState`, `IrmState`) implements a `jbl_math` trait (`Oracle`, `IrmRate`), giving the math crate a dependency-free handle to runtime data. The identical pattern can be used for token transfers if they ever need to move into `jbl-math`.
+Oracle abstraction (prior commits) established the pattern: a Solana-specific struct (`OracleState`, `IrmState`) implements a `math` trait (`Oracle`, `IrmRate`), giving the math crate a dependency-free handle to runtime data. The identical pattern can be used for token transfers if they ever need to move into `math`.
 
 ## APY calculation gap
-- `poolDisplay.ts` calls `pd.supply_apy_bps()` and `pd.borrow_apy_bps()` on `PoolAccount`, but these methods do NOT currently exist in `jbl-wasm/src/state.rs`
+- `poolDisplay.ts` calls `pd.supply_apy_bps()` and `pd.borrow_apy_bps()` on `PoolAccount`, but these methods do NOT currently exist in `calma-wasm/src/state.rs`
 - APY must be derived from IrmState: utilization_bps → `IrmState.model.get_fee_bps()` → borrow_rate_bps; supply_apy_bps = borrow_rate_bps * utilization_bps / 10_000
 
 ## NPM workspace
-- `app/` — React + TypeScript frontend, imports `@jbl/wasm-lib`
-- `packages/wasm-lib/` — generated by wasm-pack from `crates/jbl-wasm`
+- `app/` — React + TypeScript frontend, imports `@calma/wasm-lib`
+- `packages/wasm-lib/` — generated by wasm-pack from `crates/calma-wasm`
 - `packages/test/` — Anchor integration tests
 
 **Why:** Pool.rate_state points to an IrmState account on-chain; the fee curve lives entirely in IrmState, not in Pool. Frontend must fetch both accounts and combine them to compute APY.

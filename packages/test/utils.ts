@@ -6,18 +6,18 @@ import {
   createAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Irm } from "../../target/types/irm";
 import { Feed } from "../../target/types/feed";
 
-import JblIdl from "../../target/idl/jbl.json";
+import CalmaIdl from "../../target/idl/calma.json";
 export const POOL_SPACE: number = Number(
-  JblIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
+  CalmaIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
 );
 
 export interface TestSetup {
   provider: AnchorProvider;
-  program: Program<Jbl>;
+  program: Program<Calma>;
   connection: Connection;
   authority: Keypair;
   payer: Keypair;
@@ -43,7 +43,7 @@ export interface TestSetup {
 }
 
 /**
- * Sets up a complete test environment for the jbl program.
+ * Sets up a complete test environment for the calma program.
  *
  * Creates a unified pool with separate collateral and lend mints.
  * `authority` receives 1000 tokens of each mint.
@@ -59,7 +59,7 @@ export async function setupTest(
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.Jbl as Program<Jbl>;
+  const program = anchor.workspace.Calma as Program<Calma>;
   const connection = provider.connection;
 
   const authority = Keypair.generate();

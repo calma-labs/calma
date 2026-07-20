@@ -6,7 +6,7 @@ import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as re
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { MINTER_KEYPAIR, useWalletBalancesStore } from '../../store/wallet.store'
-import { flash_fee } from '@jbl/wasm-lib'
+import { flash_fee } from '@calma/wasm-lib'
 import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
 /** Flash fee via the shared wasm math (mirrors the on-chain fee exactly). */

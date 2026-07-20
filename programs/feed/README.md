@@ -1,6 +1,6 @@
 # feed
 
-The protocol's price interface. `jbl` and the WASM bindings only ever talk to
+The protocol's price interface. `calma` and the WASM bindings only ever talk to
 `feed`; they never read Pyth directly. Each `Feed` account is locked to one
 price **source** at create time, with one setter instruction per source.
 
@@ -22,7 +22,7 @@ price **source** at create time, with one setter instruction per source.
 
 ## Ordering constraint: price the feed before creating a pool
 
-`jbl::create` CPIs into `feed::get_state`, which requires `lend_price > 0`
+`calma::create` CPIs into `feed::get_state`, which requires `lend_price > 0`
 (`compute_snapshot` rejects a zeroed feed with `ZeroPrice`). A freshly created
 `Feed` has all prices at 0. **The feed must be populated before a pool is
 created against it:**
@@ -30,7 +30,7 @@ created against it:**
 1. `feed::create` (Manual or Pyth)
 2. `feed::set_value` (Manual) **or** `feed::set_from_pyth` (Pyth) — sets the
    first non-zero price
-3. `jbl::create` — reads the feed via CPI and applies the pool's own staleness
+3. `calma::create` — reads the feed via CPI and applies the pool's own staleness
    guard
 
 The integration tests follow this sequence; keep any new setup path aligned with
@@ -38,7 +38,7 @@ it.
 
 ## Account layout (Borsh, after the 8-byte discriminator)
 
-`Feed` is defined in `crates/feed-state` and shared by the program, `jbl` (via
+`Feed` is defined in `crates/feed-state` and shared by the program, `calma` (via
 CPI types), and the WASM bindings. Fields serialize in declaration order:
 
 | offset | field | bytes |

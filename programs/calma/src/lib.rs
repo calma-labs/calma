@@ -15,7 +15,7 @@ pub use state::*;
 declare_id!("c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8");
 
 #[program]
-pub mod jbl {
+pub mod calma {
     use super::*;
 
     pub fn create(

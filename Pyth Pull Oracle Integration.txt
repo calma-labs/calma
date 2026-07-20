@@ -2,9 +2,9 @@
 â                                                                                                                     â
 â Context                                                                                                             â
 â                                                                                                                     â
-â programs/feed is a placeholder oracle: a Feed account stores one u64, an authority sets it via set_value, and programs/jbl reads via CPI inside programs/jbl/src/hooks/oracle.rs. The frontend WASM (crates/bindings/src/state.rs::FeedAccount) parses the same bytes and feeds the same u64 into math::Core so client-side LTV / health / liq_price replay the on-chain math.                                                      â
+â programs/feed is a placeholder oracle: a Feed account stores one u64, an authority sets it via set_value, and programs/calma reads via CPI inside programs/calma/src/hooks/oracle.rs. The frontend WASM (crates/bindings/src/state.rs::FeedAccount) parses the same bytes and feeds the same u64 into math::Core so client-side LTV / health / liq_price replay the on-chain math.                                                      â
 â                                                                                                                     â
-â We want real prices. The pattern is Pyth Pull: an off-chain caller fetches a signed price update from Hermes and posts it to a PriceUpdateV2 account in one transaction; a second transaction reads that account and applies the price. We keep the feed program as the protocol's price interface â jbl and the WASM bindings keep talking to feed â and teach feed to source its values from Pyth in addition to manual sets. Each Feed account is locked at create time to one source; one setter instruction per source. Only the on-chain side ships in this iteration; the React app does not yet need to post Hermes updates from the browser.                                                      â
+â We want real prices. The pattern is Pyth Pull: an off-chain caller fetches a signed price update from Hermes and posts it to a PriceUpdateV2 account in one transaction; a second transaction reads that account and applies the price. We keep the feed program as the protocol's price interface â calma and the WASM bindings keep talking to feed â and teach feed to source its values from Pyth in addition to manual sets. Each Feed account is locked at create time to one source; one setter instruction per source. Only the on-chain side ships in this iteration; the React app does not yet need to post Hermes updates from the browser.                                                      â
 â                                                                                                                     â
 â Design                                                                                                              â
 â                                                                                                                     â
@@ -50,7 +50,7 @@
 â                                                                                                                     â
 â Add pyth-solana-receiver-sdk (latest, pinang doesn't line up with this repo's 1.0.x,   âvendor the PriceUpdateV2 struct + get_price_no_older_than into programs/feed/src/pyth_account.rs â that's ~100 LOC of plain Borsh + ownership check, no new transitive deps. Confirm at implementation time before pulling the SDK in. â
 â                                                                                                                     â
-â 5. JBL OracleState (programs/jbl/src/hook                                              â
+â 5. Calma OracleState (programs/calma/src/hook                                              â
 â                                                                                                                     â
 â Swap the CPI from feed::cpi::get_value toBL-side staleness guard:                      â
 â                                                                                                                     â
@@ -68,7 +68,7 @@
 â (same decimal-adjusted formula). Add wasmal_price, lend_price, last_updated_ts,        âsource, and the two feed IDs so the UI can show "live (Pyth)" vs "manual" without parsing bytes itself. No new      â
 â methods on PoolWithIrm â replay policy in preserved because the only input the math    âconsumes is still the single u64 ratio.                                                                             â
 â                                                                                                                     â
-â 7. LiteSVM mock (programs/jbl/tests/commo                                              â
+â 7. LiteSVM mock (programs/calma/tests/commo                                              â
 â                                                                                                                     â
 â Cheapest path: do not build a fake Pyth program; instead svm.set_account a fabricated PriceUpdateV2 blob with owner = PYTH_RECEIVER_PROGRAM_ID. Helper signature:                                                                      â
 â                                                                                                                     â
@@ -83,7 +83,7 @@
 â                                                                                                                     â
 â Layout: 8 B disc + 32 B write_authority + 1 B verification_level + PriceFeedMessage + 8 B posted_slot. MirrSDK's PriceUpdateV2 struct once with Ancht, not the dep).                              â
 â                                                                                                            Test files:                                                                            â
-â - Update programs/jbl/tests/test_flow.rs â pass (source = Manual, decimals, zeroed feed_ids) to feed createset_value now takes two u64s; assert nothsult is the same since ratio with equal       âdecimals reduces to collateral_price * PRICE_SCALE / lend_price).                                                   â
+â - Update programs/calma/tests/test_flow.rs â pass (source = Manual, decimals, zeroed feed_ids) to feed createset_value now takes two u64s; assert nothsult is the same since ratio with equal       âdecimals reduces to collateral_price * PRICE_SCALE / lend_price).                                                   â
 â - New programs/feed/tests/test_pyth_source.rs â create a Pyth feed, write two mock PriceUpdateV2 accounts, set_from_pyth, assert prices + last_updatalue on a Pyth feed errors and set_from_pyth  âon a Manual feed errors.                                                                                            â
 â                                                                                                            8. Devnet smoke test (outline only)                                                    â
 â                                                                                                                     â
@@ -99,8 +99,8 @@
 â - programs/feed/src/instructions/get_value.rs â return FeedSnapshot; add get_state accessor.                        â
 â - programs/feed/src/pyth.rs â Pyth Price â PRICE_SCALE normalizer.                                         - programs/feed/src/lib.rs â register new                                              â
 â - programs/feed/Cargo.toml â add pyth-solana-receiver-sdk (or vendor the struct).                                   â
-â - programs/jbl/src/hooks/oracle.rs â swap CPI to get_state, add staleness guard.                           - crates/bindings/src/state.rs â new Feedted ratio in math::Oracle::price(), new       âgetters.                                                                                                            â
-â - programs/jbl/tests/common.rs â write_pyth_price_update helper.                                           - programs/jbl/tests/test_flow.rs â adaptatures.                                       â
+â - programs/calma/src/hooks/oracle.rs â swap CPI to get_state, add staleness guard.                           - crates/bindings/src/state.rs â new Feedted ratio in math::Oracle::price(), new       âgetters.                                                                                                            â
+â - programs/calma/tests/common.rs â write_pyth_price_update helper.                                           - programs/calma/tests/test_flow.rs â adaptatures.                                       â
 â - programs/feed/tests/test_pyth_source.rs â new test for Pyth source path + cross-source gating.           - tests/devnet/pyth_smoke.ts â new devnet                                              â
 â                                                                                                            Open risks / trade-offs                                                                â
 â                                                                                                                     â
@@ -111,6 +111,6 @@
 â 6. Frontend cannot yet post Pyth updates. Out of scope this iteration. A devnet keeper (script or scheduledposts updates; the React app's math readsxisting FeedAccount adapter.                  â
 â                                                                                                            Verification                                                                           â
 â                                                                                                                     â
-â 1. Cargo / Anchor build clean. anchor build from repo root; cargo check -p feed -p jbl -p bindings.        2. Unit tests. cargo test -p jbl --test tal source, asserts no math drift) and cargo   âtest -p feed --test test_pyth_source (new path, mock PriceUpdateV2, asserts price + cross-source gating + staleness rejection).                                                                                                        â
+â 1. Cargo / Anchor build clean. anchor build from repo root; cargo check -p feed -p calma -p bindings.        2. Unit tests. cargo test -p calma --test tal source, asserts no math drift) and cargo   âtest -p feed --test test_pyth_source (new path, mock PriceUpdateV2, asserts price + cross-source gating + staleness rejection).                                                                                                        â
 â 3. WASM binding parses new layout. wasm-pack test --node for crates/bindings, or just hit a UI page with a Pyth-source pool on devnet and confirm LT                                              â
-â 4. Devnet smoke. Deploy feed + jbl to devnet, create a Pyth-source feed (e.g. SOL/USD vs USDC/USD), run tests/devnet/pyth_smoke.ts, then run borrpool and confirm the transaction lands and    â
+â 4. Devnet smoke. Deploy feed + calma to devnet, create a Pyth-source feed (e.g. SOL/USD vs USDC/USD), run tests/devnet/pyth_smoke.ts, then run borrpool and confirm the transaction lands and    â

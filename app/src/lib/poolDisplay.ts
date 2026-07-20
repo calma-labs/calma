@@ -1,5 +1,5 @@
 import { getTokenMeta } from '@/lib/tokenRegistry'
-import { PoolWithIrm } from '@jbl/wasm-lib'
+import { PoolWithIrm } from '@calma/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import type { Pool } from '@/types/pool'
 

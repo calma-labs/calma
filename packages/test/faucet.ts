@@ -10,7 +10,7 @@ import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
@@ -197,7 +197,7 @@ describe("hardcoded minter faucet", () => {
       // Set up a pool using the faucet mint as collateral
       const provider = AnchorProvider.env();
       anchor.setProvider(provider);
-      const program = anchor.workspace.Jbl as anchor.Program<Jbl>;
+      const program = anchor.workspace.Calma as anchor.Program<Calma>;
 
       const authority = Keypair.generate();
       const poolKeypair = Keypair.generate();

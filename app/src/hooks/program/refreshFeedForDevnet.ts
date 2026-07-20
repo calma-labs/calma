@@ -1,6 +1,6 @@
 import { HermesClient } from '@pythnetwork/hermes-client'
 import { PythSolanaReceiver } from '@pythnetwork/pyth-solana-receiver'
-import { FeedAccount, PoolAccount } from '@jbl/wasm-lib'
+import { FeedAccount, PoolAccount } from '@calma/wasm-lib'
 import {
     Connection,
     Keypair,
@@ -194,7 +194,7 @@ export async function refreshFeedAccount(
 }
 
 /**
- * Before a jbl action that reads the feed (borrow / withdrawCollateral / …),
+ * Before a calma action that reads the feed (borrow / withdrawCollateral / …),
  * post a fresh Pyth **pull** oracle update to the pool's feed PDA, signed and
  * paid by the shipped `MINTER_KEYPAIR`. Devnet only — on mainnet the sponsored
  * push crank keeps feeds fresh and users pay for their own pulls.

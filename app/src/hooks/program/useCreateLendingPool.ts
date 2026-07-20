@@ -7,8 +7,8 @@ import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
 
 /** Space needed for a Pool account (8-byte discriminator + zero-copy struct).
- * Must stay in sync with the on-chain `POOL_SPACE` constant exported by jbl.
- * Source of truth: `target/idl/jbl.json` → constants[name=POOL_SPACE].value */
+ * Must stay in sync with the on-chain `POOL_SPACE` constant exported by calma.
+ * Source of truth: `target/idl/calma.json` → constants[name=POOL_SPACE].value */
 const POOL_SPACE = 49_528
 
 export interface IrmRatePointInput {

@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
+import type { PoolWithIrm, UserPositionAccount } from "@calma/wasm-lib";
 import { AlertTriangle, Info, Wallet, X } from "lucide-react";
 import { useMemo, useState } from "react";
 

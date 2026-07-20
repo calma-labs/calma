@@ -12,7 +12,7 @@ paths:
 | Layer | Location | Runner |
 |-------|----------|--------|
 | Pure math unit tests | `#[cfg(test)] mod tests` inside `crates/math/src/lib.rs` | `cargo test -p math --lib` |
-| Rust program integration | `programs/jbl/tests/*.rs` (LiteSVM) | `cargo test -p jbl` |
+| Rust program integration | `programs/calma/tests/*.rs` (LiteSVM) | `cargo test -p calma` |
 | TypeScript end-to-end | `packages/test/*.ts` (one file per feature) | `anchor test` |
 
 Never use `npx ts-mocha` or `npx mocha` directly — TypeScript tests need Anchor's validator context (`ANCHOR_PROVIDER_URL`, workspace IDLs, deployed programs). Always use `anchor test`.

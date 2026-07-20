@@ -1,4 +1,4 @@
-# jbl
+# calma
 
 A Solana lending protocol with an Anchor program and a React/Vite frontend.
 
@@ -6,52 +6,57 @@ A Solana lending protocol with an Anchor program and a React/Vite frontend.
 
 ```mermaid
 flowchart LR
-    I("npm install") -->
-    A("npm run setup\n─────────────\nanchor build\n+ npm run wasm")
+    I("bun install") -->
+    A("bun run setup\n─────────────\nanchor build\n+ bun run wasm")
 
-    A --> B("npm run dev\n─────────────\nstart Vite\ndev server")
+    A --> B("bun run dev\n─────────────\nstart Vite\ndev server")
 
-    A --> C("npm run test\n─────────────\nrun Anchor\nintegration tests")
+    A --> C("bun run test\n─────────────\nrun Anchor\nintegration tests")
 
-    A --> D("npm run build\n─────────────\nwasm → app/dist\nproduction bundle")
+    A --> D("bun run build\n─────────────\nwasm → app/dist\nproduction bundle")
 
-    D --> E("npm run preview\n─────────────\npreview production\nbuild locally")
+    D --> E("bun run preview\n─────────────\npreview production\nbuild locally")
 ```
 
-> **Prerequisites:** [Rust](https://rustup.rs), [Anchor CLI](https://www.anchor-lang.com/docs/installation), [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), Node ≥ 18
+> **Prerequisites:** [Rust](https://rustup.rs), [Anchor CLI](https://www.anchor-lang.com/docs/installation), [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), [Bun](https://bun.sh)
 
 ## Repository layout
 
 ```
-programs/jbl/          Anchor smart contract
-crates/jbl-math/       Pure-Rust math library (no external dependencies)
-crates/jbl-math-wasm/  Wasm entrypoint — re-exports jbl-math via wasm-bindgen
-app/                   React + TypeScript + Vite frontend
-tests/                 Anchor integration tests (TypeScript / LiteSVM)
+programs/calma/     Anchor smart contract (main lending program)
+programs/feed/      Price feed program
+programs/guard/     Authorization gate
+programs/irm/       Interest rate model
+crates/math/        Pure-Rust math library (no external dependencies)
+crates/state/       Shared account layouts
+crates/bindings/    Wasm entrypoint — re-exports math + state via wasm-bindgen
+packages/wasm-lib/  Generated @calma/wasm-lib npm package (output of `bun run wasm`)
+packages/test/      Anchor integration tests (TypeScript / LiteSVM)
+app/                React + TypeScript + Vite frontend
 ```
 
 ---
 
-## jbl-math — Rust crate
+## math — Rust crate
 
-`crates/jbl-math` contains the shared interest and share-conversion math used by both the on-chain program and the browser frontend.
+`crates/math` contains the shared interest and share-conversion math used by both the on-chain program and the browser frontend.
 
 ### Using from Rust
 
-The crate is included as a path dependency in `programs/jbl/Cargo.toml` with no additional features required.
+Included as a path dependency in `programs/calma/Cargo.toml`:
 
 ```toml
 [dependencies]
-jbl-math = { path = "../../crates/jbl-math" }
+math = { path = "../../crates/math" }
 ```
 
 ```rust
-use jbl_math::{compute_interest, amount_to_shares, shares_to_amount, amount_to_shares_burned};
+use math::{compute_interest, amount_to_shares, shares_to_amount, amount_to_shares_burned};
 ```
 
 ### Using from the frontend (WebAssembly)
 
-The crate exposes its public functions to JavaScript via [wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/) when built with the `wasm` feature.
+`crates/bindings` exposes math + state to JavaScript via [wasm-bindgen](https://rustwasm.github.io/wasm-bindgen/) and is packaged as `@calma/wasm-lib`.
 
 #### Prerequisites
 
@@ -63,27 +68,25 @@ cargo install wasm-pack
 
 #### Build
 
-Run from the `app/` directory:
+From the repo root:
 
 ```sh
-cd app
-npm run wasm:build
+bun run wasm
 ```
 
 This is equivalent to:
 
 ```sh
-wasm-pack build ../crates/jbl-math-wasm \
-  --target bundler \
-  --out-dir ../app/pkg/jbl-math
+cargo build --target wasm32-unknown-unknown
+wasm-pack build crates/bindings --target bundler --out-dir "$PWD/packages/wasm-lib"
 ```
 
-The generated package is written to `app/pkg/jbl-math/` and is gitignored — rebuild whenever the crate changes.
+The generated package is written to `packages/wasm-lib/` and consumed as `@calma/wasm-lib` — rebuild whenever the crate changes.
 
 #### Import in TypeScript
 
 ```ts
-import { sharesToAmount, computeInterest, amountToShares, amountToSharesBurned } from './lib/jblMath'
+import { sharesToAmount, computeInterest, amountToShares, amountToSharesBurned } from '@calma/wasm-lib'
 
 // The bundler target auto-initializes the .wasm binary on import — no init() call needed.
 // All u64 arguments and return values use JavaScript BigInt.
@@ -100,10 +103,9 @@ const interest = computeInterest(1_000_000n, 500, 31_557_600n)
 ## Frontend (app/)
 
 ```sh
-cd app
-npm install
-npm run wasm:build   # compile crates/jbl-math-wasm → app/pkg/jbl-math (required before dev/build)
-npm run dev
+bun install
+bun run wasm   # compile crates/bindings → packages/wasm-lib (required before dev/build)
+bun run dev
 ```
 
 ---

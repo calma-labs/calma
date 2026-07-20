@@ -1,4 +1,4 @@
-import { RatePointsAccount } from "@jbl/wasm-lib";
+import { RatePointsAccount } from "@calma/wasm-lib";
 import { useMemo } from "react";
 import {
   Area,

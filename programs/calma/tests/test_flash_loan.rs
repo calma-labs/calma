@@ -6,7 +6,7 @@ use common::{
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
-use jbl::state::Pool;
+use calma::state::Pool;
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
     anchor_spl::token::spl_token,
@@ -66,7 +66,7 @@ struct Setup {
 }
 
 /// Build a fresh environment:
-///  - loads jbl.so
+///  - loads calma.so
 ///  - creates payer (mint authority + user), pool authority
 ///  - initialises two mints with payer as mint authority
 ///  - creates the pool (pre-allocate + Create)
@@ -74,7 +74,7 @@ struct Setup {
 ///    pool.total_lend_deposited to match
 ///  - creates empty user token accounts (collateral + lend)
 fn setup(seed_lend_amount: u64) -> Setup {
-    let program_id = jbl::id();
+    let program_id = calma::id();
     let feed_id = feed::id();
     let irm_id = irm::id();
     let payer = Keypair::new();
@@ -83,7 +83,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
     let lend_mint_kp = Keypair::new();
 
     let mut svm = LiteSVM::new();
-    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so"))
+    svm.add_program(program_id, include_bytes!("../../../target/deploy/calma.so"))
         .unwrap();
     svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so"))
         .unwrap();
@@ -212,12 +212,12 @@ fn setup(seed_lend_amount: u64) -> Setup {
 
     let create_ix = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create {
+        &calma::instruction::Create {
             ltv_percent: 75,
             max_feed_age_secs: 90u32,
         }
         .data(),
-        jbl::accounts::Create {
+        calma::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
             collateral_vault: collateral_vault_pda,
@@ -312,8 +312,8 @@ fn setup(seed_lend_amount: u64) -> Setup {
 fn flash_borrow_ix(s: &Setup, amount: u64) -> Instruction {
     Instruction::new_with_bytes(
         s.program_id,
-        &jbl::instruction::FlashBorrow { amount }.data(),
-        jbl::accounts::FlashBorrow {
+        &calma::instruction::FlashBorrow { amount }.data(),
+        calma::accounts::FlashBorrow {
             pool: s.pool_pubkey,
             state: s.state_pda,
             lend_mint: s.lend_mint,
@@ -329,8 +329,8 @@ fn flash_borrow_ix(s: &Setup, amount: u64) -> Instruction {
 fn flash_repay_ix(s: &Setup, amount: u64) -> Instruction {
     Instruction::new_with_bytes(
         s.program_id,
-        &jbl::instruction::FlashRepay { amount }.data(),
-        jbl::accounts::FlashRepay {
+        &calma::instruction::FlashRepay { amount }.data(),
+        calma::accounts::FlashRepay {
             pool: s.pool_pubkey,
             lend_mint: s.lend_mint,
             lend_vault: s.lend_vault_pda,
@@ -462,11 +462,11 @@ fn test_flash_loan_leveraged_swap() {
     let (user_position_pda, _) = find_user_position_pda(&s.pool_pubkey, &payer_pk, &program_id);
     let deposit_initial_ix = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::DepositCollateral {
+        &calma::instruction::DepositCollateral {
             amount: INITIAL_COLLATERAL,
         }
         .data(),
-        jbl::accounts::DepositCollateral {
+        calma::accounts::DepositCollateral {
             pool: s.pool_pubkey,
             collateral_mint: s.collateral_mint,
             authority: payer_pk,
@@ -496,8 +496,8 @@ fn test_flash_loan_leveraged_swap() {
 
     let swap_ix = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::MockSwap { amount: BORROW }.data(),
-        jbl::accounts::MockSwap {
+        &calma::instruction::MockSwap { amount: BORROW }.data(),
+        calma::accounts::MockSwap {
             mint_authority: payer_pk,
             token_owner: payer_pk,
             mint_in: s.lend_mint,
@@ -511,8 +511,8 @@ fn test_flash_loan_leveraged_swap() {
 
     let deposit_leveraged_ix = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::DepositCollateral { amount: BORROW }.data(),
-        jbl::accounts::DepositCollateral {
+        &calma::instruction::DepositCollateral { amount: BORROW }.data(),
+        calma::accounts::DepositCollateral {
             pool: s.pool_pubkey,
             collateral_mint: s.collateral_mint,
             authority: payer_pk,

@@ -1,5 +1,5 @@
 import { HermesClient } from '@pythnetwork/hermes-client'
-import { FeedAccount, FeedFreshnessResult, PoolAccount } from '@jbl/wasm-lib'
+import { FeedAccount, FeedFreshnessResult, PoolAccount } from '@calma/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'

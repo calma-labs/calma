@@ -1,8 +1,8 @@
 import { AnchorProvider, Program } from "@anchor-lang/core";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Buffer } from "buffer";
-import IDL from "../../../target/idl/jbl.json";
-import type { Jbl } from "../../../target/types/jbl";
+import IDL from "../../../target/idl/calma.json";
+import type { Calma } from "../../../target/types/calma";
 import IRM_IDL from "../../../target/idl/irm.json";
 import type { Irm } from "../../../target/types/irm";
 import FEED_IDL from "../../../target/idl/feed.json";
@@ -32,7 +32,7 @@ const readOnlyProvider = new AnchorProvider(
   { commitment: "confirmed" }
 );
 
-export const program = new Program<Jbl>(IDL as unknown as Jbl, readOnlyProvider);
+export const program = new Program<Calma>(IDL as unknown as Calma, readOnlyProvider);
 export const irmProgram = new Program<Irm>(IRM_IDL as unknown as Irm, readOnlyProvider);
 export const feedProgram = new Program<Feed>(FEED_IDL as unknown as Feed, readOnlyProvider);
 export const guardProgram = new Program<Guard>(GUARD_IDL as unknown as Guard, readOnlyProvider);

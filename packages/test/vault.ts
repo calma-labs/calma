@@ -3,7 +3,7 @@ import { Program, AnchorProvider, BN } from "@anchor-lang/core";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
@@ -11,7 +11,7 @@ import { POOL_SPACE } from "./utils";
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
         let provider: AnchorProvider;
-        let program: Program<Jbl>;
+        let program: Program<Calma>;
         let feedProgram: Program<Feed>;
         let irmProgram: Program<Irm>;
         let feedPda: PublicKey;
@@ -30,7 +30,7 @@ describe("pool creation (create)", () => {
         before(async () => {
             provider = AnchorProvider.env();
             anchor.setProvider(provider);
-            program = anchor.workspace.Jbl as Program<Jbl>;
+            program = anchor.workspace.Calma as Program<Calma>;
             feedProgram = anchor.workspace.Feed as Program<Feed>;
             irmProgram = anchor.workspace.Irm as Program<Irm>;
             feedAuthority = provider.wallet.publicKey;

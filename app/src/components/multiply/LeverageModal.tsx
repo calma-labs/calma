@@ -6,7 +6,7 @@ import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { maxLeverageForLtv } from "@/hooks/useMultiply";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import { position_leverage_bps, type PoolWithIrm } from "@jbl/wasm-lib";
+import { position_leverage_bps, type PoolWithIrm } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";

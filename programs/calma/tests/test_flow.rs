@@ -3,7 +3,7 @@ use common::{create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_b
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
-use jbl::state::Pool;
+use calma::state::Pool;
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
     anchor_spl::token::spl_token,
@@ -20,7 +20,7 @@ const BORROW_AMOUNT: u64 = 5_000_000; // 50% LTV — within the 75% cap
 
 #[test]
 fn test_flow() {
-    let jbl_id = jbl::id();
+    let calma_id = calma::id();
     let irm_id = irm::id();
     let feed_id = feed::id();
     let atp_id: Pubkey = ATP_ID.parse().unwrap();
@@ -32,7 +32,7 @@ fn test_flow() {
     let pool_pk = pool_kp.pubkey();
 
     let mut svm = LiteSVM::new();
-    svm.add_program(jbl_id, include_bytes!("../../../target/deploy/jbl.so"))
+    svm.add_program(calma_id, include_bytes!("../../../target/deploy/calma.so"))
         .unwrap();
     svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so"))
         .unwrap();
@@ -65,15 +65,15 @@ fn test_flow() {
     let lend_mint = lend_mint_kp.pubkey();
 
     // ── PDAs ──────────────────────────────────────────────────────────────────
-    let (state_pda, _) = Pubkey::find_program_address(&[b"state"], &jbl_id);
+    let (state_pda, _) = Pubkey::find_program_address(&[b"state"], &calma_id);
     let (col_vault, _) =
-        Pubkey::find_program_address(&[b"collateral_vault", pool_pk.as_ref()], &jbl_id);
-    let (lend_vault, _) = Pubkey::find_program_address(&[b"lend_vault", pool_pk.as_ref()], &jbl_id);
-    let (lp_mint, _) = Pubkey::find_program_address(&[b"lp_mint", pool_pk.as_ref()], &jbl_id);
+        Pubkey::find_program_address(&[b"collateral_vault", pool_pk.as_ref()], &calma_id);
+    let (lend_vault, _) = Pubkey::find_program_address(&[b"lend_vault", pool_pk.as_ref()], &calma_id);
+    let (lp_mint, _) = Pubkey::find_program_address(&[b"lp_mint", pool_pk.as_ref()], &calma_id);
     let (irm_config, _) = Pubkey::find_program_address(&[b"irm_config", pool_pk.as_ref()], &irm_id);
     let (user_position, _) = Pubkey::find_program_address(
         &[b"user_position", pool_pk.as_ref(), payer.pubkey().as_ref()],
-        &jbl_id,
+        &calma_id,
     );
     // ATA for lend tokens received via borrow / returned via withdraw_lent
     let (user_lend_ata, _) = Pubkey::find_program_address(
@@ -129,7 +129,7 @@ fn test_flow() {
         &pool_pk,
         pool_rent,
         pool_space as u64,
-        &jbl_id,
+        &calma_id,
     );
     let irm_init_ix = Instruction::new_with_bytes(
         irm_id,
@@ -179,13 +179,13 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::Create {
+            calma_id,
+            &calma::instruction::Create {
                 ltv_percent: 75,
                 max_feed_age_secs: 90u32,
             }
             .data(),
-            jbl::accounts::Create {
+            calma::accounts::Create {
                 pool: pool_pk,
                 state: state_pda,
                 collateral_vault: col_vault,
@@ -253,12 +253,12 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::DepositLent {
+            calma_id,
+            &calma::instruction::DepositLent {
                 amount: LEND_DEPOSIT,
             }
             .data(),
-            jbl::accounts::DepositLent {
+            calma::accounts::DepositLent {
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -281,12 +281,12 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::DepositCollateral {
+            calma_id,
+            &calma::instruction::DepositCollateral {
                 amount: COL_DEPOSIT,
             }
             .data(),
-            jbl::accounts::DepositCollateral {
+            calma::accounts::DepositCollateral {
                 pool: pool_pk,
                 collateral_mint: col_mint,
                 authority: payer.pubkey(),
@@ -306,12 +306,12 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::Borrow {
+            calma_id,
+            &calma::instruction::Borrow {
                 amount: BORROW_AMOUNT,
             }
             .data(),
-            jbl::accounts::Borrow {
+            calma::accounts::Borrow {
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -344,9 +344,9 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::Repay { amount: u64::MAX }.data(),
-            jbl::accounts::Repay {
+            calma_id,
+            &calma::instruction::Repay { amount: u64::MAX }.data(),
+            calma::accounts::Repay {
                 pool: pool_pk,
                 lend_mint,
                 authority: payer.pubkey(),
@@ -372,12 +372,12 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::WithdrawCollateral {
+            calma_id,
+            &calma::instruction::WithdrawCollateral {
                 amount: COL_DEPOSIT,
             }
             .data(),
-            jbl::accounts::WithdrawCollateral {
+            calma::accounts::WithdrawCollateral {
                 pool: pool_pk,
                 state: state_pda,
                 collateral_mint: col_mint,
@@ -405,12 +405,12 @@ fn test_flow() {
     send_ixs(
         &mut svm,
         &[Instruction::new_with_bytes(
-            jbl_id,
-            &jbl::instruction::WithdrawLent {
+            calma_id,
+            &calma::instruction::WithdrawLent {
                 shares: LEND_DEPOSIT,
             }
             .data(),
-            jbl::accounts::WithdrawLent {
+            calma::accounts::WithdrawLent {
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,

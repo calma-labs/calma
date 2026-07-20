@@ -1,4 +1,4 @@
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import type { PoolWithIrm } from "@calma/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";

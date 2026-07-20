@@ -87,7 +87,7 @@
 /* ── react-toastify overrides ───────────────────────────────────────────── */
 @import "react-toastify/dist/ReactToastify.css";
 
-.jbl-toast {
+.calma-toast {
   font-family: var(--font-sans);
   font-size: 0.82rem;
   font-weight: 500;
@@ -100,7 +100,7 @@
   backdrop-filter: blur(10px);
 }
 
-.jbl-toast__body {
+.calma-toast__body {
   margin: 0;
   padding: 0;
   display: flex;
@@ -109,22 +109,22 @@
 }
 
 /* success */
-.Toastify__toast--success.jbl-toast {
+.Toastify__toast--success.calma-toast {
   background: color-mix(in srgb, #22c55e 12%, var(--color-card)) !important;
   color: #16a34a !important;
   border-color: #22c55e33;
 }
 
 /* error */
-.Toastify__toast--error.jbl-toast {
+.Toastify__toast--error.calma-toast {
   background: color-mix(in srgb, #ef4444 12%, var(--color-card)) !important;
   color: #dc2626 !important;
   border-color: #ef444433;
 }
 
 /* loading / info */
-.Toastify__toast--default.jbl-toast,
-.Toastify__toast--info.jbl-toast {
+.Toastify__toast--default.calma-toast,
+.Toastify__toast--info.calma-toast {
   background: color-mix(in srgb, var(--color-primary) 10%, var(--color-card)) !important;
   color: var(--color-foreground) !important;
   border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
@@ -147,10 +147,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  .Toastify__toast--success.jbl-toast {
+  .Toastify__toast--success.calma-toast {
     color: #4ade80 !important;
   }
-  .Toastify__toast--error.jbl-toast {
+  .Toastify__toast--error.calma-toast {
     color: #f87171 !important;
   }
 }

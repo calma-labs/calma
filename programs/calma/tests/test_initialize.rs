@@ -3,7 +3,7 @@ use common::{create_mint_ixs, send_ixs};
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
-use jbl::state::Pool;
+use calma::state::Pool;
 use {
     anchor_lang::{solana_program::instruction::Instruction, InstructionData, ToAccountMetas},
     anchor_spl::token::spl_token,
@@ -26,7 +26,7 @@ fn find_lp_mint_pda(pool: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
 
 #[test]
 fn test_create() {
-    let program_id = jbl::id();
+    let program_id = calma::id();
     let feed_id = feed::id();
     let payer = Keypair::new();
     let authority = Keypair::new();
@@ -36,7 +36,7 @@ fn test_create() {
     let irm_id = irm::id();
 
     let mut svm = LiteSVM::new();
-    svm.add_program(program_id, include_bytes!("../../../target/deploy/jbl.so"))
+    svm.add_program(program_id, include_bytes!("../../../target/deploy/calma.so"))
         .unwrap();
     svm.add_program(feed_id, include_bytes!("../../../target/deploy/feed.so"))
         .unwrap();
@@ -161,12 +161,12 @@ fn test_create() {
     // ── Build create instruction ──────────────────────────────────────────────
     let instruction = Instruction::new_with_bytes(
         program_id,
-        &jbl::instruction::Create {
+        &calma::instruction::Create {
             ltv_percent: 75,
             max_feed_age_secs: 90u32,
         }
         .data(),
-        jbl::accounts::Create {
+        calma::accounts::Create {
             pool: pool_pubkey,
             state: state_pda,
             collateral_vault: collateral_vault_pda,

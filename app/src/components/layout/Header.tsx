@@ -16,7 +16,7 @@ export function Header() {
         to="/"
         className="text-lg font-semibold tracking-tight text-surface-accent hover:text-surface-foreground transition-colors"
       >
-        JBL
+        Calma
       </NavLink>
 
       <nav className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 p-1">

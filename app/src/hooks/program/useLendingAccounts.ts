@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { PoolAccount, PoolWithIrm } from '@jbl/wasm-lib'
+import { PoolAccount, PoolWithIrm } from '@calma/wasm-lib'
 import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { _poolDiscriminatorFilter } from './useLendingAccount'

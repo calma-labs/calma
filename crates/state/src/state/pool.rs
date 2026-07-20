@@ -112,7 +112,7 @@ impl Pool {
     /// `true` iff a feed snapshot with `feed_last_updated_ts` would trip
     /// this pool's `StaleOracle` gate when read at wall-clock `clock_ts`.
     /// Single source of truth for the borrow / withdraw / hedge freshness
-    /// check in `programs/jbl/src/hooks/oracle.rs`; the wasm bindings expose
+    /// check in `programs/calma/src/hooks/oracle.rs`; the wasm bindings expose
     /// this so the UI can predict `StaleOracle` and skip / prompt a refresh
     /// before submitting the tx.
     pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {

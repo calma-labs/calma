@@ -30,7 +30,7 @@ impl OracleState {
         .get();
         require!(
             !state::Pool::snapshot_stale_at(snap.last_updated_ts, current_ts, max_age_secs),
-            crate::error::JblError::StaleOracle
+            crate::error::CalmaError::StaleOracle
         );
         Ok(Self {
             current_ts,

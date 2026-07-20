@@ -4,7 +4,7 @@ pub use state::error::ErrorCode;
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum JblError {
+pub enum CalmaError {
     #[msg("Oracle feed snapshot is older than the maximum allowed age")]
     StaleOracle,
 }

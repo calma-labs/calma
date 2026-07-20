@@ -3,7 +3,7 @@ paths:
   - "crates/bindings/**/*.rs"
 ---
 
-Wasm bindings consumed by the frontend (`@jbl/wasm-lib`). Parses Anchor account
+Wasm bindings consumed by the frontend (`@calma/wasm-lib`). Parses Anchor account
 bytes (`state.rs`, `exports.rs`) and exposes client-side protocol math.
 
 ## Policy: client math replays on-chain `Core`, never re-derives it
@@ -13,7 +13,7 @@ outcomes) with its own formula. Every such value is produced by replaying the
 exact `math::Core` operation the on-chain program runs. There is one
 implementation of the math — `crates/math` — and both the program and the client
 drive it identically. The reference is the program's instruction handlers in
-`programs/jbl/src/instructions/` (e.g. `borrow.rs`, `repay.rs`).
+`programs/calma/src/instructions/` (e.g. `borrow.rs`, `repay.rs`).
 
 1. **No formula duplication here.** Build
    `Core::new(market).with_*(…).accrue_interest()` and call the same operation
@@ -38,7 +38,7 @@ drive it identically. The reference is the program's instruction handlers in
    e.g. `borrow_shares` returns `None` exactly when the on-chain LTV check would
    reject.
 7. **No thin wrapper layers in the frontend.** The app calls the wasm view
-   methods directly off `@jbl/wasm-lib`; pass-through TS modules are not added.
+   methods directly off `@calma/wasm-lib`; pass-through TS modules are not added.
 
 **Why.** The frontend must stay as close to the backend as possible. Every place
 that re-expresses protocol math can silently diverge from consensus; replaying

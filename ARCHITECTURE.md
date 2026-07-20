@@ -1,6 +1,6 @@
 # Architecture
 
-JBL is a decentralized lending protocol on Solana. Users deposit collateral to borrow tokens, lenders earn LP yields, and borrowers can hedge interest rates with fixed-rate agreements.
+Calma is a decentralized lending protocol on Solana. Users deposit collateral to borrow tokens, lenders earn LP yields, and borrowers can hedge interest rates with fixed-rate agreements.
 
 ---
 
@@ -11,11 +11,11 @@ graph TD
     subgraph NPM["NPM Workspace"]
         APP["app/\nReact + TypeScript frontend"]
         TEST["packages/test/\nAnchor integration tests"]
-        WASM_PKG["packages/wasm-lib/\n@jbl/wasm-lib\n(generated)"]
+        WASM_PKG["packages/wasm-lib/\n@calma/wasm-lib\n(generated)"]
     end
 
     subgraph CARGO["Cargo Workspace"]
-        PROGRAM["programs/jbl\nAnchor smart contract"]
+        PROGRAM["programs/calma\nAnchor smart contract"]
         MATH["crates/math\nPure Rust math library"]
         STATE["crates/state\nAccount type definitions"]
         WASM_CRATE["crates/bindings\nwasm-bindgen bindings"]
@@ -39,33 +39,33 @@ graph LR
     subgraph Frontend["app/ — React Frontend"]
         UI["Pages\nMarket · Pool · Portfolio\nMultiply · Create"]
         HOOKS["Hooks & Stores\nReact Query · Zustand"]
-        LIB["lib/\nprogram.ts · transactions.ts\njblMath.ts · poolDisplay.ts"]
+        LIB["lib/\nprogram.ts · transactions.ts\npoolDisplay.ts"]
     end
 
     subgraph Chain["Solana Network"]
-        ANCHOR["programs/jbl\nAnchor Program"]
+        ANCHOR["programs/calma\nAnchor Program"]
         ACCOUNTS["Accounts\nPool · UserPosition\nRateHedgeOffer · RateHedgeMatch"]
     end
 
     subgraph Shared["Shared Rust Logic"]
-        JBL_MATH["math\nInterest · Shares · LTV"]
-        JBL_STATE["state\nPool · UserPosition\nWithdrawalQueue · Fees"]
+        CALMA_MATH["math\nInterest · Shares · LTV"]
+        CALMA_STATE["state\nPool · UserPosition\nWithdrawalQueue · Fees"]
     end
 
     subgraph WASM["WASM Bridge"]
-        JBL_WASM["bindings\nExposes math + state\nto JavaScript"]
-        WASM_LIB["@jbl/wasm-lib\nGenerated npm package"]
+        CALMA_WASM["bindings\nExposes math + state\nto JavaScript"]
+        WASM_LIB["@calma/wasm-lib\nGenerated npm package"]
     end
 
     UI --> HOOKS
     HOOKS --> LIB
     LIB -->|"@solana/kit"| Chain
     LIB --> WASM_LIB
-    WASM_LIB --> JBL_WASM
-    JBL_WASM --> JBL_MATH
-    JBL_WASM --> JBL_STATE
-    ANCHOR --> JBL_MATH
-    ANCHOR --> JBL_STATE
+    WASM_LIB --> CALMA_WASM
+    CALMA_WASM --> CALMA_MATH
+    CALMA_WASM --> CALMA_STATE
+    ANCHOR --> CALMA_MATH
+    ANCHOR --> CALMA_STATE
     ANCHOR --> ACCOUNTS
 ```
 
@@ -77,9 +77,9 @@ graph LR
 sequenceDiagram
     participant User
     participant React as React Frontend
-    participant WASM as @jbl/wasm-lib
+    participant WASM as @calma/wasm-lib
     participant RPC as Solana RPC
-    participant Program as jbl Program (on-chain)
+    participant Program as calma Program (on-chain)
 
     User->>React: Enter borrow amount
     React->>WASM: amountToShares(amount, pool.totalBorrowed, pool.totalDebtShares)
@@ -105,7 +105,7 @@ graph BT
     MATH["math\n─────────\ncompute_interest()\namount_to_shares()\nshares_to_amount()\nmax_borrowable()"]
     STATE["state\n─────────\nPool (41 KB, zero-copy)\nUserPosition (88 B)\nRateHedgeOffer\nWithdrawalQueue"]
     WASM["bindings\n─────────\n#[wasm_bindgen]\nexports"]
-    PROG["programs/jbl\n─────────\n13 instructions"]
+    PROG["programs/calma\n─────────\n13 instructions"]
 
     STATE --> MATH
     WASM --> MATH
@@ -224,7 +224,7 @@ flowchart LR
     WASM_SRC["crates/bindings\n(Rust source)"]
     APP_SRC["app/src\n(TypeScript source)"]
 
-    ANCHOR_BUILD["anchor build\n→ programs/jbl .so"]
+    ANCHOR_BUILD["anchor build\n→ programs/calma .so"]
     WASM_BUILD["wasm-pack build\n→ packages/wasm-lib/"]
     VITE_BUILD["vite build\n→ app/dist/"]
 

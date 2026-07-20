@@ -57,7 +57,7 @@ export function Footer() {
         </div>
 
         <p className="text-xs text-surface-foreground/25">
-          © {new Date().getFullYear()} JBL Protocol. All rights reserved.
+          © {new Date().getFullYear()} Calma Protocol. All rights reserved.
         </p>
       </div>
     </footer>

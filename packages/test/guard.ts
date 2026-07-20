@@ -9,7 +9,7 @@ import {
 import { createMint } from "@solana/spl-token";
 import { expect } from "chai";
 import { Guard } from "../../target/types/guard";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
@@ -130,11 +130,11 @@ describe("guard program", () => {
   });
 });
 
-describe("jbl create with guard", () => {
+describe("calma create with guard", () => {
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const jblProgram = anchor.workspace.Jbl as Program<Jbl>;
+  const calmaProgram = anchor.workspace.Calma as Program<Calma>;
   const guardProgram = anchor.workspace.Guard as Program<Guard>;
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
   const irmProgram = anchor.workspace.Irm as Program<Irm>;
@@ -193,7 +193,7 @@ describe("jbl create with guard", () => {
       .rpc();
   });
 
-  /** Shared helper: allocates pool account, initialises IRM, then calls jbl::create. */
+  /** Shared helper: allocates pool account, initialises IRM, then calls calma::create. */
   async function createPool(poolAuthority: Keypair, guard: { program: PublicKey; state: PublicKey } | null) {
     const poolKeypair = Keypair.generate();
     const pool = poolKeypair.publicKey;
@@ -218,10 +218,10 @@ describe("jbl create with guard", () => {
       newAccountPubkey: pool,
       lamports: poolRent,
       space: POOL_SPACE,
-      programId: jblProgram.programId,
+      programId: calmaProgram.programId,
     });
 
-    await jblProgram.methods
+    await calmaProgram.methods
       .create(75, 90)
       .accounts({
         pool,

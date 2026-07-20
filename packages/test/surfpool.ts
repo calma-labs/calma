@@ -61,7 +61,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
 
   let surfnet: Surfnet;
   let provider: AnchorProvider;
-  let jbl: any;
+  let calma: any;
   let feed: any;
   let irm: any;
   let payer: Keypair;
@@ -97,7 +97,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
     surfnet.streamAccount(lendPush.toBase58());
 
     // Deploy the three programs from local Anchor build artifacts.
-    surfnet.deployProgram("jbl");
+    surfnet.deployProgram("calma");
     surfnet.deployProgram("feed");
     surfnet.deployProgram("irm");
 
@@ -111,7 +111,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
     payer = Keypair.fromSecretKey(surfnet.payerSecretKey);
     provider = new AnchorProvider(connection, new Wallet(payer), { commitment: "confirmed" });
     anchor.setProvider(provider);
-    jbl  = anchor.workspace.Jbl;
+    calma  = anchor.workspace.Calma;
     feed = anchor.workspace.Feed;
     irm  = anchor.workspace.Irm;
 
@@ -171,10 +171,10 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
     // Derive pool PDAs.
     pool = Keypair.generate();
     [irmConfigPda]  = PublicKey.findProgramAddressSync([Buffer.from("irm_config"), pool.publicKey.toBuffer()], irm.programId);
-    [lendVaultPda]  = PublicKey.findProgramAddressSync([Buffer.from("lend_vault"), pool.publicKey.toBuffer()], jbl.programId);
+    [lendVaultPda]  = PublicKey.findProgramAddressSync([Buffer.from("lend_vault"), pool.publicKey.toBuffer()], calma.programId);
     [userPositionPda] = PublicKey.findProgramAddressSync(
       [Buffer.from("user_position"), pool.publicKey.toBuffer(), authority.publicKey.toBuffer()],
-      jbl.programId,
+      calma.programId,
     );
 
     // Mint tokens for authority.
@@ -191,16 +191,16 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       .rpc();
 
     // Pre-allocate the pool account (too large for on-chain CPI).
-    const POOL_SPACE  = jbl.account.pool.size;
+    const POOL_SPACE  = calma.account.pool.size;
     const poolRent    = await connection.getMinimumBalanceForRentExemption(POOL_SPACE);
     const createPoolIx = SystemProgram.createAccount({
       fromPubkey: payer.publicKey,
       newAccountPubkey: pool.publicKey,
       lamports: poolRent,
       space: POOL_SPACE,
-      programId: jbl.programId,
+      programId: calma.programId,
     });
-    await jbl.methods
+    await calma.methods
       .create(75, 90)
       .accounts({
         pool: pool.publicKey, collateralMint, lendMint,
@@ -214,14 +214,14 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       .rpc();
 
     // Seed the pool's lend vault so there is liquidity to borrow.
-    await jbl.methods
+    await calma.methods
       .depositLent(new BN(LEND_LIQUIDITY))
       .accounts({ pool: pool.publicKey, lendMint, authority: authority.publicKey, userLendTokenAccount: userLendAta })
       .signers([authority])
       .rpc();
 
     // Post collateral from the borrower.
-    await jbl.methods
+    await calma.methods
       .depositCollateral(new BN(COLLATERAL_DEPOSIT))
       .accounts({ pool: pool.publicKey, collateralMint, authority: authority.publicKey, userTokenAccount: userCollateralAta })
       .signers([authority])
@@ -234,7 +234,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
   });
 
   it("borrows lend tokens priced by a live mainnet Pyth sponsored feed", async () => {
-    await jbl.methods
+    await calma.methods
       .borrow(new BN(BORROW_AMOUNT))
       .accounts({
         pool: pool.publicKey, lendMint,
@@ -245,10 +245,10 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       .signers([authority])
       .rpc();
 
-    const poolAcc = await jbl.account.pool.fetch(pool.publicKey);
+    const poolAcc = await calma.account.pool.fetch(pool.publicKey);
     expect(poolAcc.market.totalBorrowAssets.toString()).to.equal(BORROW_AMOUNT.toString());
 
-    const position = await jbl.account.userPosition.fetch(userPositionPda);
+    const position = await calma.account.userPosition.fetch(userPositionPda);
     expect(position.debtShares.toNumber()).to.be.greaterThan(0);
 
     const lendVault = await getAccount(provider.connection, lendVaultPda);
