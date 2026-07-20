@@ -152,7 +152,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
         Array.from(lendPush.toBytes()),
         { ...NO_RULES, maxAgeMs: 3_600_000 }, // large max-age so any clock skew won't block
       )
-      .accounts({ authority: authority.publicKey, collateralMint, lendMint, payer: payer.publicKey })
+      .accounts({ feed: feedPda, authority: authority.publicKey, collateralMint, lendMint, payer: payer.publicKey })
       .signers([payer, authority])
       .rpc();
 

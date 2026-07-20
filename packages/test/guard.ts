@@ -174,7 +174,7 @@ describe("calma create with guard", () => {
           Array(32).fill(0),
           { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
         )
-        .accounts({ authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
+        .accounts({ feed: feedPda, authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
         .signers([payer])
         .rpc();
     }

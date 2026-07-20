@@ -91,7 +91,7 @@ function pushAccountForFeedId(feedId: string): PublicKey {
 }
 
 function FeedPusherTool() {
-  const { connected, wallet } = useWalletConnection();
+  const { connected } = useWalletConnection();
   const [mode, setMode] = useState<PusherMode>("pull");
 
   // Token / Pyth feed selection — identical UX for both modes.

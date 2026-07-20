@@ -44,7 +44,7 @@ export interface MultiplyStrategy extends Pool {
  * Max net APY is computed at that leverage: L×supplyAPY − (L−1)×borrowAPY.
  */
 export function buildMultiplyMeta(pool: Pool): MultiplyMeta {
-  const maxMultiplier = maxLeverageForLtv(pool.account.ltv_percent);
+  const maxMultiplier = maxLeverageForLtv(pool.account.ltv_percent, Number(pool.account.oracle_price));
   const maxNetAPY = pool.account.leveraged_net_apy(maxMultiplier);
   return {
     maxMultiplier,

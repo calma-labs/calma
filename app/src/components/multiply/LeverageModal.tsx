@@ -89,7 +89,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
 
   // Real max leverage a single loop can reach for this pool: 1/(1−LTV).
   const maxLeverage = useMemo(
-    () => maxLeverageForLtv(poolData.ltv_percent),
+    () => maxLeverageForLtv(poolData.ltv_percent, Number(poolData.oracle_price)),
     [poolData],
   );
   // Clamp the slider value in case the pool's max is below the default.

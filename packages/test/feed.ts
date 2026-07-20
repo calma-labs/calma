@@ -44,6 +44,7 @@ describe("feed", () => {
                 { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
             )
             .accounts({
+                feed: feedPda,
                 authority: authority.publicKey,
                 collateralMint,
                 lendMint,

@@ -34,7 +34,7 @@ interface MultiplyStatsGridProps {
 }
 
 export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
-  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent);
+  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent, Number(pool.account.oracle_price));
   const maxNetAPY = pool.account.leveraged_net_apy(maxLeverage);
 
   return (

@@ -14,7 +14,7 @@ export function MultiplyHero({
   isWalletConnected,
   onOpenPosition,
 }: MultiplyHeroProps) {
-  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent);
+  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent, Number(pool.account.oracle_price));
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-8">
       <div className="flex items-center gap-4">
