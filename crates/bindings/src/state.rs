@@ -742,7 +742,6 @@ impl PoolWithIrm {
             .with_oracle(self.feed);
         let oracle_price = core.oracle_price();
         core.max_borrow_capacity(position.0.collateral_deposited, oracle_price)
-            .unwrap_or(0)
     }
 
     /// Loan-to-Value of `position` in basis points, using accrued debt.

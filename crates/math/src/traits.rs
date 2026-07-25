@@ -4,11 +4,15 @@ pub trait Market {
     fn total_borrow_assets(&self) -> u64;
     fn total_borrow_shares(&self) -> u64;
     fn last_update(&self) -> i64;
+    /// Protocol fee **rate** in basis points, skimmed from accrued interest.
     fn fee(&self) -> u64;
+    /// Protocol-owned supply shares accrued from the fee, not yet claimed as LP.
+    fn accrued_fee_shares(&self) -> u64;
     fn assets_in_queue(&self) -> u64;
     fn ltv_percent(&self) -> u8;
     fn total_supply_assets_mut(&mut self) -> &mut u64;
     fn total_supply_shares_mut(&mut self) -> &mut u64;
+    fn accrued_fee_shares_mut(&mut self) -> &mut u64;
     fn assets_in_queue_mut(&mut self) -> &mut u64;
     fn total_borrow_assets_mut(&mut self) -> &mut u64;
     fn total_borrow_shares_mut(&mut self) -> &mut u64;

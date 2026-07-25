@@ -37,11 +37,11 @@ Every public math function must have test cases in all four bands:
 
 - Functions returning `Option<u64>` must have a test that returns `None`. Never write a test whose only claim is "doesn't panic" with no assertion — that's `graceful_none_on_u64_overflow` (already exists as a legacy smell; don't repeat it).
 - Finding the exact None boundary: work out the algebra. For `compute_interest`, `u64::MAX` at 100% APR for `YEAR` seconds cancels exactly to `Some(u64::MAX)`; adding one second flips it to `None`. Document the calculation in the test name or a short comment.
-- `max_borrowable` uses `saturating_mul` — it does **not** return `Option`. At `u64::MAX` it clamps to `u64::MAX / 100`, not None. Test this explicitly.
+- `max_borrow_capacity` uses saturating arithmetic — it does **not** return `Option`. On overflow (astronomically large collateral) it clamps to `u64::MAX`, not None. Test the clamp explicitly.
 
 ### Round-trip tolerance
 
-`shares_to_amount` uses **ceiling** division; `amount_to_shares` uses **floor** division. A round-trip `amount → shares → amount` may differ by ±1 unit. Assert:
+Debt-share rounding always favors the protocol: `amount_to_shares` (borrow) and `shares_to_amount` use **ceiling**; `amount_to_shares_burned` (repay) uses **floor**. A round-trip `amount → shares → amount` may differ by ±1 unit. Assert:
 ```rust
 assert!(back.abs_diff(original) <= 1);
 ```

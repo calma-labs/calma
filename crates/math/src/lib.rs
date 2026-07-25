@@ -7,6 +7,12 @@ pub use traits::*;
 const SECONDS_PER_YEAR: u64 = 31_557_600;
 pub const PRICE_SCALE: u128 = 1_000_000;
 
+/// Maximum borrow rate the interest math will honor: 10_000% APR
+/// (1_000_000 bps). A misconfigured or malicious IRM reporting a higher rate is
+/// clamped to this, so interest accrual can never overflow to `None` and brick
+/// the pool. The ceiling is far above any plausible crisis rate.
+pub const MAX_RATE_BPS: u32 = 1_000_000;
+
 pub enum MathError<E> {
     /// Integer overflow or underflow in a checked arithmetic operation.
     Arithmetic,
@@ -28,17 +34,19 @@ pub fn utilization_bps(
         return 0;
     }
     let effective_borrowed = total_borrow_assets.saturating_add(assets_in_queue);
-    (effective_borrowed as u128)
-        .checked_mul(10_000)
-        .unwrap_or(0)
-        .checked_div(total_supply_assets as u128)
-        .unwrap_or(0) as u64
+    // `effective_borrowed as u128 * 10_000` cannot overflow u128 (operand ≤ u64::MAX),
+    // so no masking is needed. If utilization exceeds u64 (only when supply is a
+    // tiny fraction of borrowed), saturate high — never report 0, which would
+    // falsely signal an idle pool.
+    let util = (effective_borrowed as u128) * 10_000 / (total_supply_assets as u128);
+    u64::try_from(util).unwrap_or(u64::MAX)
 }
 
 pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -> Option<u64> {
     if elapsed_secs == 0 || rate_bps == 0 || total_borrowed == 0 {
         return Some(0);
     }
+    let rate_bps = rate_bps.min(MAX_RATE_BPS);
     let numerator = (total_borrowed as u128)
         .checked_mul(rate_bps as u128)?
         .checked_mul(elapsed_secs as u128)?;
@@ -48,15 +56,26 @@ pub fn compute_interest(total_borrowed: u64, rate_bps: u32, elapsed_secs: u64) -
 }
 
 /// Call this BEFORE adding `amount` to `total_borrowed`.
+///
+/// Debt shares are minted with **ceiling** division so a borrower always owes at
+/// least their proportional share — rounding favors the protocol, never the
+/// borrower. Pairs with the floor rounding in [`amount_to_shares_burned`].
 pub fn amount_to_shares(amount: u64, total_borrowed: u64, total_debt_shares: u64) -> Option<u64> {
     if amount == 0 {
         return Some(0);
     }
-    if total_debt_shares == 0 || total_borrowed == 0 {
+    if total_debt_shares == 0 && total_borrowed == 0 {
+        // Fresh pool: seed debt shares 1:1 with the first borrow.
         return Some(amount);
     }
-    let shares =
-        (amount as u128).checked_mul(total_debt_shares as u128)? / (total_borrowed as u128);
+    if total_debt_shares == 0 || total_borrowed == 0 {
+        // Exactly one side is zero — an inconsistent pool (orphan shares with no
+        // borrowed assets, or vice versa). Refuse rather than mis-seed 1:1.
+        return None;
+    }
+    let shares = (amount as u128)
+        .checked_mul(total_debt_shares as u128)?
+        .div_ceil(total_borrowed as u128);
     u64::try_from(shares).ok()
 }
 
@@ -108,7 +127,13 @@ pub fn compute_liquidation_threshold(debt: u64, collateral: u64, ltv_percent: u8
     u32::try_from(liq_bps).ok()
 }
 
-/// Uses ceiling division, capped at `max_shares` so full-repay never burns more shares than held.
+/// Shares burned when repaying `repay_amount`, capped at `max_shares` so a repay
+/// never burns more shares than the position holds.
+///
+/// Uses **floor** division: a partial repay burns no more shares than the tokens
+/// received are worth, so the pool never loses (rounding favors the protocol).
+/// Pairs with the ceiling rounding in [`amount_to_shares`]. Returns `None` when
+/// `total_borrowed == 0` (no debt to burn against) rather than dividing by zero.
 pub fn amount_to_shares_burned(
     repay_amount: u64,
     total_borrowed: u64,
@@ -118,8 +143,11 @@ pub fn amount_to_shares_burned(
     if repay_amount == 0 {
         return Some(0);
     }
+    if total_borrowed == 0 {
+        return None;
+    }
     let shares = (repay_amount as u128).checked_mul(total_debt_shares as u128)?;
-    let shares = shares.div_ceil(total_borrowed as u128);
+    let shares = shares / (total_borrowed as u128);
     let shares = u64::try_from(shares).ok()?.min(max_shares);
     Some(shares)
 }
@@ -195,8 +223,9 @@ mod tests {
 
     #[test]
     fn second_borrow_after_interest_accrual() {
+        // Ceiling division rounds the borrower's debt shares up: 90_909.09 → 90_910.
         let shares = amount_to_shares(100_000, 1_100_000, 1_000_000).unwrap();
-        assert_eq!(shares, 90_909);
+        assert_eq!(shares, 90_910);
         let new_total_borrowed = 1_100_000 + 100_000;
         let new_total_shares = 1_000_000 + shares;
         let second_debt = shares_to_amount(shares, new_total_borrowed, new_total_shares).unwrap();
@@ -281,10 +310,11 @@ mod tests {
     #[test]
     fn huge_second_borrow_after_10pct_interest() {
         // Pool has 110M assets and 100M shares after 10% interest accrual.
-        // New 100M borrow gets floor(100M × 100M / 110M) = 90_909_090_909_090 shares.
+        // New 100M borrow gets ceil(100M × 100M / 110M) = 90_909_090_909_091 shares
+        // (rounded up so the borrower never under-owes).
         let total_after_interest = 110_000_000u64 * 1_000_000;
         let shares = amount_to_shares(HUNDRED_M, total_after_interest, HUNDRED_M).unwrap();
-        assert_eq!(shares, 90_909_090_909_090);
+        assert_eq!(shares, 90_909_090_909_091);
 
         // Ceiling on repay brings it back within 1 unit of the original borrow.
         let new_total_borrowed = total_after_interest + HUNDRED_M;
@@ -361,9 +391,9 @@ mod tests {
 
     #[test]
     fn flash_fee_u64_max_succeeds() {
-        // 9 × u64::MAX fits in u128; result / 10_000 fits back in u64.
+        // 9 × u64::MAX fits in u128; ceil(… / 10_000) fits back in u64.
         let expected = u64::try_from(
-            (u64::MAX as u128).checked_mul(9).unwrap() / 10_000
+            (u64::MAX as u128).checked_mul(9).unwrap().div_ceil(10_000)
         ).unwrap();
         assert_eq!(flash_fee(u64::MAX), Some(expected));
     }
@@ -447,6 +477,39 @@ mod tests {
         assert_eq!(compute_liquidation_threshold(u64::MAX, 1, 1), None);
     }
 
+    // ── Rounding direction: shares must always favor the protocol ─────────────
+
+    #[test]
+    fn amount_to_shares_burned_zero_borrowed_returns_none() {
+        // total_borrowed == 0 used to divide by zero (panic). Must return None.
+        assert_eq!(amount_to_shares_burned(1, 0, 1_000_000, 1_000_000), None);
+    }
+
+    #[test]
+    fn borrow_shares_round_up() {
+        // 1 unit into a pool where 1 share is worth 2 units: exact = 0.5 share.
+        // Ceiling mints 1 share so the borrower never owes 0 for a real borrow.
+        assert_eq!(amount_to_shares(1, 2, 1), Some(1));
+    }
+
+    #[test]
+    fn repay_shares_burned_round_down() {
+        // Repay 1 unit where 1 share is worth 2 units: exact = 0.5 share.
+        // Floor burns 0 shares so the pool never releases more debt than paid for.
+        assert_eq!(amount_to_shares_burned(1, 2, 1, 1), Some(0));
+    }
+
+    #[test]
+    fn borrow_owes_at_least_what_was_borrowed() {
+        // Ceiling mint + ceiling valuation guarantee the debt never rounds below
+        // the borrowed amount — the invariant that keeps the pool fully backed.
+        let borrowed = 100_000u64;
+        let (tb, ts) = (1_100_000u64, 1_000_000u64);
+        let shares = amount_to_shares(borrowed, tb, ts).unwrap();
+        let owed = shares_to_amount(shares, tb + borrowed, ts + shares).unwrap();
+        assert!(owed >= borrowed, "owed {owed} < borrowed {borrowed}");
+    }
+
     // ── flash_fee zero and minimal ─────────────────────────────────────────────
 
     #[test]
@@ -455,14 +518,48 @@ mod tests {
     }
 
     #[test]
-    fn flash_fee_amount_below_fee_threshold_is_zero() {
-        // 1_111 × 9 / 10_000 = 9_999 / 10_000 = 0 (floor division).
-        assert_eq!(flash_fee(1_111), Some(0));
+    fn flash_fee_tiny_amount_charges_minimum_one() {
+        // Ceiling + min(1): a nonzero flash loan is never free.
+        // 1 × 9 = 9 → ceil(9/10_000) = 1; 1_111 × 9 = 9_999 → ceil = 1.
+        assert_eq!(flash_fee(1), Some(1));
+        assert_eq!(flash_fee(1_111), Some(1));
     }
 
     #[test]
-    fn flash_fee_minimum_nonzero() {
-        // 1_112 × 9 = 10_008; 10_008 / 10_000 = 1.
-        assert_eq!(flash_fee(1_112), Some(1));
+    fn flash_fee_rounds_up() {
+        // 1_112 × 9 = 10_008 → ceil(10_008 / 10_000) = 2 (was 1 under floor).
+        assert_eq!(flash_fee(1_112), Some(2));
+    }
+
+    // ── M5: interest-rate ceiling ─────────────────────────────────────────────
+
+    #[test]
+    fn interest_rate_above_max_is_clamped() {
+        // A rate 10× over the ceiling yields the same interest as the ceiling —
+        // accrual never overflows to None, so the pool can't be bricked.
+        let at_cap = compute_interest(1_000_000, MAX_RATE_BPS, YEAR);
+        let over = compute_interest(1_000_000, MAX_RATE_BPS * 10, YEAR);
+        assert_eq!(over, at_cap);
+        // 10_000% APR on 1_000_000 principal for one year = 100_000_000.
+        assert_eq!(at_cap, Some(100_000_000));
+    }
+
+    // ── L2: utilization ───────────────────────────────────────────────────────
+
+    #[test]
+    fn utilization_half_and_zero_supply() {
+        assert_eq!(utilization_bps(1_000_000, 500_000, 0), 5_000);
+        assert_eq!(utilization_bps(1_000_000, 400_000, 100_000), 5_000); // queue counts
+        assert_eq!(utilization_bps(0, 500_000, 0), 0);
+    }
+
+    // ── L4: amount_to_shares rejects inconsistent one-sided-zero state ────────
+
+    #[test]
+    fn amount_to_shares_orphan_shares_no_borrowed_returns_none() {
+        // shares outstanding but zero borrowed assets — inconsistent, reject.
+        assert_eq!(amount_to_shares(500, 0, 1_000_000), None);
+        // borrowed assets but zero shares — equally inconsistent.
+        assert_eq!(amount_to_shares(500, 1_000_000, 0), None);
     }
 }

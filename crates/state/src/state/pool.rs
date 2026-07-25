@@ -11,10 +11,15 @@ pub struct Market {
     pub total_borrow_assets: u64,
     pub total_borrow_shares: u64,
     pub last_update: i64,
+    /// Protocol fee **rate** in basis points, skimmed from accrued interest.
     pub fee: u64,
     pub assets_in_queue: u64,
     pub ltv_percent: u8,
     _pad: [u8; 7],
+    /// Protocol-owned supply shares accrued from the fee, not yet claimed as LP.
+    /// Minted into `total_supply_shares` at accrual; `claim_fees` mints matching
+    /// LP tokens to the pool authority and resets this to 0.
+    pub accrued_fee_shares: u64,
 }
 
 impl math::Market for Market {
@@ -47,6 +52,12 @@ impl math::Market for Market {
     }
     fn total_supply_shares_mut(&mut self) -> &mut u64 {
         &mut self.total_supply_shares
+    }
+    fn accrued_fee_shares(&self) -> u64 {
+        self.accrued_fee_shares
+    }
+    fn accrued_fee_shares_mut(&mut self) -> &mut u64 {
+        &mut self.accrued_fee_shares
     }
     fn assets_in_queue_mut(&mut self) -> &mut u64 {
         &mut self.assets_in_queue
@@ -97,7 +108,9 @@ pub struct Pool {
     /// on the underlying feed's update cadence.
     pub max_feed_age_secs: u32,
     _pad1: [u8; 4], // align _reserved (u64 needs 8-byte alignment)
-    _reserved: [u64; 3],
+    // Shrunk from [u64; 3] to keep `Pool`'s size constant when `Market` grew by
+    // one u64 (`accrued_fee_shares`).
+    _reserved: [u64; 2],
 }
 
 impl Pool {

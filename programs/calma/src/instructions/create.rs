@@ -145,6 +145,7 @@ pub fn create_handler(
     // `elapsed` span the entire unix epoch and overflows `compute_interest`.
     pool.market.last_update = Clock::get()?.unix_timestamp;
     pool.market.fee = 0;
+    pool.market.accrued_fee_shares = 0;
     pool.market.assets_in_queue = 0;
     pool.market.ltv_percent = ltv_percent;
     pool.rate_program = ctx.accounts.rate_program.key();

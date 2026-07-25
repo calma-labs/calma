@@ -62,4 +62,8 @@ pub enum ErrorCode {
     InterestAccrualOverflow,
     #[msg("Debt share-to-amount valuation overflowed")]
     DebtValuationOverflow,
+    #[msg("Protocol fee exceeds the maximum allowed rate")]
+    FeeTooHigh,
+    #[msg("No accrued protocol fees to claim")]
+    NoFeesToClaim,
 }

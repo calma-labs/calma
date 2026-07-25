@@ -57,6 +57,14 @@ pub mod calma {
         withdraw_lent_handler(ctx, shares)
     }
 
+    pub fn set_fee(ctx: Context<SetFee>, fee_bps: u64) -> Result<()> {
+        set_fee_handler(ctx, fee_bps)
+    }
+
+    pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
+        claim_fees_handler(ctx)
+    }
+
     pub fn borrow_with_hedge<'a>(
         ctx: Context<'a, BorrowWithHedge<'a>>,
         amount: u64,

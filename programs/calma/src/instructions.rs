@@ -1,9 +1,11 @@
 pub mod borrow;
 pub mod borrow_with_hedge;
+pub mod claim_fees;
 pub mod create;
 pub mod create_rate_hedge_offer;
 pub mod deposit_collateral;
 pub mod deposit_lent;
+pub mod set_fee;
 pub mod flash_borrow;
 pub mod flash_repay;
 pub mod mock_swap;
@@ -15,7 +17,9 @@ pub mod withdraw_lent;
 
 pub use borrow::*;
 pub use borrow_with_hedge::*;
+pub use claim_fees::*;
 pub use create::*;
+pub use set_fee::*;
 pub use create_rate_hedge_offer::*;
 pub use deposit_collateral::*;
 pub use deposit_lent::*;
