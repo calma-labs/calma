@@ -48,18 +48,6 @@ function isDevnetCluster(connection: Connection): boolean {
  * price, post lend price, then commit set_from_pyth against those fresh accounts.
  * Returns all transaction signatures produced across the 3 steps.
  */
-async function getTxLogs(connection: Connection, sig: string): Promise<string[]> {
-    try {
-        const tx = await connection.getTransaction(sig, {
-            commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0,
-        })
-        return tx?.meta?.logMessages ?? []
-    } catch {
-        return [`(failed to fetch logs for ${sig})`]
-    }
-}
-
 export async function refreshFeedAccount(
     connection: Connection,
     feedPubkey: PublicKey,
@@ -68,12 +56,8 @@ export async function refreshFeedAccount(
 ): Promise<string[]> {
     const collHex = bytesToFeedIdHex(collateralFeedId)
     const lendHex = bytesToFeedIdHex(lendFeedId)
-    const now = () => Math.floor(Date.now() / 1000)
 
-    const log: object[] = []
     const allSigs: string[] = []
-
-    log.push({ checkpoint: 'start', feed: feedPubkey.toBase58(), collHex, lendHex, wallClock: now() })
 
     // Read max_age_ms from the feed rules so we can validate Hermes prices
     // before spending two transactions posting a VAA that will be rejected.
@@ -83,7 +67,6 @@ export async function refreshFeedAccount(
               rules: { maxAgeMs: number }
           }).rules.maxAgeMs ?? 60_000) / 1000
         : 60
-    log.push({ checkpoint: 'feed_config', maxPythAgeSecs })
 
     const receiver = new PythSolanaReceiver({
         connection,
@@ -94,15 +77,8 @@ export async function refreshFeedAccount(
     const collRes = await hermes.getLatestPriceUpdates([hermesId(collHex)], { encoding: 'base64' })
     if (!collRes.binary.data?.length) throw new Error('Hermes returned no collateral price data')
     const collPublishTime = collRes.parsed?.[0]?.price?.publish_time ?? null
-    const collAgeAtFetch = collPublishTime !== null ? now() - collPublishTime : null
-    log.push({
-        checkpoint: 'step1_hermes',
-        publishTime: collPublishTime,
-        ageSeconds: collAgeAtFetch,
-        wallClock: now(),
-    })
+    const collAgeAtFetch = collPublishTime !== null ? Math.floor(Date.now() / 1000) - collPublishTime : null
     if (collAgeAtFetch !== null && collAgeAtFetch > maxPythAgeSecs) {
-        console.error('[refreshFeedAccount]', JSON.stringify(log, null, 2))
         throw new Error(
             `Collateral price from Hermes is ${collAgeAtFetch}s old (max ${maxPythAgeSecs}s). ` +
             `Feed ID ${collHex} is not actively published by Pyth — ` +
@@ -116,26 +92,16 @@ export async function refreshFeedAccount(
     const collTxs = await receiver.batchIntoVersionedTransactions(collBuilt.postInstructions, {
         computeUnitPriceMicroLamports: 50_000,
     })
-    log.push({ checkpoint: 'step1_sending', collAccount: collAccount.toBase58(), versionedTxCount: collTxs.length, wallClock: now() })
 
     const collSigs = await receiver.provider.sendAll!(collTxs)
-    const collTxLogs = await Promise.all(collSigs.map((s) => getTxLogs(connection, s)))
-    log.push({ checkpoint: 'step1_confirmed', sigs: collSigs, txLogs: collTxLogs, wallClock: now() })
     allSigs.push(...collSigs)
 
     // Step 2: post lend price update
     const lendRes = await hermes.getLatestPriceUpdates([hermesId(lendHex)], { encoding: 'base64' })
     if (!lendRes.binary.data?.length) throw new Error('Hermes returned no lend price data')
     const lendPublishTime = lendRes.parsed?.[0]?.price?.publish_time ?? null
-    const lendAgeAtFetch = lendPublishTime !== null ? now() - lendPublishTime : null
-    log.push({
-        checkpoint: 'step2_hermes',
-        publishTime: lendPublishTime,
-        ageSeconds: lendAgeAtFetch,
-        wallClock: now(),
-    })
+    const lendAgeAtFetch = lendPublishTime !== null ? Math.floor(Date.now() / 1000) - lendPublishTime : null
     if (lendAgeAtFetch !== null && lendAgeAtFetch > maxPythAgeSecs) {
-        console.error('[refreshFeedAccount]', JSON.stringify(log, null, 2))
         throw new Error(
             `Lend price from Hermes is ${lendAgeAtFetch}s old (max ${maxPythAgeSecs}s). ` +
             `Feed ID ${lendHex} is not actively published by Pyth — ` +
@@ -149,23 +115,11 @@ export async function refreshFeedAccount(
     const lendTxs = await receiver.batchIntoVersionedTransactions(lendBuilt.postInstructions, {
         computeUnitPriceMicroLamports: 50_000,
     })
-    log.push({ checkpoint: 'step2_sending', lendAccount: lendAccount.toBase58(), versionedTxCount: lendTxs.length, wallClock: now() })
 
     const lendSigs = await receiver.provider.sendAll!(lendTxs)
-    const lendTxLogs = await Promise.all(lendSigs.map((s) => getTxLogs(connection, s)))
-    log.push({ checkpoint: 'step2_confirmed', sigs: lendSigs, txLogs: lendTxLogs, wallClock: now() })
     allSigs.push(...lendSigs)
 
     // Step 3: set_from_pyth + close
-    log.push({
-        checkpoint: 'step3_building',
-        collAccount: collAccount.toBase58(),
-        lendAccount: lendAccount.toBase58(),
-        collAgeSeconds: collPublishTime !== null ? now() - collPublishTime : null,
-        lendAgeSeconds: lendPublishTime !== null ? now() - lendPublishTime : null,
-        wallClock: now(),
-    })
-
     const setFromPythIx = await feedProgram.methods
         .setFromPyth()
         .accountsPartial({ feed: feedPubkey, collateralPriceUpdate: collAccount, lendPriceUpdate: lendAccount })
@@ -176,20 +130,10 @@ export async function refreshFeedAccount(
         [{ instruction: setFromPythIx, signers: [] }, closeCollateral, closeLend],
         { computeUnitPriceMicroLamports: 50_000 },
     )
-    log.push({ checkpoint: 'step3_sending', versionedTxCount: commitTxs.length, wallClock: now() })
 
-    try {
-        const commitSigs = await receiver.provider.sendAll!(commitTxs)
-        const commitTxLogs = await Promise.all(commitSigs.map((s) => getTxLogs(connection, s)))
-        log.push({ checkpoint: 'step3_confirmed', sigs: commitSigs, txLogs: commitTxLogs, wallClock: now() })
-        allSigs.push(...commitSigs)
-    } catch (err) {
-        log.push({ checkpoint: 'step3_error', error: String(err), wallClock: now() })
-        console.error('[refreshFeedAccount]', JSON.stringify(log, null, 2))
-        throw err
-    }
+    const commitSigs = await receiver.provider.sendAll!(commitTxs)
+    allSigs.push(...commitSigs)
 
-    console.log('[refreshFeedAccount]', JSON.stringify(log, null, 2))
     return allSigs
 }
 

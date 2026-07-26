@@ -8,20 +8,26 @@ const HERMES_ENDPOINT =
 const hermes = new HermesClient(HERMES_ENDPOINT)
 
 export interface PythLivePrice {
-    /** Human-readable price in USD, already exponent-adjusted. */
-    price: number
-    /** Confidence interval in USD. */
-    confidence: number
+    /** Price in micro-USD (10^-6 USD) as bigint. Divide by 1_000_000 to get USD float. */
+    price: bigint
+    /** Confidence interval in micro-USD as bigint. */
+    confidence: bigint
     /** Publish time (unix seconds). */
     publishTime: number
 }
 
 /** Parse a Hermes parsed-price entry (`price` is an integer string, `expo` ≤ 0). */
 function toLivePrice(price: string, expo: number, conf: string, publishTime: number): PythLivePrice {
-    const scale = 10 ** expo
+    const priceBig = BigInt(price)
+    const confBig = BigInt(conf)
+    // Normalize to 6 decimal places (micro-USD). shift = 6 + expo, e.g. expo=-8 → divide by 100.
+    const shift = 6 + expo
+    const scale = 10n ** BigInt(Math.abs(shift))
+    const scaledPrice = shift >= 0 ? priceBig * scale : priceBig / scale
+    const scaledConf = shift >= 0 ? confBig * scale : confBig / scale
     return {
-        price: Number(price) * scale,
-        confidence: Number(conf) * scale,
+        price: scaledPrice,
+        confidence: scaledConf,
         publishTime,
     }
 }

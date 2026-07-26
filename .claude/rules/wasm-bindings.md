@@ -43,3 +43,11 @@ drive it identically. The reference is the program's instruction handlers in
 **Why.** The frontend must stay as close to the backend as possible. Every place
 that re-expresses protocol math can silently diverge from consensus; replaying
 `Core` collapses those to zero.
+
+## Token-amount conversions live here too
+
+Base-10 scaling between a UI decimal string and raw `u64` minor units also lives
+in this crate (`parse_token_amount` / `format_token_amount` / `token_amount_to_f64`
+in `state.rs`), for the same reason — the browser never re-expresses the on-chain
+integer/decimal convention in its own JS float math. The app-facing usage rules
+are in `.claude/rules/token-amounts.md`.

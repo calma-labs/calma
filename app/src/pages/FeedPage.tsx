@@ -309,10 +309,10 @@ function FeedPusherTool() {
             ) : price ? (
               <div className="flex items-baseline gap-3">
                 <span className="font-mono text-2xl font-semibold text-[#efe0f7] tabular-nums">
-                  {formatPrice(price.price)}
+                  {formatPrice(Number(price.price) / 1_000_000)}
                 </span>
                 <span className="text-[11px] text-[#efe0f7]/35">
-                  ± {formatPrice(price.confidence)} · {relativeTime(price.publishTime)}
+                  ± {formatPrice(Number(price.confidence) / 1_000_000)} · {relativeTime(price.publishTime)}
                 </span>
               </div>
             ) : null}
@@ -533,8 +533,8 @@ function FeedLivePrices({
 
   const loading = cLoading || lLoading;
   const liveRatio =
-    collPrice && lendPr && lendPr.price > 0
-      ? collPrice.price / lendPr.price
+    collPrice && lendPr && lendPr.price > 0n
+      ? Number(collPrice.price) / Number(lendPr.price)
       : null;
 
   return (
@@ -551,13 +551,13 @@ function FeedLivePrices({
       <div className="flex flex-col gap-0.5">
         <span className="text-[#efe0f7]/30">Live coll px</span>
         <span className="font-mono text-[#efe0f7]/60 tabular-nums">
-          {loading ? "…" : collPrice ? formatPrice(collPrice.price) : "—"}
+          {loading ? "…" : collPrice ? formatPrice(Number(collPrice.price) / 1_000_000) : "—"}
         </span>
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="text-[#efe0f7]/30">Live lend px</span>
         <span className="font-mono text-[#efe0f7]/60 tabular-nums">
-          {loading ? "…" : lendPr ? formatPrice(lendPr.price) : "—"}
+          {loading ? "…" : lendPr ? formatPrice(Number(lendPr.price) / 1_000_000) : "—"}
         </span>
       </div>
     </div>
@@ -754,8 +754,8 @@ function CreateFeedCard({
   const { mutateAsync, isPending, error, data: signature } = useCreateFeed();
 
   const pairPrice =
-    collateralPrice && lendPrice && lendPrice.price > 0
-      ? collateralPrice.price / lendPrice.price
+    collateralPrice && lendPrice && lendPrice.price > 0n
+      ? Number(collateralPrice.price) / Number(lendPrice.price)
       : null;
 
   const feedsResolved = !!collateralFeedId && !!lendFeedId;
@@ -885,7 +885,7 @@ function CreateFeedCard({
                 {collateralSymbol || "Collateral"}
               </span>
               <span className="font-mono text-sm text-[#efe0f7]/80 tabular-nums">
-                {collateralPrice ? formatPrice(collateralPrice.price) : "—"}
+                {collateralPrice ? formatPrice(Number(collateralPrice.price) / 1_000_000) : "—"}
               </span>
             </div>
             <div className="flex flex-col gap-0.5">
@@ -893,7 +893,7 @@ function CreateFeedCard({
                 {lendSymbol || "Lend"}
               </span>
               <span className="font-mono text-sm text-[#efe0f7]/80 tabular-nums">
-                {lendPrice ? formatPrice(lendPrice.price) : "—"}
+                {lendPrice ? formatPrice(Number(lendPrice.price) / 1_000_000) : "—"}
               </span>
             </div>
           </div>

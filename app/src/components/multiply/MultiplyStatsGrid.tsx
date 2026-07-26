@@ -1,4 +1,3 @@
-import { maxLeverageForLtv } from "@/hooks/useMultiply";
 import { formatUSD } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import type { Pool } from "@/types/pool";
@@ -34,7 +33,7 @@ interface MultiplyStatsGridProps {
 }
 
 export function MultiplyStatsGrid({ pool }: MultiplyStatsGridProps) {
-  const maxLeverage = maxLeverageForLtv(pool.account.ltv_percent, Number(pool.account.oracle_price));
+  const maxLeverage = pool.account.max_leverage();
   const maxNetAPY = pool.account.leveraged_net_apy(maxLeverage);
 
   return (

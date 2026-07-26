@@ -1,4 +1,5 @@
 import { getTokenMeta } from '@/lib/tokenRegistry'
+import { token_amount_to_f64 } from '@calma/wasm-lib'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
 import type {
     BorrowPosition,
@@ -46,7 +47,7 @@ export function useLendPositions(enabled = true) {
             const suppliedRaw = pool.account.lend_for_shares(lpToken.amount)
             if (suppliedRaw == null) return []
             const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
-            const supplied = Number(suppliedRaw) / 10 ** lendDecimals
+            const supplied = token_amount_to_f64(suppliedRaw, lendDecimals)
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).
@@ -102,8 +103,8 @@ export function useBorrowPositions(enabled = true) {
             const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
             const collateralDecimals = decimalsMap.get(new PublicKey(pool.account.collateral_mint).toBase58()) ?? 6
             const debtRaw = pool.account.debt_amount(pos) ?? 0n
-            const debtAmount = Number(debtRaw) / 10 ** lendDecimals
-            const collateralAmount = Number(pos.collateral_deposited) / 10 ** collateralDecimals
+            const debtAmount = token_amount_to_f64(debtRaw, lendDecimals)
+            const collateralAmount = token_amount_to_f64(pos.collateral_deposited, collateralDecimals)
 
             const ltvBps = pool.account.ltv(pos)
             const healthFactorBps = pool.account.health_factor(pos)

@@ -18,7 +18,7 @@ export interface RepayPosition {
 interface RepayModalProps {
   position: RepayPosition;
   onClose: () => void;
-  onRepay?: (amount: number, rawAmount?: string) => Promise<void>;
+  onRepay?: (amount: string, rawAmount?: string) => Promise<void>;
   isPending?: boolean;
 }
 
@@ -45,7 +45,7 @@ export function RepayModal({
     if (!numAmount || numAmount <= 0) return;
     // Pass raw amount if repaying max (to avoid floating point precision issues)
     const isMaxRepay = numAmount >= maxRepay;
-    if (onRepay) await onRepay(numAmount, isMaxRepay ? position.rawDebtAmount : undefined);
+    if (onRepay) await onRepay(amount, isMaxRepay ? position.rawDebtAmount : undefined);
     onClose();
   }
 

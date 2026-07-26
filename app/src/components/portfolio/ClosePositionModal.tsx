@@ -4,7 +4,7 @@ import { OracleTable } from "@/components/common/OracleTable";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
 import type { PoolWithIrm, UserPositionAccount } from "@calma/wasm-lib";
-import { flash_fee } from "@calma/wasm-lib";
+import { flash_fee, token_amount_to_f64 } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -63,10 +63,9 @@ export function ClosePositionModal({
   const collateralRaw = userPosition.collateral_deposited;
 
   // Numeric amounts needed for flash-fee and estimated-return math
-  const debtUi = Number(debtRaw) / 10 ** (lendDecimals ?? 6);
-  const collateralUi = Number(collateralRaw) / 10 ** (collateralDecimals ?? 6);
-  const flashFee =
-    Number(flash_fee(debtRaw) ?? 0n) / 10 ** (lendDecimals ?? 6);
+  const debtUi = token_amount_to_f64(debtRaw, lendDecimals ?? 6);
+  const collateralUi = token_amount_to_f64(collateralRaw, collateralDecimals ?? 6);
+  const flashFee = token_amount_to_f64(flash_fee(debtRaw) ?? 0n, lendDecimals ?? 6);
   const estimatedReturn = Math.max(0, collateralUi - debtUi - flashFee);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {

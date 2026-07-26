@@ -1,12 +1,13 @@
 import { getTokenMeta } from '@/lib/tokenRegistry'
-import { PoolWithIrm } from '@calma/wasm-lib'
+import { PoolWithIrm, token_amount_to_f64 } from '@calma/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import type { Pool } from '@/types/pool'
 
 /**
  * Map on-chain PoolAccount to the display-friendly Pool shape used by UI
- * components. Raw lend-token amounts are divided by `10 ** lendDecimals`;
- * APY and utilization are derived via wasm methods on PoolAccount.
+ * components. Raw lend-token amounts are converted to UI numbers via
+ * `token_amount_to_f64`; APY and utilization are derived via wasm methods on
+ * PoolAccount.
  *
  * `address` and `id` are both the pool's own PublicKey base-58 string so
  * routing with `/pool/:address` resolves back to the same account.
@@ -18,8 +19,6 @@ export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolWithIrm, len
 
     const meta = getTokenMeta(lendMintAddr)
     const collateralMeta = getTokenMeta(collateralMintAddr)
-
-    const lendScale = 10 ** lendDecimals
 
     return {
         id: addr,
@@ -36,9 +35,9 @@ export function poolDataToDisplayPool(publicKey: PublicKey, pd: PoolWithIrm, len
         account: pd,
         supplyAPY: pd.supply_apy_bps() / 100,
         borrowAPY: pd.borrow_apy_bps() / 100,
-        totalSupplied: Number(pd.total_supply_assets) / lendScale,
-        totalBorrowed: Number(pd.total_borrow_assets) / lendScale,
+        totalSupplied: token_amount_to_f64(pd.total_supply_assets, lendDecimals),
+        totalBorrowed: token_amount_to_f64(pd.total_borrow_assets, lendDecimals),
         utilization: pd.utilization_bps() / 100,
-        availableLiquidity: Number(pd.available_liquidity()) / lendScale,
+        availableLiquidity: token_amount_to_f64(pd.available_liquidity(), lendDecimals),
     }
 }

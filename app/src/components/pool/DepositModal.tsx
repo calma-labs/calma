@@ -2,7 +2,7 @@ import { useDeposit } from "@/hooks/program/useDeposit";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm } from "@calma/wasm-lib";
+import { parse_token_amount, type PoolWithIrm } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -39,7 +39,7 @@ export function DepositModal({ pool, poolData, onClose }: DepositModalProps) {
 
     const authority = new PublicKey(wallet.account.publicKey);
     const decimals = collateralDecimals ?? 9;
-    const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
+    const rawAmount = new BN((parse_token_amount(amount, decimals) ?? 0n).toString());
     const userTokenAccount = getAssociatedTokenAddressSync(
       new PublicKey(poolData.collateral_mint),
       authority,

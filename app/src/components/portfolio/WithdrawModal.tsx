@@ -16,7 +16,7 @@ interface WithdrawModalProps {
   position: WithdrawPosition;
   onClose: () => void;
   disabled?: boolean;
-  onWithdraw?: (amount: number, rawAmount?: string) => Promise<void>;
+  onWithdraw?: (amount: string, rawAmount?: string) => Promise<void>;
   isPending?: boolean;
 }
 
@@ -49,7 +49,7 @@ export function WithdrawModal({
     if (!numAmount || numAmount <= 0) return;
     // Pass raw amount if withdrawing max (to avoid floating point precision issues)
     const isMaxWithdrawal = numAmount >= maxWithdraw;
-    if (onWithdraw) await onWithdraw(numAmount, isMaxWithdrawal ? position.rawSupplied : undefined);
+    if (onWithdraw) await onWithdraw(amount, isMaxWithdrawal ? position.rawSupplied : undefined);
     onClose();
   }
 

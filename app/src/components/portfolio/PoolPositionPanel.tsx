@@ -1,4 +1,4 @@
-import type { PoolWithIrm } from "@calma/wasm-lib";
+import { parse_token_amount, token_amount_to_f64, type PoolWithIrm } from "@calma/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
@@ -252,14 +252,14 @@ export function PoolPositionPanel({
   // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    return Number(poolData.debt_amount(userPosition) ?? 0n) / 10 ** lendDecimals;
+    return token_amount_to_f64(poolData.debt_amount(userPosition) ?? 0n, lendDecimals);
   }, [userPosition, poolData, lendDecimals]);
 
   // Convert LP share balance → underlying lend tokens via on-chain exchange rate
   const suppliedLend = useMemo(() => {
     if (!lpWalletBalance || lendDecimals == null) return 0;
     const raw = poolData.lend_for_shares(lpWalletBalance.amount);
-    return raw != null ? Number(raw) / 10 ** lendDecimals : 0;
+    return raw != null ? token_amount_to_f64(raw, lendDecimals) : 0;
   }, [lpWalletBalance, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
@@ -302,10 +302,12 @@ export function PoolPositionPanel({
     }
     : null;
 
-  async function handleRepay(amount: number, rawAmountStr?: string) {
+  async function handleRepay(amount: string, rawAmountStr?: string) {
     if (!poolData || !poolPubKey) return;
-    // Use raw amount if provided (for max repayment), otherwise calculate from UI amount
-    const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (lendDecimals ?? 6)));
+    // Use raw amount if provided (for max repayment), otherwise parse the UI amount
+    const rawAmount = rawAmountStr
+      ? new BN(rawAmountStr)
+      : new BN((parse_token_amount(amount, lendDecimals ?? 6) ?? 0n).toString());
     await repayMutation.mutateAsync({
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),

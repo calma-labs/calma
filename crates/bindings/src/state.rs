@@ -243,7 +243,7 @@ impl UserPositionAccount {
     /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
     /// Trailing zeros are trimmed; at most 6 decimal places are shown.
     pub fn format_collateral(&self, decimals: u8) -> String {
-        format_token_amount(self.0.collateral_deposited, decimals)
+        format_token_capped(self.0.collateral_deposited, decimals)
     }
 
     // NOTE: debt-derived metrics (debt amount, LTV, health factor, liquidation
@@ -773,7 +773,7 @@ impl PoolWithIrm {
     /// Human-readable debt of `position` as a decimal string, using accrued debt.
     pub fn format_debt(&self, position: &UserPositionAccount, decimals: u8) -> String {
         let amount = self.debt_amount(position).unwrap_or(0);
-        format_token_amount(amount, decimals)
+        format_token_capped(amount, decimals)
     }
 
     /// Net APY of a leveraged position at the given `leverage` multiple, in percent.
@@ -905,6 +905,32 @@ impl PoolWithIrm {
 
     pub fn available_liquidity(&self) -> u64 {
         self.pool.available_liquidity()
+    }
+
+    /// Max leverage a single flash-loop can reach for this pool.
+    ///
+    /// The borrow gate caps debt at `collateral × (oracle_price/PRICE_SCALE) × ltv`
+    /// (`Core::max_borrow_capacity`). The loop ends at token ratio `(L−1)/L`
+    /// collateral→debt, so the gate binds when `L ≤ 1/(1 − p·LTV)` where
+    /// `p = oracle_price / PRICE_SCALE`. A 1% safety margin is applied and the
+    /// result is floored to 0.1 steps so the slider ceiling never reverts on-chain.
+    /// Returns 30.0 when the effective LTV ≥ 1 (degenerate ceiling).
+    pub fn max_leverage(&self) -> f64 {
+        let ltv_percent = self.pool.0.market.ltv_percent as f64;
+        if ltv_percent <= 0.0 {
+            return 1.0;
+        }
+        let oracle_price = self.oracle_price() as f64;
+        let price_factor = if oracle_price > 0.0 {
+            oracle_price / math::PRICE_SCALE as f64
+        } else {
+            1.0
+        };
+        let eff_ltv = (ltv_percent / 100.0) * price_factor;
+        if eff_ltv >= 1.0 {
+            return 30.0;
+        }
+        f64::max(1.0, (1.0 / (1.0 - eff_ltv) * 0.99 * 10.0).floor() / 10.0)
     }
 
     /// Net APY in basis points for a leveraged position at the given leverage.
@@ -1060,15 +1086,17 @@ pub fn position_leverage_bps(collateral: u64, debt: u64) -> u32 {
 
 // ── formatting helpers ────────────────────────────────────────────────────────
 
-/// Converts a raw token amount to a human-readable decimal string.
-/// Trims trailing fractional zeros and caps output at 6 decimal places.
+/// Converts a raw token amount to a human-readable decimal string, capped at 6
+/// decimal places for compact display. Trims trailing fractional zeros. This is
+/// lossy past 6 places — use [`format_token_amount`] for values that must round
+/// back to the same raw amount (e.g. filling an input).
 ///
 /// Examples (decimals = 6):
 ///   1_000_000 → "1"
 ///   1_500_000 → "1.5"
 ///   1_234_567 → "1.234567"
 ///   1_234_560 → "1.23456"
-fn format_token_amount(raw: u64, decimals: u8) -> String {
+fn format_token_capped(raw: u64, decimals: u8) -> String {
     if decimals == 0 {
         return raw.to_string();
     }
@@ -1086,6 +1114,73 @@ fn format_token_amount(raw: u64, decimals: u8) -> String {
         return whole.to_string();
     }
     format!("{}.{}", whole, trimmed)
+}
+
+// ── exact token-amount conversions (frontend I/O) ─────────────────────────────
+//
+// Base-10 scaling between a UI decimal string and raw integer minor units. These
+// live here (not in the app) so the browser never re-expresses the on-chain
+// integer/decimal convention in its own JS float math — the same reason protocol
+// math replays `Core`. They are exact and round-trip: `parse_token_amount` floors
+// exactly like the chain, `format_token_amount` reproduces the full value.
+
+/// Parse a UI decimal string (e.g. `"12.345"`) into raw integer units for a mint
+/// with `decimals` places. Excess fractional digits are truncated (floored),
+/// never rounded up, so the result never exceeds what the user typed. Blank input
+/// is `0`. Returns `None` on malformed input (non-digits, a sign, exponent) or on
+/// `u64` overflow; callers treat that as "no amount". Plain decimal notation only.
+#[wasm_bindgen]
+pub fn parse_token_amount(value: &str, decimals: u8) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Some(0);
+    }
+    let (int_part, frac_part) = trimmed.split_once('.').unwrap_or((trimmed, ""));
+    let int_digits = if int_part.is_empty() { "0" } else { int_part };
+    if !int_digits.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let dec = decimals as usize;
+    let frac_trunc = &frac_part[..dec.min(frac_part.len())];
+    let mut combined = String::with_capacity(int_digits.len() + dec);
+    combined.push_str(int_digits);
+    combined.push_str(frac_trunc);
+    for _ in frac_trunc.len()..dec {
+        combined.push('0');
+    }
+    combined.parse::<u64>().ok()
+}
+
+/// Format raw integer units into an exact UI decimal string with up to `decimals`
+/// places, trimming only trailing fractional zeros. Inverse of
+/// [`parse_token_amount`], so it is safe for filling input fields (e.g. a "Max"
+/// button) where the string must map back to the same raw amount.
+#[wasm_bindgen]
+pub fn format_token_amount(raw: u64, decimals: u8) -> String {
+    let dec = decimals as usize;
+    if dec == 0 {
+        return raw.to_string();
+    }
+    let padded = format!("{:0>width$}", raw, width = dec + 1);
+    let split = padded.len() - dec;
+    let int_part = &padded[..split];
+    let frac_part = padded[split..].trim_end_matches('0');
+    if frac_part.is_empty() {
+        int_part.to_string()
+    } else {
+        format!("{int_part}.{frac_part}")
+    }
+}
+
+/// Convert raw integer units to an `f64` for display, charts, and float math.
+/// Routed through the exact decimal string so the result is the correctly-rounded
+/// double in one step (unlike `raw / 10^decimals`, which rounds twice and drifts
+/// past 2^53). Lossy — never use the result to reconstruct an on-chain amount.
+#[wasm_bindgen]
+pub fn token_amount_to_f64(raw: u64, decimals: u8) -> f64 {
+    format_token_amount(raw, decimals).parse::<f64>().unwrap_or(0.0)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -1310,5 +1405,61 @@ mod tests {
         let returned_pool = pwi.pool();
         assert_eq!(returned_pool.total_supply_assets(), 12_345);
         assert_eq!(returned_pool.total_borrow_assets(), 6_789);
+    }
+}
+
+#[cfg(test)]
+mod token_amount_tests {
+    use super::{format_token_amount, parse_token_amount, token_amount_to_f64};
+
+    #[test]
+    fn parse_basic_and_truncates() {
+        assert_eq!(parse_token_amount("1", 6), Some(1_000_000));
+        assert_eq!(parse_token_amount("1.5", 6), Some(1_500_000));
+        assert_eq!(parse_token_amount(".5", 6), Some(500_000));
+        assert_eq!(parse_token_amount("0.008344", 6), Some(8_344));
+        // Excess precision is floored, never rounded up.
+        assert_eq!(parse_token_amount("12.345678999", 6), Some(12_345_678));
+        assert_eq!(parse_token_amount("1.9999999", 6), Some(1_999_999));
+    }
+
+    #[test]
+    fn parse_edge_cases() {
+        assert_eq!(parse_token_amount("", 6), Some(0));
+        assert_eq!(parse_token_amount("   ", 6), Some(0));
+        assert_eq!(parse_token_amount("42", 0), Some(42));
+        // Malformed input is rejected, not silently coerced.
+        assert_eq!(parse_token_amount("-1", 6), None);
+        assert_eq!(parse_token_amount("1e3", 6), None);
+        assert_eq!(parse_token_amount("1.2.3", 6), None);
+        assert_eq!(parse_token_amount("abc", 6), None);
+        // Overflow past u64 returns None.
+        assert_eq!(parse_token_amount("18446744073710", 6), None);
+    }
+
+    #[test]
+    fn format_trims_zeros() {
+        assert_eq!(format_token_amount(1_000_000, 6), "1");
+        assert_eq!(format_token_amount(1_500_000, 6), "1.5");
+        assert_eq!(format_token_amount(8_344, 6), "0.008344");
+        assert_eq!(format_token_amount(0, 6), "0");
+        assert_eq!(format_token_amount(42, 0), "42");
+        // Full precision retained past 6 places (unlike the capped display fmt).
+        assert_eq!(format_token_amount(1_234_567_890, 9), "1.23456789");
+    }
+
+    #[test]
+    fn parse_format_roundtrip() {
+        for raw in [0u64, 1, 8_344, 1_000_000, 12_345_678, u64::MAX] {
+            let s = format_token_amount(raw, 9);
+            assert_eq!(parse_token_amount(&s, 9), Some(raw), "roundtrip {raw}");
+        }
+    }
+
+    #[test]
+    fn to_f64_exact_for_small_values() {
+        assert_eq!(token_amount_to_f64(1_500_000, 6), 1.5);
+        assert_eq!(token_amount_to_f64(8_344, 6), 0.008344);
+        assert_eq!(token_amount_to_f64(0, 6), 0.0);
     }
 }

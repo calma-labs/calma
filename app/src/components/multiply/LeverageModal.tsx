@@ -3,10 +3,14 @@ import { useFeedFreshness } from "@/hooks/program/useFeedFreshness";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { OracleTable } from "@/components/common/OracleTable";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { maxLeverageForLtv } from "@/hooks/useMultiply";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import { position_leverage_bps, type PoolWithIrm } from "@calma/wasm-lib";
+import {
+  parse_token_amount,
+  position_leverage_bps,
+  token_amount_to_f64,
+  type PoolWithIrm,
+} from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -42,7 +46,7 @@ interface LeverageModalProps {
  * flow is additive on-chain; the page's position panel shows the blended result.
  *
  * Leverage is capped at the pool's real single-loop max, `1/(1−LTV)`, because the
- * borrow gate rejects a final LTV above the pool's — see `maxLeverageForLtv`.
+ * borrow gate rejects a final LTV above the pool's — see `PoolWithIrm::max_leverage`.
  */
 export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   const [amount, setAmount] = useState("");
@@ -81,15 +85,15 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
     const collateralRaw = userPosition.collateral_deposited;
     const debtRaw = poolData.debt_amount(userPosition) ?? 0n;
     return {
-      collateralUi: Number(collateralRaw) / 10 ** (collateralDecimals ?? 6),
-      debtUi: Number(debtRaw) / 10 ** (lendDecimals ?? 6),
+      collateralUi: token_amount_to_f64(collateralRaw, collateralDecimals ?? 6),
+      debtUi: token_amount_to_f64(debtRaw, lendDecimals ?? 6),
       leverage: position_leverage_bps(collateralRaw, debtRaw) / 10_000,
     };
   }, [userPosition, poolData, collateralDecimals, lendDecimals]);
 
   // Real max leverage a single loop can reach for this pool: 1/(1−LTV).
   const maxLeverage = useMemo(
-    () => maxLeverageForLtv(poolData.ltv_percent, Number(poolData.oracle_price)),
+    () => poolData.max_leverage(),
     [poolData],
   );
   // Clamp the slider value in case the pool's max is below the default.
@@ -141,7 +145,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
       new PublicKey(poolData.lend_mint),
       walletPubKey,
     );
-    const amountRaw = new BN(Math.floor(amountNum * 10 ** decimals));
+    const amountRaw = new BN((parse_token_amount(amount, decimals) ?? 0n).toString());
 
     await openMutation.mutateAsync({
       pool: poolPubKey,

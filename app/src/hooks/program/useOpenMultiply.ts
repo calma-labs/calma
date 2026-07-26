@@ -43,7 +43,7 @@ export interface OpenMultiplyParams {
  * Adds `amount × L` collateral and `amount × (L−1)` debt. All steps are additive
  * on-chain, so calling this against an existing position stacks another tranche;
  * each tranche's own LTV is `(L−1)/L ≤ pool LTV`, so the whole position stays
- * within LTV as long as `L ≤ 1/(1−LTV)` (see `maxLeverageForLtv`).
+ * within LTV as long as `L ≤ 1/(1−LTV)` (see `PoolWithIrm::max_leverage`).
  *
  * The user pays zero lend tokens net — the flash fee is embedded in the borrow.
  * The user must hold `amountRaw` collateral tokens before calling this.

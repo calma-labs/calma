@@ -22,6 +22,7 @@ import { useWithdraw } from "@/hooks/program/useWithdraw";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { poolDataToDisplayPool } from "@/lib/poolDisplay";
 import { BN } from "@anchor-lang/core";
+import { parse_token_amount, token_amount_to_f64 } from "@calma/wasm-lib";
 import { useWalletConnection } from "@solana/react-hooks";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
@@ -76,17 +77,19 @@ export function PoolDetailPage() {
     return {
       asset: pool.collateralSymbol,
       icon: pool.collateralIcon,
-      supplied: Number(userPosition.collateral_deposited) / 10 ** decimals,
+      supplied: token_amount_to_f64(userPosition.collateral_deposited, decimals),
       rawSupplied: userPosition.collateral_deposited.toString(),
       apy: pool.supplyAPY,
       collateralEnabled: true,
     };
   }, [pool, userPosition, collateralDecimals]);
 
-  async function handleWithdraw(amount: number, rawAmountStr?: string) {
+  async function handleWithdraw(amount: string, rawAmountStr?: string) {
     if (!poolData || !walletPubKey || !poolPubKey) return;
-    // Use raw amount if provided (for max withdrawal), otherwise calculate from UI amount
-    const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (collateralDecimals ?? 9)));
+    // Use raw amount if provided (for max withdrawal), otherwise parse the UI amount
+    const rawAmount = rawAmountStr
+      ? new BN(rawAmountStr)
+      : new BN((parse_token_amount(amount, collateralDecimals ?? 9) ?? 0n).toString());
     const userTokenAccount = getAssociatedTokenAddressSync(
       new PublicKey(poolData.collateral_mint),
       walletPubKey,
