@@ -38,6 +38,13 @@ jobs:
         if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      - name: Prepare deploy directory with placeholder .so files
+        run: |
+          mkdir -p target/deploy
+          for prog in feed guard irm calma jbl; do
+            touch target/deploy/${prog}.so
+          done
+
       - name: Anchor build
         run: anchor build --ignore-keys
 
