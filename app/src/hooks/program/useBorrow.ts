@@ -2,14 +2,17 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
 import { useAnchorProgram } from '../useAnchorProgram'
+import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
 export interface BorrowParams {
     pool: PublicKey
     lendMint: PublicKey
+    feedState: PublicKey
     /** Raw token amount to borrow (no decimals). */
     amount: anchor.BN
 }
@@ -24,15 +27,25 @@ export function useBorrow() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async ({ pool, lendMint, amount }: BorrowParams) => {
+        mutationFn: async ({ pool, lendMint, feedState, amount }: BorrowParams) => {
             if (!connected || !wallet || !program) throw new Error('Wallet not connected')
 
             const authority = new PublicKey(wallet.account.publicKey)
 
+            await refreshFeedForDevnet(connection, pool)
+
             const tx = await program.methods
                 .borrow(amount)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .accounts({ pool, lendMint, authority } as any)
+                .accounts({
+                    pool,
+                    lendMint,
+                    authority,
+                    rateProgram: IRM_PROGRAM_ID,
+                    irmState: irmStatePda(pool),
+                    feedProgram: FEED_PROGRAM_ID,
+                    feedState,
+                } as any)
                 .transaction()
 
             tx.feePayer = authority

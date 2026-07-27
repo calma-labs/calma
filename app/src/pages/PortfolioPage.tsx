@@ -29,7 +29,7 @@ export function PortfolioPage() {
         </div>
         <p className="text-sm text-surface-foreground/50 max-w-md">
           Track your active positions, earnings and borrowing health across all
-          JBL strategies.
+          Calma strategies.
         </p>
       </div>
 

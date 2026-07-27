@@ -2,11 +2,12 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, program as readonlyProgram } from '../../lib/program'
+import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { MINTER_KEYPAIR, useWalletBalancesStore } from '../../store/wallet.store'
-import { flash_fee } from '@jbl/wasm-lib'
+import { flash_fee } from '@calma/wasm-lib'
+import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
 /** Flash fee via the shared wasm math (mirrors the on-chain fee exactly). */
 function computeFlashFee(amount: anchor.BN): anchor.BN {
@@ -17,6 +18,7 @@ export interface CloseMultiplyParams {
     pool: PublicKey
     lendMint: PublicKey
     collateralMint: PublicKey
+    feedState: PublicKey
     /** User's collateral ATA — receives withdrawn collateral; source for mock swap. */
     userCollateralAta: PublicKey
     /** User's lend ATA — receives flash-borrowed lend; source for flash repay. */
@@ -53,6 +55,7 @@ export function useCloseMultiply() {
             pool,
             lendMint,
             collateralMint,
+            feedState,
             userCollateralAta,
             userLendAta,
             debtRaw,
@@ -61,6 +64,9 @@ export function useCloseMultiply() {
             if (!connected || !wallet) throw new Error('Wallet not connected')
 
             const authority = new PublicKey(wallet.account.publicKey)
+
+            await refreshFeedForDevnet(connection, pool)
+
             const flashFee = computeFlashFee(debtRaw)
             const flashRepayAmt = debtRaw.add(flashFee)
 
@@ -75,12 +81,15 @@ export function useCloseMultiply() {
                             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .instruction(),
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    readonlyProgram.methods.repay(debtRaw).accounts({ pool, lendMint, authority } as any).instruction(),
+                    readonlyProgram.methods
+                        .repay(debtRaw)
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        .accounts({ pool, lendMint, authority, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool) } as any)
+                        .instruction(),
                     readonlyProgram.methods
                         .withdrawCollateral(collateralRaw)
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta } as any)
+                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool), feedProgram: FEED_PROGRAM_ID, feedState } as any)
                         .instruction(),
                     readonlyProgram.methods
                         .mockSwap(collateralRaw)

@@ -5,21 +5,20 @@ import type { MultiplyMeta, Pool } from "@/types/pool";
 import { PublicKey } from "@solana/web3.js";
 import { useMemo } from "react";
 
-export const MAX_MULTIPLY = 30;
-
 export interface MultiplyStrategy extends Pool {
   meta: MultiplyMeta;
 }
 
 /**
  * Derives a MultiplyMeta from an already-mapped Pool.
- * Max multiplier is hardcoded at 30×.
- * Max net APY is computed at full leverage: L×supplyAPY − (L−1)×borrowAPY.
+ * Max multiplier is the pool's real cap (`1/(1−LTV)`, via `PoolWithIrm::max_leverage`).
+ * Max net APY is computed at that leverage: L×supplyAPY − (L−1)×borrowAPY.
  */
 export function buildMultiplyMeta(pool: Pool): MultiplyMeta {
-  const maxNetAPY = pool.account.leveraged_net_apy(MAX_MULTIPLY);
+  const maxMultiplier = pool.account.max_leverage();
+  const maxNetAPY = pool.account.leveraged_net_apy(maxMultiplier);
   return {
-    maxMultiplier: MAX_MULTIPLY,
+    maxMultiplier,
     maxNetAPY,
     // Lend token is the debt in a multiply position (borrowed against collateral)
     debtSymbol: pool.lendSymbol,

@@ -4,11 +4,7 @@ import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
 
-function curveArg(a: number, b: number, enabled = true) {
-    return { a: new BN(a), b: new BN(b), kink: new BN(0), a2: new BN(0), enabled };
-}
-
-describe("negative intercept", () => {
+describe("piecewise linear model edge cases", () => {
     const provider = AnchorProvider.env();
     anchor.setProvider(provider);
     const irmProgram = anchor.workspace.Irm as Program<Irm>;
@@ -33,61 +29,87 @@ describe("negative intercept", () => {
         );
 
         await irmProgram.methods
-            .initialize()
+            .initialize([
+                { utilBps: 0, rateBps: 0 },
+                { utilBps: 10_000, rateBps: 500 },
+            ])
             .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
             .signers([payer, authority])
             .rpc();
     });
 
-    it("sets negative b on curve 1 and reads it back correctly", async () => {
-        // Curve 0: flat 200 bps
+    it("three-point curve stores and reports correct rates", async () => {
         await irmProgram.methods
-            .setFeeCurve(0, curveArg(0, 200))
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
-            .signers([authority])
-            .rpc();
-
-        // Curve 1: 14000*(u/10000) - 11000, negative below u≈7857
-        await irmProgram.methods
-            .setFeeCurve(1, curveArg(14000, -11000))
+            .setFeePoints([
+                { utilBps: 0, rateBps: 50 },
+                { utilBps: 9_500, rateBps: 450 },
+                { utilBps: 10_000, rateBps: 1_000 },
+            ])
             .accounts({ irmState: irmConfig, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
         const config = await irmProgram.account.irmState.fetch(irmConfig);
-        expect(config.model.curves[0].b.toNumber()).to.equal(200);
-        expect(config.model.curves[1].a.toNumber()).to.equal(14000);
-        expect(config.model.curves[1].b.toNumber()).to.equal(-11000);
+        expect(config.model.len).to.equal(3);
+        expect(config.model.points[0].rateBps).to.equal(50);
+        expect(config.model.points[1].rateBps).to.equal(450);
+        expect(config.model.points[2].rateBps).to.equal(1_000);
     });
 
-    it("sets negative linear intercept on curve 0 and reads it back", async () => {
-        // Curve 0: 1000*(u/10000) - 500, negative until u=5000
+    it("four-point curve stores all points correctly", async () => {
         await irmProgram.methods
-            .setFeeCurve(0, curveArg(1000, -500))
+            .setFeePoints([
+                { utilBps: 0, rateBps: 100 },
+                { utilBps: 2_500, rateBps: 300 },
+                { utilBps: 7_500, rateBps: 500 },
+                { utilBps: 10_000, rateBps: 1_200 },
+            ])
             .accounts({ irmState: irmConfig, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
         const config = await irmProgram.account.irmState.fetch(irmConfig);
-        expect(config.model.curves[0].a.toNumber()).to.equal(1000);
-        expect(config.model.curves[0].b.toNumber()).to.equal(-500);
+        expect(config.model.len).to.equal(4);
+        expect(config.model.points[0].utilBps).to.equal(0);
+        expect(config.model.points[0].rateBps).to.equal(100);
+        expect(config.model.points[3].utilBps).to.equal(10_000);
+        expect(config.model.points[3].rateBps).to.equal(1_200);
     });
 
-    it("sets negative intercepts across multiple curves", async () => {
+    it("extrapolates above the last point", async () => {
+        // Slope of last segment: (1000 - 500) / (10000 - 9500) = 1 bps/bp
+        // At util 10500 we expect 1000 + (10500-10000)*1 = 1500
         await irmProgram.methods
-            .setFeeCurve(0, curveArg(500, -200))
+            .setFeePoints([
+                { utilBps: 0, rateBps: 0 },
+                { utilBps: 9_500, rateBps: 500 },
+                { utilBps: 10_000, rateBps: 1_000 },
+            ])
             .accounts({ irmState: irmConfig, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
+        const pool = Keypair.generate().publicKey;
+        const [irmConfig2] = PublicKey.findProgramAddressSync(
+            [Buffer.from("irm_config"), pool.toBuffer()],
+            irmProgram.programId
+        );
         await irmProgram.methods
-            .setFeeCurve(1, curveArg(2000, -1000))
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
-            .signers([authority])
+            .initialize([
+                { utilBps: 0, rateBps: 0 },
+                { utilBps: 9_500, rateBps: 500 },
+                { utilBps: 10_000, rateBps: 1_000 },
+            ])
+            .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
+            .signers([payer, authority])
             .rpc();
 
-        const config = await irmProgram.account.irmState.fetch(irmConfig);
-        expect(config.model.curves[0].b.toNumber()).to.equal(-200);
-        expect(config.model.curves[1].b.toNumber()).to.equal(-1000);
+        const result = await irmProgram.methods
+            .borrowRate(new BN(10_500))
+            .accounts({ pool })
+            .simulate();
+
+        const log = result.raw.find((l) => l.includes("irm::borrow_rate"));
+        expect(log).to.match(/irm::borrow_rate utilization=10500 rate=1500/);
     });
 });

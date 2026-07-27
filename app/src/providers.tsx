@@ -18,7 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           closeOnClick
           pauseOnHover
           draggable={false}
-          toastClassName="jbl-toast"
+          toastClassName="calma-toast"
         />
       </SolanaProvider>
     </QueryClientProvider>

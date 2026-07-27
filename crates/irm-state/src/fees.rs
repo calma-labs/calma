@@ -1,51 +1,48 @@
 use anchor_lang::prelude::*;
 
-/// Default flat fee applied to all new pools: 1 % APY (100 bps).
-pub const DEFAULT_POOL_FEE_BPS: i64 = 100;
+/// Maximum number of rate points a curve may hold.
+pub const MAX_POINTS: usize = 4;
+/// Minimum number of rate points a curve must hold.
+pub const MIN_POINTS: usize = 2;
 
-/// A kinked rate curve:
-///   - below kink: f(u) = a·(u/10_000) + b
-///   - above kink: f(kink) + a2·((u − kink)/10_000)
+/// One `(utilization, rate)` corner of the piecewise-linear curve.
 ///
-/// When `kink == 0` the curve is purely linear (only `a` and `b` matter).
-/// The curve is only active when `enabled != 0`.
+/// Field order is chosen so `#[repr(C)]` inserts no implicit padding —
+/// `zero_copy` / bytemuck::Pod requires an explicit layout.
 #[zero_copy]
 #[derive(Debug, Default)]
-pub struct LinearSegment {
-    pub a: i64,
-    pub b: i64,
-    /// Post-kink slope in basis points. Ignored when `kink == 0`.
-    pub a2: i64,
-    /// Kink point in utilization basis points (0..=10_000). 0 = no kink.
-    pub kink: u64,
-    /// Non-zero → curve is active; 0 → disabled.
-    pub enabled: u8,
-    pub _pad: [u8; 7],
+pub struct RatePoint {
+    pub rate_bps: u32,
+    pub util_bps: u16,
+    pub _pad: [u8; 2],
 }
 
-impl LinearSegment {
-    fn eval(&self, utilization_bps: u64) -> i128 {
-        let u = utilization_bps as i128;
-        let kink = self.kink as i128;
-        if self.kink == 0 || u <= kink {
-            let slope = (self.a as i128).saturating_mul(u) / 10_000i128;
-            (self.b as i128).saturating_add(slope)
-        } else {
-            let at_kink = (self.a as i128).saturating_mul(kink) / 10_000i128;
-            let base_at_kink = (self.b as i128).saturating_add(at_kink);
-            let excess = u.saturating_sub(kink);
-            let extra_slope = (self.a2 as i128).saturating_mul(excess) / 10_000i128;
-            base_at_kink.saturating_add(extra_slope)
+impl RatePoint {
+    pub const fn new(util_bps: u16, rate_bps: u32) -> Self {
+        Self {
+            rate_bps,
+            util_bps,
+            _pad: [0; 2],
         }
     }
 }
 
-/// Four-curve linear interest rate model.
-/// Effective rate = max(enabled curves), clamped to ≥ 0.
+/// Piecewise-linear IRM defined by 2–4 rate points.
+///
+/// Invariants (enforced at write time in the `irm` program and in
+/// [`crate::state`] constructors; **trusted** here — the reader performs no
+/// checks so hot on-chain paths stay CU-cheap):
+///   * `MIN_POINTS <= len as usize <= MAX_POINTS`
+///   * `points[0].util_bps == 0`
+///   * `points[0..len].util_bps` is strictly increasing
+///
+/// Rate above `points[len-1].util_bps` extrapolates the last segment's slope.
 #[zero_copy]
 #[derive(Debug)]
 pub struct PiecewiseLinearModel {
-    pub curves: [LinearSegment; 4],
+    pub points: [RatePoint; MAX_POINTS],
+    pub len: u8,
+    pub _pad: [u8; 7],
 }
 
 impl math::FeeModel for PiecewiseLinearModel {
@@ -56,14 +53,33 @@ impl math::FeeModel for PiecewiseLinearModel {
 
 impl PiecewiseLinearModel {
     pub fn get_fee_bps(&self, utilization_bps: u64) -> u32 {
-        let max_y = self
-            .curves
-            .iter()
-            .filter(|c| c.enabled != 0)
-            .map(|curve| curve.eval(utilization_bps))
-            .max()
-            .unwrap_or(0);
-        u32::try_from(max_y.max(0)).unwrap_or(u32::MAX)
+        let u = utilization_bps as i128;
+        let len = self.len as usize;
+        for i in 1..len {
+            let u_hi = self.points[i].util_bps as i128;
+            if u < u_hi {
+                let u_lo = self.points[i - 1].util_bps as i128;
+                let r_lo = self.points[i - 1].rate_bps as i128;
+                let r_hi = self.points[i].rate_bps as i128;
+                return clamp_u32(r_lo + (r_hi - r_lo) * (u - u_lo) / (u_hi - u_lo));
+            }
+        }
+        let u_hi = self.points[len - 1].util_bps as i128;
+        let u_lo = self.points[len - 2].util_bps as i128;
+        let r_hi = self.points[len - 1].rate_bps as i128;
+        let r_lo = self.points[len - 2].rate_bps as i128;
+        clamp_u32(r_hi + (r_hi - r_lo) * (u - u_hi) / (u_hi - u_lo))
+    }
+}
+
+#[inline]
+fn clamp_u32(v: i128) -> u32 {
+    if v <= 0 {
+        0
+    } else if v >= u32::MAX as i128 {
+        u32::MAX
+    } else {
+        v as u32
     }
 }
 
@@ -71,193 +87,68 @@ impl PiecewiseLinearModel {
 mod tests {
     use super::*;
 
-    fn curve(a: i64, b: i64) -> LinearSegment {
-        LinearSegment {
-            a,
-            b,
-            a2: 0,
-            kink: 0,
-            enabled: 1,
+    fn model(pts: &[(u16, u32)]) -> PiecewiseLinearModel {
+        assert!(pts.len() >= MIN_POINTS && pts.len() <= MAX_POINTS);
+        let mut points = [RatePoint::default(); MAX_POINTS];
+        for (i, (u, r)) in pts.iter().enumerate() {
+            points[i] = RatePoint::new(*u, *r);
+        }
+        PiecewiseLinearModel {
+            points,
+            len: pts.len() as u8,
             _pad: [0; 7],
         }
     }
 
-    fn kinked(a: i64, b: i64, kink: u64, a2: i64) -> LinearSegment {
-        LinearSegment {
-            a,
-            b,
-            a2,
-            kink,
-            enabled: 1,
-            _pad: [0; 7],
-        }
-    }
-
-    fn disabled(a: i64, b: i64) -> LinearSegment {
-        LinearSegment {
-            a,
-            b,
-            a2: 0,
-            kink: 0,
-            enabled: 0,
-            _pad: [0; 7],
-        }
-    }
-
-    fn make_config(curves: [LinearSegment; 4]) -> PiecewiseLinearModel {
-        PiecewiseLinearModel { curves }
+    #[test]
+    fn zero_utilization_returns_first_rate() {
+        assert_eq!(model(&[(0, 250), (10_000, 750)]).get_fee_bps(0), 250);
     }
 
     #[test]
-    fn test_flat_fee() {
-        let config = make_config([
-            curve(0, 500),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(0), 500);
-        assert_eq!(config.get_fee_bps(5000), 500);
-        assert_eq!(config.get_fee_bps(10000), 500);
+    fn two_point_linear_interpolation() {
+        let m = model(&[(0, 0), (10_000, 1_000)]);
+        assert_eq!(m.get_fee_bps(0), 0);
+        assert_eq!(m.get_fee_bps(2_500), 250);
+        assert_eq!(m.get_fee_bps(5_000), 500);
+        assert_eq!(m.get_fee_bps(10_000), 1_000);
     }
 
     #[test]
-    fn test_linear_fee() {
-        let config = make_config([
-            curve(1000, 200),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(0), 200);
-        assert_eq!(config.get_fee_bps(5000), 700);
-        assert_eq!(config.get_fee_bps(10000), 1200);
+    fn three_point_default_curve() {
+        let m = model(&[(0, 0), (9_500, 428), (10_000, 828)]);
+        assert_eq!(m.get_fee_bps(0), 0);
+        // half-way to kink: 428 * 4750 / 9500 = 214
+        assert_eq!(m.get_fee_bps(4_750), 214);
+        assert_eq!(m.get_fee_bps(9_500), 428);
+        // half-way between kink and 100%: (428 + 828) / 2 = 628
+        assert_eq!(m.get_fee_bps(9_750), 628);
+        assert_eq!(m.get_fee_bps(10_000), 828);
     }
 
     #[test]
-    fn test_negative_values_clamped() {
-        let config = make_config([
-            curve(1000, -500),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(1000), 0);
-        assert_eq!(config.get_fee_bps(5000), 0);
-        assert_eq!(config.get_fee_bps(6000), 100);
+    fn four_point_curve() {
+        let m = model(&[(0, 100), (2_500, 300), (7_500, 500), (10_000, 1_200)]);
+        assert_eq!(m.get_fee_bps(0), 100);
+        assert_eq!(m.get_fee_bps(2_500), 300);
+        assert_eq!(m.get_fee_bps(7_500), 500);
+        assert_eq!(m.get_fee_bps(10_000), 1_200);
+        // midpoint of last segment: (500 + 1_200) / 2 = 850
+        assert_eq!(m.get_fee_bps(8_750), 850);
     }
 
     #[test]
-    fn test_two_curves_max() {
-        let config = make_config([curve(0, 100), curve(500, 0), disabled(0, 0), disabled(0, 0)]);
-        assert_eq!(config.get_fee_bps(5000), 250);
-        assert_eq!(config.get_fee_bps(0), 100);
+    fn extrapolates_above_last_point() {
+        let m = model(&[(0, 0), (9_500, 428), (10_000, 828)]);
+        // slope of last segment: (828 - 428) / 500 = 0.8 bps per bp of util
+        assert_eq!(m.get_fee_bps(10_500), 1_228);
+        assert_eq!(m.get_fee_bps(11_000), 1_628);
     }
 
     #[test]
-    fn test_disabled_curve_ignored() {
-        let config = make_config([
-            curve(0, 100),
-            disabled(0, 9999),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(5000), 100);
-        assert_eq!(config.get_fee_bps(10000), 100);
+    fn saturates_at_u32_max() {
+        let m = model(&[(0, u32::MAX - 10), (10_000, u32::MAX)]);
+        assert_eq!(m.get_fee_bps(100_000), u32::MAX);
     }
 
-    #[test]
-    fn test_all_disabled_returns_zero() {
-        let config = make_config([
-            disabled(0, 100),
-            disabled(0, 200),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(0), 0);
-        assert_eq!(config.get_fee_bps(10000), 0);
-    }
-
-    #[test]
-    fn test_default_pool_fee() {
-        let config = make_config([
-            curve(0, DEFAULT_POOL_FEE_BPS),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(0), 100);
-        assert_eq!(config.get_fee_bps(10000), 100);
-    }
-
-    #[test]
-    fn test_kink_below_kink_uses_a() {
-        let config = make_config([
-            kinked(200, 0, 8000, 2000),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(4000), 80);
-    }
-
-    #[test]
-    fn test_kink_at_kink_point() {
-        let config = make_config([
-            kinked(200, 0, 8000, 2000),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(8000), 160);
-    }
-
-    #[test]
-    fn test_kink_above_kink_uses_a2() {
-        let config = make_config([
-            kinked(200, 0, 8000, 2000),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(9000), 360);
-    }
-
-    #[test]
-    fn test_kink_zero_treated_as_linear() {
-        let kinked_config = make_config([
-            kinked(500, 100, 0, 9999),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        let linear_config = make_config([
-            curve(500, 100),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(kinked_config.get_fee_bps(0), linear_config.get_fee_bps(0));
-        assert_eq!(
-            kinked_config.get_fee_bps(5000),
-            linear_config.get_fee_bps(5000)
-        );
-        assert_eq!(
-            kinked_config.get_fee_bps(10000),
-            linear_config.get_fee_bps(10000)
-        );
-    }
-
-    #[test]
-    fn test_kink_with_base_rate() {
-        let config = make_config([
-            kinked(100, 200, 5000, 1000),
-            disabled(0, 0),
-            disabled(0, 0),
-            disabled(0, 0),
-        ]);
-        assert_eq!(config.get_fee_bps(3000), 230);
-        assert_eq!(config.get_fee_bps(5000), 250);
-        assert_eq!(config.get_fee_bps(7500), 500);
-    }
 }

@@ -3,6 +3,7 @@ import { getMint } from "@solana/spl-token";
 import { connection } from "./program";
 import { MINTER_PUBKEY } from "../store/wallet.store";
 import type { PoolAccountWithKey } from "../hooks/program/useLendingAccounts";
+import { getTokenMeta } from "./tokenRegistry";
 
 /**
  * Hardcoded blacklist of token mint addresses.
@@ -36,15 +37,21 @@ export async function isTokenValid(mint: PublicKey): Promise<boolean> {
 }
 
 /**
- * Checks if a pool is valid (not blacklisted and its tokens are valid).
- * For a pool to be considered "valid" for the main UI, both its
- * collateral and lend mints must be valid faucets.
- * 
- * Also filters out pools with LTV <= 75%.
+ * Both collateral and lend mints must appear in the hardcoded token registry.
+ */
+function poolTokensAreRegistered(pool: PoolAccountWithKey): boolean {
+  const collateral = new PublicKey(pool.account.collateral_mint).toBase58();
+  const lend = new PublicKey(pool.account.lend_mint).toBase58();
+  return getTokenMeta(collateral) !== null && getTokenMeta(lend) !== null;
+}
+
+/**
+ * Checks if a pool is valid (not blacklisted, tokens are registered, and
+ * both mints are valid faucets).
  */
 export async function isPoolValid(pool: PoolAccountWithKey): Promise<boolean> {
   if (POOL_BLACKLIST.has(pool.publicKey.toBase58())) return false;
-  if (pool.account.ltv_percent <= 75) return false;
+  if (!poolTokensAreRegistered(pool)) return false;
 
   const [collateralValid, lendValid] = await Promise.all([
     isTokenValid(new PublicKey(pool.account.collateral_mint)),
@@ -57,12 +64,10 @@ export async function isPoolValid(pool: PoolAccountWithKey): Promise<boolean> {
 /**
  * Checks if a pool is valid specifically for multiply strategies.
  * For multiply, we allow the pool if AT LEAST ONE of its tokens is a valid faucet.
- * 
- * Also filters out pools with LTV <= 75%.
  */
 export async function isMultiplyPoolValid(pool: PoolAccountWithKey): Promise<boolean> {
   if (POOL_BLACKLIST.has(pool.publicKey.toBase58())) return false;
-  if (pool.account.ltv_percent <= 75) return false;
+  if (!poolTokensAreRegistered(pool)) return false;
 
   const [collateralValid, lendValid] = await Promise.all([
     isTokenValid(new PublicKey(pool.account.collateral_mint)),

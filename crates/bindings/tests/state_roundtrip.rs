@@ -110,6 +110,15 @@ fn build_and_load() -> (Store<()>, Instance) {
         )
         .unwrap();
 
+    // The `#[wasm_bindgen]` math exports pull in further runtime imports whose
+    // mangled names carry build-dependent hash suffixes (e.g. the `Date.now()`
+    // binding `__wbg_now_*` used by `BrowserClock`). The parse functions under
+    // test never call them, so trap on any that remain unresolved rather than
+    // enumerating each brittle name.
+    linker
+        .define_unknown_imports_as_traps(&module)
+        .expect("failed to stub remaining WASM imports");
+
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("WASM instantiation failed");

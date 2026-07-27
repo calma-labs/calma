@@ -5,6 +5,11 @@ import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
 import { setupTest, participateInPool, TestSetup } from "./utils";
 
+const FLAT_100_BPS = [
+    { utilBps: 0, rateBps: 100 },
+    { utilBps: 10_000, rateBps: 100 },
+];
+
 describe("irm initialize", () => {
     const provider = AnchorProvider.env();
     anchor.setProvider(provider);
@@ -30,9 +35,9 @@ describe("irm initialize", () => {
         );
     });
 
-    it("initializes irm config with default flat 100 bps curve", async () => {
+    it("initializes irm config with flat 100 bps curve", async () => {
         await program.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({
                 pool,
                 authority: authority.publicKey,
@@ -43,13 +48,14 @@ describe("irm initialize", () => {
 
         const config = await program.account.irmState.fetch(irmConfig);
         expect(config.pool.toString()).to.equal(pool.toString());
-        const c0 = config.model.curves[0];
-        expect(c0.b.toNumber()).to.equal(100);
-        expect(c0.enabled).to.not.equal(0);
+        expect(config.model.points[0].utilBps).to.equal(0);
+        expect(config.model.points[0].rateBps).to.equal(100);
+        expect(config.model.points[1].utilBps).to.equal(10_000);
+        expect(config.model.points[1].rateBps).to.equal(100);
+        expect(config.model.len).to.equal(2);
     });
 
-    it("calculates borrow rate from default flat curve", async () => {
-        // default: flat 100 bps regardless of utilization
+    it("calculates borrow rate from flat 100 bps curve", async () => {
         const result = await program.methods
             .borrowRate(new BN(5000))
             .accounts({ pool })
@@ -60,7 +66,7 @@ describe("irm initialize", () => {
         expect(log).to.match(/irm::borrow_rate utilization=5000 rate=100/);
     });
 
-    it("borrow rate via CPI from JBL borrow", async () => {
+    it("borrow rate via CPI from Calma borrow", async () => {
         const irmProgram = program;
         const poolKeypair = Keypair.generate();
 
@@ -70,45 +76,45 @@ describe("irm initialize", () => {
         );
 
         await irmProgram.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
             .signers([payer, authority])
             .rpc();
 
-        const jblSetup: TestSetup = await setupTest(75, {
+        const calmaSetup: TestSetup = await setupTest(75, {
             poolKeypair,
             rateProgram: irmProgram.programId,
             rateState: cpiIrmConfig,
         });
 
-        await participateInPool(jblSetup, 500_000_000);
+        await participateInPool(calmaSetup, 500_000_000);
 
-        await jblSetup.program.methods
+        await calmaSetup.program.methods
             .depositCollateral(new BN(100_000_000))
             .accounts({
-                pool: jblSetup.pool,
-                collateralMint: jblSetup.collateralMint,
-                authority: jblSetup.authority.publicKey,
-                userTokenAccount: jblSetup.userCollateralTokenAccount,
+                pool: calmaSetup.pool,
+                collateralMint: calmaSetup.collateralMint,
+                authority: calmaSetup.authority.publicKey,
+                userTokenAccount: calmaSetup.userCollateralTokenAccount,
             })
-            .signers([jblSetup.authority])
+            .signers([calmaSetup.authority])
             .rpc();
 
-        const sig = await jblSetup.program.methods
+        const sig = await calmaSetup.program.methods
             .borrow(new BN(50_000_000))
             .accounts({
-                pool: jblSetup.pool,
-                lendMint: jblSetup.lendMint,
-                authority: jblSetup.authority.publicKey,
+                pool: calmaSetup.pool,
+                lendMint: calmaSetup.lendMint,
+                authority: calmaSetup.authority.publicKey,
                 rateProgram: irmProgram.programId,
                 irmState: cpiIrmConfig,
-                feedProgram: jblSetup.feedProgram.programId,
-                feedState: jblSetup.feedPda,
+                feedProgram: calmaSetup.feedProgram.programId,
+                feedState: calmaSetup.feedPda,
             })
-            .signers([jblSetup.authority])
+            .signers([calmaSetup.authority])
             .rpc();
 
-        const tx = await jblSetup.connection.getTransaction(sig, {
+        const tx = await calmaSetup.connection.getTransaction(sig, {
             commitment: "confirmed",
             maxSupportedTransactionVersion: 0,
         });
@@ -126,7 +132,7 @@ describe("irm initialize", () => {
         );
 
         await program.methods
-            .initialize()
+            .initialize(FLAT_100_BPS)
             .accounts({
                 pool: pool2,
                 authority: authority.publicKey,

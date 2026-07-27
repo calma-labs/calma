@@ -2,14 +2,17 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
 import { useAnchorProgram } from '../useAnchorProgram'
+import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
 export interface WithdrawParams {
     pool: PublicKey
     collateralMint: PublicKey
+    feedState: PublicKey
     /** The user's destination token account for the withdrawn collateral. */
     userTokenAccount: PublicKey
     /** Raw token amount (no decimals). */
@@ -26,10 +29,12 @@ export function useWithdraw() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async ({ pool, collateralMint, userTokenAccount, amount }: WithdrawParams) => {
+        mutationFn: async ({ pool, collateralMint, feedState, userTokenAccount, amount }: WithdrawParams) => {
             if (!connected || !wallet || !program) throw new Error('Wallet not connected')
 
             const authority = new PublicKey(wallet.account.publicKey)
+
+            await refreshFeedForDevnet(connection, pool)
 
             const tx = await program.methods
                 .withdrawCollateral(amount)
@@ -38,6 +43,10 @@ export function useWithdraw() {
                     collateralMint,
                     authority,
                     userTokenAccount,
+                    rateProgram: IRM_PROGRAM_ID,
+                    irmState: irmStatePda(pool),
+                    feedProgram: FEED_PROGRAM_ID,
+                    feedState,
                 } as any)
                 .transaction()
 

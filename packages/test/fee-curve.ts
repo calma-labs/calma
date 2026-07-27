@@ -1,10 +1,10 @@
 import * as anchor from "@anchor-lang/core";
-import { Program, AnchorProvider, BN } from "@anchor-lang/core";
+import { Program, AnchorProvider } from "@anchor-lang/core";
 import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 import { Irm } from "../../target/types/irm";
 
-describe("irm set_fee_curve", () => {
+describe("irm set_fee_points", () => {
     const provider = AnchorProvider.env();
     anchor.setProvider(provider);
     const program = anchor.workspace.Irm as Program<Irm>;
@@ -30,7 +30,11 @@ describe("irm set_fee_curve", () => {
         );
 
         await program.methods
-            .initialize()
+            .initialize([
+                { utilBps: 0, rateBps: 50 },
+                { utilBps: 9_500, rateBps: 450 },
+                { utilBps: 10_000, rateBps: 1_000 },
+            ])
             .accounts({
                 pool,
                 authority: authority.publicKey,
@@ -40,68 +44,82 @@ describe("irm set_fee_curve", () => {
             .rpc();
     });
 
-    it("authority can update a curve segment", async () => {
+    it("authority can replace the point list", async () => {
         await program.methods
-            .setFeeCurve(0, { a: new BN(500), b: new BN(200), a2: new BN(0), kink: new BN(0), enabled: true })
-            .accounts({
-                irmState: irmConfig,
-                authority: authority.publicKey,
-            })
+            .setFeePoints([
+                { utilBps: 0, rateBps: 100 },
+                { utilBps: 5_000, rateBps: 400 },
+                { utilBps: 10_000, rateBps: 1_500 },
+            ])
+            .accounts({ irmState: irmConfig, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
         const config = await program.account.irmState.fetch(irmConfig);
-        const c0 = config.model.curves[0];
-        expect(c0.a.toNumber()).to.equal(500);
-        expect(c0.b.toNumber()).to.equal(200);
-        expect(c0.enabled).to.not.equal(0);
+        expect(config.model.len).to.equal(3);
+        expect(config.model.points[0].utilBps).to.equal(0);
+        expect(config.model.points[0].rateBps).to.equal(100);
+        expect(config.model.points[2].utilBps).to.equal(10_000);
+        expect(config.model.points[2].rateBps).to.equal(1_500);
     });
 
-    it("authority can write a kinked curve to slot 1", async () => {
+    it("accepts the minimum 2-point curve", async () => {
         await program.methods
-            .setFeeCurve(1, { a: new BN(200), b: new BN(0), a2: new BN(2000), kink: new BN(8000), enabled: true })
-            .accounts({
-                irmState: irmConfig,
-                authority: authority.publicKey,
-            })
+            .setFeePoints([
+                { utilBps: 0, rateBps: 250 },
+                { utilBps: 10_000, rateBps: 250 },
+            ])
+            .accounts({ irmState: irmConfig, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
         const config = await program.account.irmState.fetch(irmConfig);
-        const c1 = config.model.curves[1];
-        expect(c1.a.toNumber()).to.equal(200);
-        expect(c1.a2.toNumber()).to.equal(2000);
-        expect(c1.kink.toNumber()).to.equal(8000);
-        expect(c1.enabled).to.not.equal(0);
+        expect(config.model.len).to.equal(2);
     });
 
-    it("authority can disable a curve by setting enabled=false", async () => {
-        await program.methods
-            .setFeeCurve(1, { a: new BN(200), b: new BN(0), a2: new BN(2000), kink: new BN(8000), enabled: false })
-            .accounts({
-                irmState: irmConfig,
-                authority: authority.publicKey,
-            })
-            .signers([authority])
-            .rpc();
-
-        const config = await program.account.irmState.fetch(irmConfig);
-        expect(config.model.curves[1].enabled).to.equal(0);
-    });
-
-    it("rejects an out-of-range curve index", async () => {
+    it("rejects a 1-point curve", async () => {
         try {
             await program.methods
-                .setFeeCurve(4, { a: new BN(0), b: new BN(100), a2: new BN(0), kink: new BN(0), enabled: true })
-                .accounts({
-                    irmState: irmConfig,
-                    authority: authority.publicKey,
-                })
+                .setFeePoints([{ utilBps: 0, rateBps: 500 }])
+                .accounts({ irmState: irmConfig, authority: authority.publicKey })
                 .signers([authority])
                 .rpc();
             expect.fail("expected transaction to fail");
         } catch (err: any) {
-            expect(err.toString()).to.include("InvalidCurveIndex");
+            expect(err.toString()).to.include("InvalidPointList");
+        }
+    });
+
+    it("rejects a curve whose first utilization is non-zero", async () => {
+        try {
+            await program.methods
+                .setFeePoints([
+                    { utilBps: 100, rateBps: 0 },
+                    { utilBps: 10_000, rateBps: 500 },
+                ])
+                .accounts({ irmState: irmConfig, authority: authority.publicKey })
+                .signers([authority])
+                .rpc();
+            expect.fail("expected transaction to fail");
+        } catch (err: any) {
+            expect(err.toString()).to.include("InvalidPointList");
+        }
+    });
+
+    it("rejects non-monotonic utilizations", async () => {
+        try {
+            await program.methods
+                .setFeePoints([
+                    { utilBps: 0, rateBps: 0 },
+                    { utilBps: 5_000, rateBps: 400 },
+                    { utilBps: 5_000, rateBps: 800 },
+                ])
+                .accounts({ irmState: irmConfig, authority: authority.publicKey })
+                .signers([authority])
+                .rpc();
+            expect.fail("expected transaction to fail");
+        } catch (err: any) {
+            expect(err.toString()).to.include("InvalidPointList");
         }
     });
 
@@ -112,11 +130,11 @@ describe("irm set_fee_curve", () => {
 
         try {
             await program.methods
-                .setFeeCurve(0, { a: new BN(0), b: new BN(9999), a2: new BN(0), kink: new BN(0), enabled: true })
-                .accounts({
-                    irmState: irmConfig,
-                    authority: imposter.publicKey,
-                })
+                .setFeePoints([
+                    { utilBps: 0, rateBps: 0 },
+                    { utilBps: 10_000, rateBps: 999 },
+                ])
+                .accounts({ irmState: irmConfig, authority: imposter.publicKey })
                 .signers([imposter])
                 .rpc();
             expect.fail("expected transaction to fail");

@@ -1,8 +1,10 @@
 import { useCloseMultiply } from "@/hooks/program/useCloseMultiply";
+import { useFeedFreshness } from "@/hooks/program/useFeedFreshness";
+import { OracleTable } from "@/components/common/OracleTable";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
-import { flash_fee } from "@jbl/wasm-lib";
+import type { PoolWithIrm, UserPositionAccount } from "@calma/wasm-lib";
+import { flash_fee, token_amount_to_f64 } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -48,6 +50,10 @@ export function ClosePositionModal({
   const closeMutation = useCloseMultiply();
   const isPending = closeMutation.isPending;
 
+  const poolPubKey = useMemo(() => new PublicKey(pool.address), [pool.address]);
+  const { data: freshness } = useFeedFreshness(poolPubKey);
+  const feedStale = freshness?.willFail ?? false;
+
   // Raw debt derived from debt shares via WASM (interest accrued to now)
   const debtRaw = useMemo(
     () => poolData.debt_amount(userPosition) ?? 0n,
@@ -57,10 +63,9 @@ export function ClosePositionModal({
   const collateralRaw = userPosition.collateral_deposited;
 
   // Numeric amounts needed for flash-fee and estimated-return math
-  const debtUi = Number(debtRaw) / 10 ** (lendDecimals ?? 6);
-  const collateralUi = Number(collateralRaw) / 10 ** (collateralDecimals ?? 6);
-  const flashFee =
-    Number(flash_fee(debtRaw) ?? 0n) / 10 ** (lendDecimals ?? 6);
+  const debtUi = token_amount_to_f64(debtRaw, lendDecimals ?? 6);
+  const collateralUi = token_amount_to_f64(collateralRaw, collateralDecimals ?? 6);
+  const flashFee = token_amount_to_f64(flash_fee(debtRaw) ?? 0n, lendDecimals ?? 6);
   const estimatedReturn = Math.max(0, collateralUi - debtUi - flashFee);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
@@ -68,10 +73,9 @@ export function ClosePositionModal({
   }
 
   async function handleSubmit() {
-    if (!confirmed || !wallet || isPending) return;
+    if (!confirmed || !wallet || isPending || feedStale) return;
 
     const walletPubKey = new PublicKey(wallet.account.publicKey);
-    const poolPubKey = new PublicKey(pool.address);
     const userCollateralAta = getAssociatedTokenAddressSync(
       new PublicKey(poolData.collateral_mint),
       walletPubKey,
@@ -85,6 +89,7 @@ export function ClosePositionModal({
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),
       collateralMint: new PublicKey(poolData.collateral_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       userCollateralAta,
       userLendAta,
       debtRaw: new BN(debtRaw.toString()),
@@ -221,12 +226,14 @@ export function ClosePositionModal({
             </span>
           </label>
 
+          {freshness && <OracleTable freshness={freshness} />}
+
           <button
-            disabled={!confirmed || isPending}
+            disabled={!confirmed || isPending || feedStale}
             onClick={handleSubmit}
             className={cn(
               "w-full rounded-xl py-3 text-sm font-semibold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2",
-              confirmed && !isPending
+              confirmed && !isPending && !feedStale
                 ? "bg-destructive text-white hover:bg-destructive/80 cursor-pointer"
                 : "bg-surface-accent/12 text-surface-foreground/20 cursor-not-allowed",
             )}
@@ -236,6 +243,8 @@ export function ClosePositionModal({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Closing…
               </>
+            ) : feedStale ? (
+              "Oracle stale"
             ) : (
               "Close Position"
             )}

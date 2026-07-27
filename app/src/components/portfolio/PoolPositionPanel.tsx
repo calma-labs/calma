@@ -1,4 +1,4 @@
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import { parse_token_amount, token_amount_to_f64, type PoolWithIrm } from "@calma/wasm-lib";
 import { useRepay } from "@/hooks/program/useRepay";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
@@ -9,7 +9,7 @@ import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
 import { useMemo, useState } from "react";
-import { HealthBadge } from "../common/Badge";
+import { HFBadge, HealthBadge } from "../common/Badge";
 import { PositionActionButton } from "../common/PositionActionButton";
 import { LeaveModal } from "../pool/LeaveModal";
 // import { PutLpModal } from "./PutLpModal";
@@ -31,11 +31,15 @@ function SectionLabel({ label }: { label: string }) {
 
 function LendRow({
   pos,
+  earned,
+  health,
   // onClaimLp,
   // onPutLp,
   onRedeemLp,
 }: {
   pos: WithdrawPosition;
+  earned: number;
+  health: number;
   // onClaimLp?: () => void;
   // onPutLp?: () => void;
   onRedeemLp?: () => void;
@@ -67,9 +71,7 @@ function LendRow({
       <div className="flex flex-col min-w-[70px]">
         <span className="text-xs text-surface-foreground/35 mb-0.5">Earned</span>
         <span className="text-sm tabular-nums text-success">
-          {/* +${pos.earned < 1 ? pos.earned.toFixed(3) : pos.earned.toFixed(2)} */}
-          {/* Placeholder until we fetch real earned amounts */}
-          +$11.23
+          +${earned < 1 ? earned.toFixed(3) : earned.toFixed(2)}
         </span>
       </div>
 
@@ -77,9 +79,7 @@ function LendRow({
         <span className="text-xs ml-1 text-surface-foreground/35 mb-0.5">
           Health
         </span>
-        {/* <HealthBadge value={pos.health} /> */}
-        {/* Placeholder until we compute real health values */}
-        <HealthBadge value={90.32} />
+        <HealthBadge value={health} />
       </div>
 
       {/* Collateral */}
@@ -114,9 +114,15 @@ function LendRow({
 
 function BorrowRow({
   pos,
+  ltv,
+  liqPrice,
+  healthFactor,
   onRepay,
 }: {
   pos: RepayPosition;
+  ltv: number | null;
+  liqPrice: number | null;
+  healthFactor: number | null;
   onRepay: () => void;
 }) {
   return (
@@ -170,26 +176,20 @@ function BorrowRow({
       <div className="flex flex-col min-w-[50px]">
         <span className="text-xs text-surface-foreground/35 mb-0.5">LTV</span>
         <span className="text-sm tabular-nums text-surface-foreground/70">
-          {/* {pos.ltv.toFixed(1)}% */}
-          {/* Placeholder until we compute real LTV values */}
-          45.2%
+          {ltv !== null ? `${ltv.toFixed(1)}%` : "N/A"}
         </span>
       </div>
 
       <div className="flex flex-col min-w-[70px]">
         <span className="text-xs text-surface-foreground/35 mb-0.5">Liq. Price</span>
         <span className="text-sm tabular-nums text-surface-foreground/70">
-          {/* ${pos.liqPrice.toFixed(1)} */}
-          {/* Placeholder until we compute real liquidation price */}
-          $123.45
+          {liqPrice !== null ? `$${liqPrice.toFixed(4)}` : "N/A"}
         </span>
       </div>
 
       <div className="flex flex-col min-w-[50px]">
         <span className="text-xs ml-1 text-surface-foreground/35 mb-0.5">HF</span>
-        {/* <HFBadge value={pos.healthFactor} /> */}
-        {/* Placeholder until we compute real health factor */}
-        <HealthBadge value={90.32} />
+        <HFBadge value={healthFactor} />
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
@@ -252,19 +252,37 @@ export function PoolPositionPanel({
   // Compute on-chain debt as a human-readable number via WASM
   const debtUiAmount = useMemo(() => {
     if (!userPosition || !poolData || lendDecimals == null) return null;
-    return Number(poolData.debt_amount(userPosition) ?? 0n) / 10 ** lendDecimals;
+    return token_amount_to_f64(poolData.debt_amount(userPosition) ?? 0n, lendDecimals);
   }, [userPosition, poolData, lendDecimals]);
+
+  // Convert LP share balance → underlying lend tokens via on-chain exchange rate
+  const suppliedLend = useMemo(() => {
+    if (!lpWalletBalance || lendDecimals == null) return 0;
+    const raw = poolData.lend_for_shares(lpWalletBalance.amount);
+    return raw != null ? token_amount_to_f64(raw, lendDecimals) : 0;
+  }, [lpWalletBalance, poolData, lendDecimals]);
 
   // LP wallet balance drives the Lend section (LP tokens are in user's wallet ATA)
   const hasLp = (lpWalletBalance?.uiAmount ?? 0) > 0;
   const hasDebt = userPosition != null && userPosition.has_debt();
 
+  const supplyApyBps = poolData.supply_apy_bps();
+  const lendEarned = +(suppliedLend * (supplyApyBps / 10_000) / 12).toFixed(4);
+  const lendHealth = Math.max(0, Math.min(100, Math.round(100 - poolData.utilization_bps() / 100)));
+
+  const ltvBps = userPosition ? poolData.ltv(userPosition) : undefined;
+  const liqPriceBps = userPosition ? poolData.liq_price(userPosition) : undefined;
+  const hfBps = userPosition ? poolData.health_factor(userPosition) : undefined;
+  const borrowLtv = ltvBps != null ? ltvBps / 100 : null;
+  const borrowLiqPrice = liqPriceBps != null ? liqPriceBps / 10_000 : null;
+  const borrowHF = hfBps != null ? hfBps / 10_000 : null;
+
   const lendPos: WithdrawPosition | null = hasLp
     ? {
       asset: pool.lendSymbol,
       icon: pool.lendIcon,
-      supplied: lpWalletBalance?.uiAmount ?? 0,
-      apy: pool.supplyAPY,
+      supplied: suppliedLend,
+      apy: supplyApyBps / 100,
       collateralEnabled: true,
     }
     : null;
@@ -284,10 +302,12 @@ export function PoolPositionPanel({
     }
     : null;
 
-  async function handleRepay(amount: number, rawAmountStr?: string) {
+  async function handleRepay(amount: string, rawAmountStr?: string) {
     if (!poolData || !poolPubKey) return;
-    // Use raw amount if provided (for max repayment), otherwise calculate from UI amount
-    const rawAmount = rawAmountStr ? new BN(rawAmountStr) : new BN(Math.floor(amount * 10 ** (lendDecimals ?? 6)));
+    // Use raw amount if provided (for max repayment), otherwise parse the UI amount
+    const rawAmount = rawAmountStr
+      ? new BN(rawAmountStr)
+      : new BN((parse_token_amount(amount, lendDecimals ?? 6) ?? 0n).toString());
     await repayMutation.mutateAsync({
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),
@@ -324,6 +344,8 @@ export function PoolPositionPanel({
             <SectionLabel label="Lend" />
             <LendRow
               pos={lendPos}
+              earned={lendEarned}
+              health={lendHealth}
               onRedeemLp={
                 true ? () => setModal({ type: "leaveLp" }) : undefined
               }
@@ -336,6 +358,9 @@ export function PoolPositionPanel({
             <SectionLabel label="Borrow" />
             <BorrowRow
               pos={borrowPos}
+              ltv={borrowLtv}
+              liqPrice={borrowLiqPrice}
+              healthFactor={borrowHF}
               onRepay={() => setModal({ type: "repay", pos: borrowPos })}
             />
           </>

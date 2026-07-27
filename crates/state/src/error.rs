@@ -56,4 +56,14 @@ pub enum ErrorCode {
     MissingRateState,
     #[msg("Create pool: no matching feed set_value instruction found before this transaction")]
     FeedSetValueMissing,
+    #[msg("max_feed_age_secs must be greater than zero")]
+    InvalidMaxFeedAge,
+    #[msg("Interest accrual computation overflowed")]
+    InterestAccrualOverflow,
+    #[msg("Debt share-to-amount valuation overflowed")]
+    DebtValuationOverflow,
+    #[msg("Protocol fee exceeds the maximum allowed rate")]
+    FeeTooHigh,
+    #[msg("No accrued protocol fees to claim")]
+    NoFeesToClaim,
 }

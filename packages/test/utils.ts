@@ -6,18 +6,18 @@ import {
   createAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Irm } from "../../target/types/irm";
 import { Feed } from "../../target/types/feed";
 
-import JblIdl from "../../target/idl/jbl.json";
+import CalmaIdl from "../../target/idl/calma.json";
 export const POOL_SPACE: number = Number(
-  JblIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
+  CalmaIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
 );
 
 export interface TestSetup {
   provider: AnchorProvider;
-  program: Program<Jbl>;
+  program: Program<Calma>;
   connection: Connection;
   authority: Keypair;
   payer: Keypair;
@@ -43,7 +43,7 @@ export interface TestSetup {
 }
 
 /**
- * Sets up a complete test environment for the jbl program.
+ * Sets up a complete test environment for the calma program.
  *
  * Creates a unified pool with separate collateral and lend mints.
  * `authority` receives 1000 tokens of each mint.
@@ -59,7 +59,7 @@ export async function setupTest(
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const program = anchor.workspace.Jbl as Program<Jbl>;
+  const program = anchor.workspace.Calma as Program<Calma>;
   const connection = provider.connection;
 
   const authority = Keypair.generate();
@@ -85,7 +85,7 @@ export async function setupTest(
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
   const feedAuthority = provider.wallet.publicKey;
   const [feedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("feed"), feedAuthority.toBuffer()],
+    [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
     feedProgram.programId
   );
 
@@ -133,7 +133,10 @@ export async function setupTest(
   // Initialize the IRM for this pool (unless the caller supplied an explicit rate program).
   if (!opts.rateProgram) {
     await irmProgram.methods
-      .initialize()
+      .initialize([
+        { utilBps: 0, rateBps: 0 },
+        { utilBps: 10_000, rateBps: 500 },
+      ])
       .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
       .signers([payer, authority])
       .rpc();
@@ -151,23 +154,37 @@ export async function setupTest(
   });
 
   // Create the feed account once; skip if already exists (shared provider wallet key).
+  // Manual price source: feed ids must be all-zero and age rule is inert.
   if (!(await connection.getAccountInfo(feedPda))) {
     await feedProgram.methods
-      .create()
-      .accounts({ authority: feedAuthority, payer: payer.publicKey })
+      .create(
+        0,
+        { manual: {} },
+        Array(32).fill(0),
+        Array(32).fill(0),
+        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
+      )
+      .accounts({
+        feed: feedPda,
+        authority: feedAuthority,
+        collateralMint,
+        lendMint,
+        payer: payer.publicKey,
+      })
       .signers([payer])
       .rpc();
   }
 
-  // Set initial oracle price so the CPI inside create reads a non-zero value.
+  // Set initial oracle price (collateral == lend == 1.0) so the ratio is 1.0 and
+  // the CPI inside create reads a non-zero value.
   await feedProgram.methods
-    .setValue(new BN(1_000_000))
-    .accounts({ authority: feedAuthority })
+    .setValue(new BN(1_000_000), new BN(1_000_000))
+    .accounts({ authority: feedAuthority, feed: feedPda })
     .rpc();
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent)
+    .create(ltvPercent, 90)
     .accounts({
       pool,
       collateralMint,
@@ -207,6 +224,24 @@ export async function setupTest(
     feedPda,
     feedAuthority,
   };
+}
+
+/**
+ * Updates the shared manual oracle feed's collateral and lend prices.
+ *
+ * With equal token decimals (all test mints use 6), the borrow check reads
+ * `ratio = collateralPrice / lendPrice × PRICE_SCALE`, so this directly scales a
+ * position's borrow capacity: capacity = collateral × ratio / PRICE_SCALE × LTV.
+ */
+export async function setFeedPrice(
+  setup: TestSetup,
+  collateralPrice: number,
+  lendPrice: number = 1_000_000
+): Promise<void> {
+  await setup.feedProgram.methods
+    .setValue(new BN(collateralPrice), new BN(lendPrice))
+    .accounts({ authority: setup.feedAuthority, feed: setup.feedPda })
+    .rpc();
 }
 
 export function irmAccounts(setup: TestSetup) {

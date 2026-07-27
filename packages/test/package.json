@@ -1,10 +1,10 @@
 {
-  "name": "@jbl/test",
+  "name": "@calma/test",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "dependencies": {
-    "@jbl/wasm-lib": "*",
+    "@calma/wasm-lib": "*",
     "@anchor-lang/core": "1.0.2",
     "@solana/spl-token": "^0.4.12",
     "@solana/web3.js": "^1.98.0"
@@ -16,6 +16,7 @@
     "chai": "^6.2.2",
     "mocha": "^11.7.5",
     "ts-mocha": "^11.1.0",
+    "ts-node": "^7.0.1",
     "typescript": "^6.0.3"
   }
 }

@@ -1,9 +1,16 @@
 import { useOpenMultiply } from "@/hooks/program/useOpenMultiply";
+import { useFeedFreshness } from "@/hooks/program/useFeedFreshness";
+import { useUserPosition } from "@/hooks/program/useUserPosition";
+import { OracleTable } from "@/components/common/OracleTable";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
-import { MAX_MULTIPLY } from "@/hooks/useMultiply";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import {
+  parse_token_amount,
+  position_leverage_bps,
+  token_amount_to_f64,
+  type PoolWithIrm,
+} from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -27,13 +34,19 @@ interface LeverageModalProps {
 }
 
 /**
- * Modal for opening a leveraged (multiply) position.
+ * Modal for adding a leveraged (multiply) tranche to a pool.
  *
  * Flow: depositCollateral(amount) → flashBorrow(extra) → mockSwap →
  *       depositCollateral(extra) → borrow(extra+fee) → flashRepay(extra+fee)
  *
- * The user provides `amount` collateral tokens (their initial capital).
- * The flash loan and borrow cover the leverage — no lend tokens are spent.
+ * The user provides `amount` collateral (their own capital) at a chosen leverage;
+ * the loop adds `amount × L` collateral and `amount × (L−1)` debt. It's a pure
+ * "add exposure" action — a lending position is just {collateral, debt}, so the
+ * modal deliberately doesn't read or target an existing position's leverage. The
+ * flow is additive on-chain; the page's position panel shows the blended result.
+ *
+ * Leverage is capped at the pool's real single-loop max, `1/(1−LTV)`, because the
+ * borrow gate rejects a final LTV above the pool's — see `PoolWithIrm::max_leverage`.
  */
 export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   const [amount, setAmount] = useState("");
@@ -50,6 +63,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   }, [wallet]);
 
   const { data: collateralDecimals } = useMintDecimals(new PublicKey(poolData.collateral_mint));
+  const { data: lendDecimals } = useMintDecimals(new PublicKey(poolData.lend_mint));
   const decimals = collateralDecimals ?? 6;
 
   // User's collateral wallet balance (the token they deposit)
@@ -59,15 +73,49 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   const openMutation = useOpenMultiply();
   const isPending = openMutation.isPending;
 
-  // Derived position metrics
+  const poolPubKey = useMemo(() => new PublicKey(pool.address), [pool.address]);
+  const { data: freshness } = useFeedFreshness(poolPubKey);
+  const feedStale = freshness?.willFail ?? false;
+
+  // Existing exposure for this pool + wallet, shown as read-only context. The
+  // action itself stays a pure additive tranche — this is purely informational.
+  const { data: userPosition } = useUserPosition(poolPubKey, walletPubKey);
+  const existing = useMemo(() => {
+    if (!userPosition || !userPosition.has_collateral()) return null;
+    const collateralRaw = userPosition.collateral_deposited;
+    const debtRaw = poolData.debt_amount(userPosition) ?? 0n;
+    return {
+      collateralUi: token_amount_to_f64(collateralRaw, collateralDecimals ?? 6),
+      debtUi: token_amount_to_f64(debtRaw, lendDecimals ?? 6),
+      leverage: position_leverage_bps(collateralRaw, debtRaw) / 10_000,
+    };
+  }, [userPosition, poolData, collateralDecimals, lendDecimals]);
+
+  // Real max leverage a single loop can reach for this pool: 1/(1−LTV).
+  const maxLeverage = useMemo(
+    () => poolData.max_leverage(),
+    [poolData],
+  );
+  // Clamp the slider value in case the pool's max is below the default.
+  const effLeverage = Math.min(Math.max(leverage, 1), maxLeverage);
+
+  // Derived tranche metrics — what THIS action adds.
   const amountNum = parseFloat(amount) || 0;
-  const positionSize = amountNum * leverage;
-  const borrowAmount = amountNum * (leverage - 1);
-  const netAPY = poolData.leveraged_net_apy(leverage);
-  const sliderPct = ((leverage - 1) / (MAX_MULTIPLY - 1)) * 100;
+  const positionSize = amountNum * effLeverage;
+  const borrowAmount = amountNum * (effLeverage - 1);
+  const netAPY = poolData.leveraged_net_apy(effLeverage);
+  const sliderPct =
+    ((effLeverage - 1) / Math.max(maxLeverage - 1, 0.0001)) * 100;
+
+  // Leverage stops under the slider, adapted to the pool's max.
+  const presets = useMemo(() => {
+    const max = Math.floor(maxLeverage);
+    if (max <= 6) return Array.from({ length: max }, (_, i) => i + 1);
+    return [1, 5, 10, 15, 20, 25, 30].filter((v) => v <= maxLeverage);
+  }, [maxLeverage]);
 
   const liquidationRisk =
-    leverage < 5 ? "Low" : leverage < 15 ? "Moderate" : "High";
+    effLeverage < 5 ? "Low" : effLeverage < 15 ? "Moderate" : "High";
   const riskColor =
     liquidationRisk === "Low"
       ? "text-success"
@@ -76,7 +124,11 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
       : "text-destructive";
 
   const canSubmit =
-    amountNum > 0 && amountNum <= walletBalance && !isPending && !!wallet;
+    amountNum > 0 &&
+    amountNum <= walletBalance &&
+    !isPending &&
+    !!wallet &&
+    !feedStale;
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();
@@ -85,7 +137,6 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
   async function handleSubmit() {
     if (!canSubmit || !walletPubKey) return;
 
-    const poolPubKey = new PublicKey(pool.address);
     const userCollateralAta = getAssociatedTokenAddressSync(
       new PublicKey(poolData.collateral_mint),
       walletPubKey,
@@ -94,16 +145,17 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
       new PublicKey(poolData.lend_mint),
       walletPubKey,
     );
-    const amountRaw = new BN(Math.floor(amountNum * 10 ** decimals));
+    const amountRaw = new BN((parse_token_amount(amount, decimals) ?? 0n).toString());
 
     await openMutation.mutateAsync({
       pool: poolPubKey,
       lendMint: new PublicKey(poolData.lend_mint),
       collateralMint: new PublicKey(poolData.collateral_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       userCollateralAta,
       userLendAta,
       amountRaw,
-      leverage,
+      leverage: effLeverage,
     });
 
     onClose();
@@ -143,7 +195,7 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
                 Multiply {pool.lendSymbol}
               </p>
               <p className="text-xs text-surface-foreground/35">
-                Borrow {pool.lendSymbol} · up to {MAX_MULTIPLY}×
+                Borrow {pool.lendSymbol} · up to {maxLeverage}×
               </p>
             </div>
           </div>
@@ -203,16 +255,16 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
             <div className="flex items-center justify-between px-1">
               <span className="text-xs text-surface-foreground/40">Multiplier</span>
               <span className="text-sm font-bold text-surface-accent tabular-nums">
-                {leverage.toFixed(1)}×
+                {effLeverage.toFixed(1)}×
               </span>
             </div>
             {/* style-exception: slider gradient must be set via style to reflect current value dynamically */}
             <input
               type="range"
               min={1}
-              max={MAX_MULTIPLY}
+              max={maxLeverage}
               step={0.1}
-              value={leverage}
+              value={effLeverage}
               onChange={(e) => setLeverage(parseFloat(e.target.value))}
               className="w-full h-1.5 appearance-none rounded-full cursor-pointer
                 [&::-webkit-slider-runnable-track]:rounded-full
@@ -231,13 +283,13 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
               }}
             />
             <div className="flex justify-between px-0.5">
-              {[1, 5, 10, 15, 20, 25, 30].map((v) => (
+              {presets.map((v) => (
                 <button
                   key={v}
                   onClick={() => setLeverage(v)}
                   className={cn(
                     "text-xs font-medium transition-colors cursor-pointer",
-                    Math.round(leverage) === v
+                    Math.round(effLeverage) === v
                       ? "text-surface-accent"
                       : "text-surface-foreground/25 hover:text-surface-foreground/60",
                   )}
@@ -248,7 +300,35 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
             </div>
           </div>
 
-          {/* Position summary */}
+          {/* Current position — read-only context; this action adds to it */}
+          {existing && (
+            <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.03] px-3.5 py-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-surface-foreground/40">
+                  Current position
+                </span>
+                <span className="text-xs font-semibold tabular-nums text-surface-accent">
+                  {existing.leverage.toFixed(2)}×
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-xs tabular-nums text-surface-foreground/50">
+                <span>
+                  {existing.collateralUi.toLocaleString("en-US", {
+                    maximumFractionDigits: 4,
+                  })}{" "}
+                  {pool.collateralSymbol}
+                </span>
+                <span>
+                  {existing.debtUi.toLocaleString("en-US", {
+                    maximumFractionDigits: 4,
+                  })}{" "}
+                  {pool.lendSymbol} debt
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Position summary — what this action adds */}
           <div className="rounded-xl border border-surface-accent/10 divide-y divide-surface-accent/8">
             <div className="flex items-center justify-between px-3.5 py-2.5">
               <span className="flex items-center gap-1.5 text-xs text-surface-foreground/40">
@@ -296,6 +376,8 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
             </div>
           </div>
 
+          {freshness && <OracleTable freshness={freshness} />}
+
           <button
             disabled={!canSubmit}
             onClick={handleSubmit}
@@ -311,8 +393,10 @@ export function LeverageModal({ pool, poolData, onClose }: LeverageModalProps) {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Opening…
               </>
+            ) : feedStale ? (
+              "Oracle stale"
             ) : (
-              `Open ${leverage.toFixed(1)}× Position`
+              `Open ${effLeverage.toFixed(1)}× Position`
             )}
           </button>
         </div>

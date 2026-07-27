@@ -1,7 +1,7 @@
 // import { useTakeLp } from "@/hooks/program/useTakeLp";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import { token_amount_to_f64, type PoolWithIrm } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -28,7 +28,7 @@ export function TakeLpModal({ poolData, position, onClose }: TakeLpModalProps) {
   const decimals = lpDecimals ?? 6;
 
   const owedUi = useMemo(
-    () => Number(position.lpTokensOwed) / 10 ** decimals,
+    () => token_amount_to_f64(position.lpTokensOwed, decimals),
     [position.lpTokensOwed, decimals],
   );
 

@@ -1,5 +1,5 @@
 {
-  "name": "@jbl/app",
+  "name": "@calma/app",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,10 @@
   },
   "dependencies": {
     "@anchor-lang/core": "1.0.2",
-    "@jbl/wasm-lib": "*",
+    "@calma/wasm-lib": "*",
+    "@pythnetwork/hermes-client": "^3.1.0",
+    "@pythnetwork/pyth-solana-receiver": "^0.16.0",
+    "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
     "@solana/client": "^1.1.0",

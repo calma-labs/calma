@@ -1,21 +1,27 @@
 import { BackButton } from "@/components/common/BackButton";
+import { IrmCurveChart, type IrmPoint } from "@/components/pool/charts/IrmCurveChart";
+import { FeedPairPanel } from "@/components/pool/FeedPairPanel";
 import {
   useCreateLendingPool,
-  type CreatePoolParams,
   type CreatePoolResult,
 } from "@/hooks/program/useCreateLendingPool";
+import { getTokenOptions } from "@/lib/tokenRegistry";
+import { TokenSelect } from "@/components/ui/token-select";
 import { cn } from "@/lib/utils";
 import { useWalletConnection } from "@solana/react-hooks";
+import { PublicKey } from "@solana/web3.js";
 import {
   CheckCircle2,
+  Coins,
   Copy,
   ExternalLink,
   Loader2,
   Plus,
+  Radio,
   Settings2,
   ShieldCheck,
 } from "lucide-react";
-import { useState, type ChangeEvent } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -150,58 +156,62 @@ function AddressRow({ label, value }: { label: string; value: string }) {
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
-interface FormState {
-  m1: string;
-  c1: string;
-  m2: string;
-  c2: string;
-  ltvPercent: string;
+interface KinkPoint {
+  /** Utilization in percent (0..150). */
+  util: string;
+  /** Rate in basis points. */
+  rate: string;
 }
 
-interface FormErrors {
-  m1?: string;
-  c1?: string;
-  m2?: string;
-  c2?: string;
-  ltvPercent?: string;
+interface FormState {
+  ltvPercent: string;
+  kinkPoints: KinkPoint[];
 }
+
+// (0%, 50 bps) → (95%, 450 bps) → (100%, 1000 bps) — matches the on-chain DEFAULT_POINTS.
+const DEFAULT_KINK_POINTS: KinkPoint[] = [
+  { util: "0", rate: "50" },
+  { util: "95", rate: "450" },
+  { util: "100", rate: "1000" },
+];
 
 const DEFAULT_FORM: FormState = {
-  m1: "450",
-  c1: "0",
-  m2: "8000",
-  c2: "-7173",
   ltvPercent: "97",
+  kinkPoints: DEFAULT_KINK_POINTS,
 };
 
-function validate(form: FormState): FormErrors {
-  const errors: FormErrors = {};
+/** Convert a form KinkPoint (utilization %, rate bps) to on-chain bps. */
+function toIrmPoint(kp: KinkPoint): IrmPoint {
+  return {
+    utilBps: Math.round(Number(kp.util) * 100),
+    rateBps: Math.round(Number(kp.rate)),
+  };
+}
 
-  // Slopes (m1, m2) must be non-negative
-  const slopeFields = ["m1", "m2"] as const;
-  for (const k of slopeFields) {
-    const n = Number(form[k]);
-    if (form[k] === "" || isNaN(n) || n < 0) {
-      errors[k] = "Must be a non-negative number";
-    }
+/** Validate the point list matches on-chain invariants. */
+function pointsValid(points: KinkPoint[]): boolean {
+  if (points.length < 2 || points.length > 4) return false;
+  const bpsPoints = points.map(toIrmPoint);
+  if (!Number.isFinite(bpsPoints[0].utilBps) || bpsPoints[0].utilBps !== 0) return false;
+  for (let i = 1; i < bpsPoints.length; i++) {
+    if (!Number.isFinite(bpsPoints[i].utilBps)) return false;
+    if (bpsPoints[i].utilBps <= bpsPoints[i - 1].utilBps) return false;
   }
+  return bpsPoints.every((p) => Number.isFinite(p.rateBps) && p.rateBps >= 0);
+}
 
-  // Intercepts (c1, c2) can be negative (i64 on-chain)
-  const interceptFields = ["c1", "c2"] as const;
-  for (const k of interceptFields) {
-    const n = Number(form[k]);
-    if (form[k] === "" || isNaN(n)) {
-      errors[k] = "Must be a valid number";
-    }
-  }
-
+function validate(form: FormState): { ltvPercent?: string; kinkPoints?: string } {
+  const errors: { ltvPercent?: string; kinkPoints?: string } = {};
   const ltv = Number(form.ltvPercent);
-  if (form.ltvPercent === "" || isNaN(ltv) || ltv <= 0 || ltv > 100) {
+  if (form.ltvPercent === "" || isNaN(ltv) || ltv <= 0 || ltv > 100)
     errors.ltvPercent = "Must be between 1 and 100";
-  }
-
+  if (!pointsValid(form.kinkPoints))
+    errors.kinkPoints =
+      "Need 2–4 points; first utilization must be 0 and utilizations strictly increasing.";
   return errors;
 }
+
+const TOKEN_OPTIONS = getTokenOptions();
 
 export function CreatePoolPage() {
   const navigate = useNavigate();
@@ -210,32 +220,53 @@ export function CreatePoolPage() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [result, setResult] = useState<CreatePoolResult | null>(null);
+  const [lendAddr, setLendAddr] = useState("");
+  const [collateralAddr, setCollateralAddr] = useState("");
 
   const errors = validate(form);
   const hasErrors = Object.keys(errors).length > 0;
+  const mintsReady = !!lendAddr && !!collateralAddr && lendAddr !== collateralAddr;
+  const canSubmit = connected && mintsReady;
+
+  const collateralSymbol = useMemo(
+    () => TOKEN_OPTIONS.find((o) => o.address === collateralAddr)?.symbol ?? "",
+    [collateralAddr],
+  );
+  const lendSymbol = useMemo(
+    () => TOKEN_OPTIONS.find((o) => o.address === lendAddr)?.symbol ?? "",
+    [lendAddr],
+  );
+  const collateralMintPk = useMemo(
+    () => (collateralAddr ? new PublicKey(collateralAddr) : null),
+    [collateralAddr],
+  );
+  const lendMintPk = useMemo(
+    () => (lendAddr ? new PublicKey(lendAddr) : null),
+    [lendAddr],
+  );
 
   const { mutateAsync, isPending } = useCreateLendingPool({
     onCreated: (r) => setResult(r),
   });
 
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function fieldError(key: keyof FormState): string | undefined {
-    return submitAttempted ? errors[key] : undefined;
+  function setKinkPoint(index: number, field: keyof KinkPoint, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      kinkPoints: prev.kinkPoints.map((p, i) => (i === index ? { ...p, [field]: value } : p)),
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
-    if (hasErrors || !connected) return;
+    if (hasErrors || !canSubmit) return;
 
-    const params: CreatePoolParams = {
+    await mutateAsync({
+      collateralMint: new PublicKey(collateralAddr),
+      lendMint: new PublicKey(lendAddr),
       ltvPercent: Number(form.ltvPercent),
-    };
-
-    await mutateAsync(params);
+      ratePoints: form.kinkPoints.map(toIrmPoint),
+    });
   }
 
   // ── success screen ────────────────────────────────────────────────────────
@@ -318,7 +349,6 @@ export function CreatePoolPage() {
           </div>
           <p className="text-sm text-surface-foreground/50 max-w-lg">
             Configure interest rate parameters and deploy a new lending pool.
-            Token mints are generated automatically and shown after deployment.
           </p>
         </div>
 
@@ -327,80 +357,119 @@ export function CreatePoolPage() {
           noValidate
           className="flex flex-col gap-5 justify-center"
         >
+          {/* Token Pair */}
+          <Section
+            title="Token Pair"
+            icon={<Coins className="h-4 w-4" />}
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Field id="lendToken" label="Lend Token">
+                <TokenSelect
+                  value={lendAddr}
+                  onChange={setLendAddr}
+                  options={TOKEN_OPTIONS}
+                  placeholder="Select lend token"
+                />
+              </Field>
+
+              <Field id="collateralToken" label="Collateral Token">
+                <TokenSelect
+                  value={collateralAddr}
+                  onChange={setCollateralAddr}
+                  options={TOKEN_OPTIONS}
+                  placeholder="Select collateral token"
+                />
+              </Field>
+            </div>
+            {submitAttempted && !mintsReady && (
+              <p className="text-[11px] text-[#d45677]">
+                {lendAddr === collateralAddr
+                  ? "Lend and collateral tokens must be different"
+                  : "Select both tokens"}
+              </p>
+            )}
+          </Section>
+
+          {/* Price Feed */}
+          <Section
+            title="Price Feed"
+            icon={<Radio className="h-4 w-4" />}
+          >
+            {!mintsReady ? (
+              <p className="text-xs text-surface-foreground/35">
+                Select both tokens above to configure the price feed.
+              </p>
+            ) : (
+              <FeedPairPanel
+                collateralMint={collateralMintPk!}
+                lendMint={lendMintPk!}
+                collateralSymbol={collateralSymbol}
+                lendSymbol={lendSymbol}
+              />
+            )}
+          </Section>
+
           {/* Fee Config */}
           <Section
             title="Interest Rate Model"
             icon={<Settings2 className="h-4 w-4" />}
           >
             <p className="text-xs text-surface-foreground/35 -mt-2">
-              Two-slope model: rate&nbsp;=&nbsp;m·utilisation&nbsp;+&nbsp;c. The
-              first slope applies below the kink, the second above it.
-              Intercepts (c₁, c₂) can be negative for advanced curve shaping.
+              Control points define a continuous curve. Editing these updates the
+              underlying segment parameters sent on-chain.
             </p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Field
-                id="m1"
-                label="m₁ — Low slope"
-                hint="Multiplier for low utilisation"
-                error={fieldError("m1")}
-              >
-                <NumberInput
-                  id="m1"
-                  value={form.m1}
-                  onChange={(v) => setField("m1", v)}
-                  min={0}
-                  placeholder="0"
-                  hasError={!!fieldError("m1")}
-                />
-              </Field>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-12" />
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
+                  Utilization (%)
+                </span>
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-surface-foreground/45">
+                  Rate (bps)
+                </span>
+              </div>
 
-              <Field
-                id="c1"
-                label="c₁ — Low intercept"
-                hint="Base rate for low utilisation (bps, can be negative)"
-                error={fieldError("c1")}
-              >
-                <NumberInput
-                  id="c1"
-                  value={form.c1}
-                  onChange={(v) => setField("c1", v)}
-                  placeholder="200"
-                  hasError={!!fieldError("c1")}
-                />
-              </Field>
+              {form.kinkPoints.map((point, i, arr) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-12 text-right text-xs text-surface-foreground/45">
+                    {i === 0 ? "Start" : i === arr.length - 1 ? "End" : "Kink"}
+                  </span>
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      value={point.util}
+                      min={0}
+                      max={150}
+                      step={1}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setKinkPoint(i, "util", e.target.value)
+                      }
+                      className={fieldClass(false)}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      value={point.rate}
+                      step="any"
+                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                        setKinkPoint(i, "rate", e.target.value)
+                      }
+                      className={fieldClass(false)}
+                    />
+                  </div>
+                </div>
+              ))}
 
-              <Field
-                id="m2"
-                label="m₂ — High slope"
-                hint="Multiplier for high utilisation"
-                error={fieldError("m2")}
-              >
-                <NumberInput
-                  id="m2"
-                  value={form.m2}
-                  onChange={(v) => setField("m2", v)}
-                  min={0}
-                  placeholder="0"
-                  hasError={!!fieldError("m2")}
-                />
-              </Field>
-
-              <Field
-                id="c2"
-                label="c₂ — High intercept"
-                hint="Base rate for high utilisation (bps, can be negative)"
-                error={fieldError("c2")}
-              >
-                <NumberInput
-                  id="c2"
-                  value={form.c2}
-                  onChange={(v) => setField("c2", v)}
-                  placeholder="1000"
-                  hasError={!!fieldError("c2")}
-                />
-              </Field>
+              {errors.kinkPoints && (
+                <p className="text-xs text-destructive">{errors.kinkPoints}</p>
+              )}
             </div>
+
+            {pointsValid(form.kinkPoints) && (
+              <IrmCurveChart points={form.kinkPoints.map(toIrmPoint)} />
+            )}
           </Section>
 
           {/* LTV */}
@@ -412,39 +481,35 @@ export function CreatePoolPage() {
               id="ltvPercent"
               label="Max LTV (%)"
               hint="Maximum loan-to-value ratio for borrowers (1–100)"
-              error={fieldError("ltvPercent")}
+              error={submitAttempted ? errors.ltvPercent : undefined}
             >
               <NumberInput
                 id="ltvPercent"
                 value={form.ltvPercent}
-                onChange={(v) => setField("ltvPercent", v)}
+                onChange={(v) => setForm((prev) => ({ ...prev, ltvPercent: v }))}
                 min={1}
                 max={100}
                 step={1}
                 placeholder="75"
-                hasError={!!fieldError("ltvPercent")}
+                hasError={submitAttempted && !!errors.ltvPercent}
               />
             </Field>
           </Section>
 
           {/* Actions */}
           <div className="flex items-center justify-between pt-1">
-            {!connected && (
-              <p className="text-xs text-destructive">
-                Connect your wallet to deploy the pool
-              </p>
+            {!connected ? (
+              <p className="text-xs text-destructive">Connect your wallet to deploy the pool</p>
+            ) : submitAttempted && hasErrors ? (
+              <p className="text-xs text-destructive">Fix the errors above before continuing</p>
+            ) : (
+              <span />
             )}
-            {connected && submitAttempted && hasErrors && (
-              <p className="text-xs text-destructive">
-                Fix the errors above before continuing
-              </p>
-            )}
-            {connected && !(submitAttempted && hasErrors) && <span />}
 
             {/* style-exception: glow shadow requires exact rgba for surface-accent color */}
             <button
               type="submit"
-              disabled={isPending || !connected}
+              disabled={isPending || !canSubmit}
               className={cn(
                 "flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold transition-all duration-200",
                 "bg-surface-accent text-surface shadow-[0_0_20px_rgba(198,152,229,0.30)]",
@@ -465,9 +530,9 @@ export function CreatePoolPage() {
                 </>
               )}
             </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </div >
+        </form >
+      </div >
+    </div >
   );
 }

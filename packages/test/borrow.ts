@@ -45,8 +45,6 @@ async function repay(setup: TestSetup, authority: anchor.web3.Keypair, amount: n
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            feedProgram: setup.feedProgram.programId,
-            feedState: setup.feedPda,
         })
         .signers([authority])
         .rpc();

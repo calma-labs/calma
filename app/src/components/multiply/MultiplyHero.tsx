@@ -1,5 +1,4 @@
 import { ActionButton } from "@/components/common/ActionButton";
-import { MAX_MULTIPLY } from "@/hooks/useMultiply";
 import type { Pool } from "@/types/pool";
 import { Zap } from "lucide-react";
 
@@ -14,6 +13,7 @@ export function MultiplyHero({
   isWalletConnected,
   onOpenPosition,
 }: MultiplyHeroProps) {
+  const maxLeverage = pool.account.max_leverage();
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-8">
       <div className="flex items-center gap-4">
@@ -50,7 +50,7 @@ export function MultiplyHero({
               Multiply
             </span>
             <span className="text-xs text-surface-foreground/30">
-              Borrow {pool.lendSymbol} · loop collateral · up to {MAX_MULTIPLY}×
+              Borrow {pool.lendSymbol} · loop collateral · up to {maxLeverage}×
             </span>
           </div>
         </div>

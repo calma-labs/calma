@@ -17,3 +17,4 @@ impl math::Clock for BrowserClock {
 pub fn flash_fee(amount: u64) -> Option<u64> {
     math::flash_fee(amount)
 }
+

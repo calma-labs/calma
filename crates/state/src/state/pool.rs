@@ -11,10 +11,15 @@ pub struct Market {
     pub total_borrow_assets: u64,
     pub total_borrow_shares: u64,
     pub last_update: i64,
+    /// Protocol fee **rate** in basis points, skimmed from accrued interest.
     pub fee: u64,
     pub assets_in_queue: u64,
     pub ltv_percent: u8,
     _pad: [u8; 7],
+    /// Protocol-owned supply shares accrued from the fee, not yet claimed as LP.
+    /// Minted into `total_supply_shares` at accrual; `claim_fees` mints matching
+    /// LP tokens to the pool authority and resets this to 0.
+    pub accrued_fee_shares: u64,
 }
 
 impl math::Market for Market {
@@ -47,6 +52,12 @@ impl math::Market for Market {
     }
     fn total_supply_shares_mut(&mut self) -> &mut u64 {
         &mut self.total_supply_shares
+    }
+    fn accrued_fee_shares(&self) -> u64 {
+        self.accrued_fee_shares
+    }
+    fn accrued_fee_shares_mut(&mut self) -> &mut u64 {
+        &mut self.accrued_fee_shares
     }
     fn assets_in_queue_mut(&mut self) -> &mut u64 {
         &mut self.assets_in_queue
@@ -91,7 +102,15 @@ pub struct Pool {
     _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
-    _reserved: [u64; 4],
+    /// Maximum age (seconds) the oracle's `last_updated_ts` may be behind the
+    /// current clock before borrow / withdraw_collateral / borrow_with_hedge
+    /// reject the price as stale. Set at pool creation; chosen per market based
+    /// on the underlying feed's update cadence.
+    pub max_feed_age_secs: u32,
+    _pad1: [u8; 4], // align _reserved (u64 needs 8-byte alignment)
+    // Shrunk from [u64; 3] to keep `Pool`'s size constant when `Market` grew by
+    // one u64 (`accrued_fee_shares`).
+    _reserved: [u64; 2],
 }
 
 impl Pool {
@@ -101,5 +120,22 @@ impl Pool {
             self.market.total_borrow_assets,
             self.market.assets_in_queue,
         )
+    }
+
+    /// `true` iff a feed snapshot with `feed_last_updated_ts` would trip
+    /// this pool's `StaleOracle` gate when read at wall-clock `clock_ts`.
+    /// Single source of truth for the borrow / withdraw / hedge freshness
+    /// check in `programs/calma/src/hooks/oracle.rs`; the wasm bindings expose
+    /// this so the UI can predict `StaleOracle` and skip / prompt a refresh
+    /// before submitting the tx.
+    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
+        Self::snapshot_stale_at(feed_last_updated_ts, clock_ts, self.max_feed_age_secs)
+    }
+
+    /// Same predicate as [`is_feed_snapshot_stale`] but with `max_age_secs`
+    /// passed explicitly — the `create` instruction runs the check *before*
+    /// a `Pool` exists to bind the config to.
+    pub fn snapshot_stale_at(feed_last_updated_ts: i64, clock_ts: i64, max_age_secs: u32) -> bool {
+        clock_ts.saturating_sub(feed_last_updated_ts) > max_age_secs as i64
     }
 }

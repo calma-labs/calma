@@ -1,4 +1,5 @@
-import { getPoolMeta } from '@/config/poolRegistry'
+import { getTokenMeta } from '@/lib/tokenRegistry'
+import { token_amount_to_f64 } from '@calma/wasm-lib'
 import { generatePortfolioHistory } from '@/lib/mocks/portfolio.mock'
 import type {
     BorrowPosition,
@@ -46,7 +47,7 @@ export function useLendPositions(enabled = true) {
             const suppliedRaw = pool.account.lend_for_shares(lpToken.amount)
             if (suppliedRaw == null) return []
             const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
-            const supplied = Number(suppliedRaw) / 10 ** lendDecimals
+            const supplied = token_amount_to_f64(suppliedRaw, lendDecimals)
 
             // Health proxy: how easy it is to withdraw — decreases with utilization.
             // 100 = fully liquid pool, 0 = fully utilized (no liquidity to withdraw).
@@ -54,14 +55,15 @@ export function useLendPositions(enabled = true) {
 
             // Rough earned estimate (~1 month at current APY). No historical data on-chain.
             const earnedEstimate = +(supplied * (pool.account.supply_apy_bps() / 10_000) / 12).toFixed(4)
-            const meta = getPoolMeta(pool.publicKey.toBase58())
+            const lendMeta = getTokenMeta(new PublicKey(pool.account.lend_mint).toBase58())
+            const collateralMeta = getTokenMeta(new PublicKey(pool.account.collateral_mint).toBase58())
 
             return [{
                 id: pool.publicKey.toBase58(),
-                asset: meta.symbol,
-                icon: meta.icon,
-                collateralAsset: meta.collateralSymbol,
-                collateralIcon: meta.collateralIcon,
+                asset: lendMeta?.symbol ?? 'Unknown',
+                icon: lendMeta?.icon ?? '',
+                collateralAsset: collateralMeta?.symbol ?? 'Unknown',
+                collateralIcon: collateralMeta?.icon ?? '',
                 supplied,
                 apy: pool.account.supply_apy_bps() / 100,
                 earned: earnedEstimate,
@@ -101,23 +103,24 @@ export function useBorrowPositions(enabled = true) {
             const lendDecimals = decimalsMap.get(new PublicKey(pool.account.lend_mint).toBase58()) ?? 6
             const collateralDecimals = decimalsMap.get(new PublicKey(pool.account.collateral_mint).toBase58()) ?? 6
             const debtRaw = pool.account.debt_amount(pos) ?? 0n
-            const debtAmount = Number(debtRaw) / 10 ** lendDecimals
-            const collateralAmount = Number(pos.collateral_deposited) / 10 ** collateralDecimals
+            const debtAmount = token_amount_to_f64(debtRaw, lendDecimals)
+            const collateralAmount = token_amount_to_f64(pos.collateral_deposited, collateralDecimals)
 
             const ltvBps = pool.account.ltv(pos)
             const healthFactorBps = pool.account.health_factor(pos)
             const liqPriceBps = pool.account.liq_price(pos)
 
-            const meta = getPoolMeta(pool.publicKey.toBase58())
+            const lendMeta = getTokenMeta(new PublicKey(pool.account.lend_mint).toBase58())
+            const collateralMeta = getTokenMeta(new PublicKey(pool.account.collateral_mint).toBase58())
 
             return [{
                 id: pool.publicKey.toBase58(),
                 poolId: pool.publicKey.toBase58(),
-                collateralAsset: meta.collateralSymbol,
-                collateralIcon: meta.collateralIcon,
+                collateralAsset: collateralMeta?.symbol ?? 'Unknown',
+                collateralIcon: collateralMeta?.icon ?? '',
                 collateralAmount,
-                borrowedAsset: meta.lendSymbol,
-                borrowedIcon: meta.lendIcon,
+                borrowedAsset: lendMeta?.symbol ?? 'Unknown',
+                borrowedIcon: lendMeta?.icon ?? '',
                 debtAmount,
                 borrowAPY: pool.account.borrow_apy_bps() / 100,
                 supplyAPY: pool.account.supply_apy_bps() / 100,
@@ -143,14 +146,15 @@ export function useMultiplyPositions(enabled = true) {
 
     const data = useMemo<MultiplyPosition[]>(() => {
         return borrowPositions.map((pos) => {
+            const pool = pools.find((p) => p.publicKey.toBase58() === pos.poolId)
             // Effective multiplier: how many times the net equity is leveraged.
             // net equity = collateral − debt; multiplier = collateral / equity.
             const netEquity = Math.max(pos.collateralAmount - pos.debtAmount, 0.01)
             const multiplier = Math.min(pos.collateralAmount / netEquity, 30)
-            // Net APY is replayed by the pool view against its real utilization —
-            // no client-side formula (see crates/bindings policy).
-            const pool = pools.find((p) => p.publicKey.toBase58() === pos.poolId)
-            const netAPY = pool ? pool.account.leveraged_net_apy(multiplier) : 0
+            const leverageBps = Math.round(multiplier * 10_000)
+            const netAPY = pool
+                ? pool.account.leveraged_net_apy_bps(leverageBps) / 100
+                : 0
 
             return {
                 id: pos.id,

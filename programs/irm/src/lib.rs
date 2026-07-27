@@ -18,11 +18,11 @@ pub mod irm {
         borrow_rate::handler(ctx, utilization_bps)
     }
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        initialize::handler(ctx)
+    pub fn initialize(ctx: Context<Initialize>, points: Vec<RatePointArgs>) -> Result<()> {
+        initialize::handler(ctx, points)
     }
 
-    pub fn set_fee_curve(ctx: Context<SetFeeCurve>, index: u8, curve: CurveArgs) -> Result<()> {
-        set_fee_curve::handler(ctx, index, curve)
+    pub fn set_fee_points(ctx: Context<SetFeePoints>, points: Vec<RatePointArgs>) -> Result<()> {
+        set_fee_points::handler(ctx, points)
     }
 }

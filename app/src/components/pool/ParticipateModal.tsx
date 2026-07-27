@@ -2,7 +2,7 @@ import { useParticipate } from "@/hooks/program/useParticipate";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import { parse_token_amount, type PoolWithIrm } from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { BN } from "@anchor-lang/core";
 import { useWalletConnection } from "@solana/react-hooks";
@@ -46,7 +46,7 @@ export function ParticipateModal({
 
     const authority = new PublicKey(wallet.account.publicKey);
     const decimals = lendDecimals ?? 6;
-    const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
+    const rawAmount = new BN((parse_token_amount(amount, decimals) ?? 0n).toString());
     const userLendTokenAccount = getAssociatedTokenAddressSync(
       new PublicKey(poolData.lend_mint),
       authority,
@@ -63,7 +63,7 @@ export function ParticipateModal({
   }
 
   const canSubmit =
-    !!amount && parseFloat(amount) > 0 && !isPending && !!wallet;
+    !!amount && parseFloat(amount) > 0 && parseFloat(amount) <= limit && limit > 0 && !isPending && !!wallet;
 
   return (
     <div

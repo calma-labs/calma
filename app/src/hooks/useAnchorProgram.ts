@@ -4,14 +4,14 @@ import { AnchorProvider, Program } from '@anchor-lang/core'
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js'
 import { connection } from '../lib/program'
 import { signV1WithSession } from '../lib/transactions'
-import type { Jbl } from '../../../target/types/jbl'
-import IDL from '../../../target/idl/jbl.json'
+import type { Calma } from '../../../target/types/calma'
+import IDL from '../../../target/idl/calma.json'
 
 /**
  * Returns an Anchor Program wired to the currently connected wallet.
  * Returns null when no wallet is connected or it lacks signTransaction.
  */
-export function useAnchorProgram(): Program<Jbl> | null {
+export function useAnchorProgram(): Program<Calma> | null {
     const { connected, wallet } = useWalletConnection()
 
     return useMemo(() => {
@@ -28,6 +28,6 @@ export function useAnchorProgram(): Program<Jbl> | null {
         }
 
         const provider = new AnchorProvider(connection, anchorWallet, { commitment: 'confirmed' })
-        return new Program<Jbl>(IDL as unknown as Jbl, provider)
+        return new Program<Calma>(IDL as unknown as Calma, provider)
     }, [connected, wallet])
 }

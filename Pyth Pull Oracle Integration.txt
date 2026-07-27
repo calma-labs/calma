@@ -1,0 +1,116 @@
+â Pyth Pull Oracle Integration (Backend-First)                                                                        â
+â                                                                                                                     â
+â Context                                                                                                             â
+â                                                                                                                     â
+â programs/feed is a placeholder oracle: a Feed account stores one u64, an authority sets it via set_value, and programs/calma reads via CPI inside programs/calma/src/hooks/oracle.rs. The frontend WASM (crates/bindings/src/state.rs::FeedAccount) parses the same bytes and feeds the same u64 into math::Core so client-side LTV / health / liq_price replay the on-chain math.                                                      â
+â                                                                                                                     â
+â We want real prices. The pattern is Pyth Pull: an off-chain caller fetches a signed price update from Hermes and posts it to a PriceUpdateV2 account in one transaction; a second transaction reads that account and applies the price. We keep the feed program as the protocol's price interface â calma and the WASM bindings keep talking to feed â and teach feed to source its values from Pyth in addition to manual sets. Each Feed account is locked at create time to one source; one setter instruction per source. Only the on-chain side ships in this iteration; the React app does not yet need to post Hermes updates from the browser.                                                      â
+â                                                                                                                     â
+â Design                                                                                                              â
+â                                                                                                                     â
+â 1. Feed account: source discriminant + two prices + decimals (programs/feed/src/state.rs)                           â
+â                                                                                                                     â
+â #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]                                    â
+â #[repr(u8)]                                                                                                         â
+â pub enum PriceSource { Manual = 0, Pyth = 1 }                                                                       â
+â                                                                                        â
+â #[account]                                                                                                          â
+â pub struct Feed {                                                                                                   â
+â     pub authority: Pubkey,            // 32                                                                       pub source: PriceSource,          //                                               â
+â     pub bump: u8,                     // 1                                                                        pub collateral_decimals: u8,      //  ratio                                        â
+â     pub lend_decimals: u8,            // 1                                                                        pub _pad0: [u8; 4],               //                                               â
+â     pub collateral_price: u64,        // 8   normalized to PRICE_SCALE (1e6)                                      pub lend_price: u64,              //                                               â
+â     pub last_updated_ts: i64,         // 8   min(coll_pub_ts, lend_pub_ts)                                          â
+â     pub collateral_feed_id: [u8; 32], // 32  zeroed when source == Manual                                         pub lend_feed_id: [u8; 32],       //                                               â
+â     pub _reserved: [u8; 32],          // 32  future: max_conf_bps, exponents, etc.                                  â
+â }                                                                                                                   â
+â                                                                                                                     â
+â Keep seeds ["feed", authority] â Pool already stores the feed pubkey, so seed scheme is private to feed creatione authority can hold many feeds by bein caller side. Body grows 41 â 160 B; this is  âa breaking layout change.                                                                                                                                                                            â
+â 2. feed program instructions (programs/feed/src/instructions/)                                                                                                                                       â
+â - create(source, collateral_decimals, lend_decimals, collateral_feed_id, lend_feed_id) â sets source immutably. For Manual, require the feed IDs are zeroed. For Pyth, require both feed IDs non-zero. Initial prices left at 0; last_updated_ts left at 0 (forces a refre                                              â
+â - set_value(collateral_price, lend_price) â unchanged accounts (feed + authority signer with has_one). Add require!(feed.source == Manual). Reject zeros. Stamp Clock::get()?.unix_timestamp.                                  â
+â - set_from_pyth() (new, permissionless) â accounts: feed (mut), collateral_price_update: Account<'info, PriceUpdateV2>, lend_price_update: Account<'info, PriceUpdateV2>. No signer. Steps: require source == Pyth; for     â
+â each side call price_update.get_price_no_X_PYTH_AGE_SECS, &feed.<side>_feed_id) (the   âSDK call binds feed_id and owner); normalize via the helper below; write both prices; last_updated_ts =             â
+â min(coll.publish_time, lend.publish_time)t in feed (e.g.Â 60) â not a caller parameter, â so a stale poster can't widen the window.                                                                          â
+â - get_value() â change semantics: return st_updated_ts: i64 } via a new get_state()    âCPI; keep the old get_value() as a thin wrapper returning ratio for any external consumer. The ratio is decimal-adjusted in USD-space:                                                                                      â
+â ratio = collateral_price * 10^lend_decima                                              â
+â       / (lend_price * 10^collateral_decimals)                                                                       â
+â - All u128, checked_*. This is the single u64 math::Oracle::price() consumes.                                       â
+â                                                                                                                     â
+â 3. Pyth â PRICE_SCALE normalization (prog                                              â
+â                                                                                                                     â
+â Helper normalize(price: i64, exponent: i3                                              â
+â - Reject price <= 0.                                                                                                â
+â - Target scale 1e6. effective_exp = expon 10^effective_exp; if < 0, divide by          â10^(-effective_exp). All checked.                                                                                   â
+â - u64::try_from at the end; overflow â PriceOverflow.                                                               â
+â                                                                                        â
+â Confidence interval is read but only enforced as a soft cap in a follow-up â left in _reserved for now (risk noted below).                                                                                                             â
+â                                                                                        â
+â 4. Cargo dependency (programs/feed/Cargo.toml)                                                                      â
+â                                                                                                                     â
+â Add pyth-solana-receiver-sdk (latest, pinang doesn't line up with this repo's 1.0.x,   âvendor the PriceUpdateV2 struct + get_price_no_older_than into programs/feed/src/pyth_account.rs â that's ~100 LOC of plain Borsh + ownership check, no new transitive deps. Confirm at implementation time before pulling the SDK in. â
+â                                                                                                                     â
+â 5. Calma OracleState (programs/calma/src/hook                                              â
+â                                                                                                                     â
+â Swap the CPI from feed::cpi::get_value toBL-side staleness guard:                      â
+â                                                                                                                     â
+â const MAX_FEED_AGE_SECS: i64 = 90;                                                     â
+â                                                                                                                     â
+â let snap = feed::cpi::get_state(CpiContext::new(feed_program, GetState { feed: feed_state }))?.get();               â
+â require!(current_ts - snap.last_updated_tror::StaleOracle);                            â
+â Self { current_ts, price: snap.ratio }                                                                              â
+â                                                                                                                     â
+â math::Oracle is unchanged. No instruction, withdraw_collateral.rs,                     âborrow_with_hedge.rs, settle_rate_hedge_match.rs â they construct OracleState the same way.                         â
+â                                                                                                                     â
+â 6. WASM FeedAccount adapter (crates/bindings/src/state.rs)                                                          â
+â                                                                                        â
+â Update the byte parser to the new 160 B body. impl math::Oracle for FeedAccount::price() mirrors get_state's ratio  â
+â (same decimal-adjusted formula). Add wasmal_price, lend_price, last_updated_ts,        âsource, and the two feed IDs so the UI can show "live (Pyth)" vs "manual" without parsing bytes itself. No new      â
+â methods on PoolWithIrm â replay policy in preserved because the only input the math    âconsumes is still the single u64 ratio.                                                                             â
+â                                                                                                                     â
+â 7. LiteSVM mock (programs/calma/tests/commo                                              â
+â                                                                                                                     â
+â Cheapest path: do not build a fake Pyth program; instead svm.set_account a fabricated PriceUpdateV2 blob with owner = PYTH_RECEIVER_PROGRAM_ID. Helper signature:                                                                      â
+â                                                                                                                     â
+â fn write_pyth_price_update(                                                            â
+â     svm: &mut LiteSVM,                                                                                              â
+â     key: Pubkey,                                                                       â
+â     feed_id: [u8; 32],                                                                                              â
+â     price_i64: i64,                                                                                                 â
+â     exponent_i32: i32,                                                                 â
+â     publish_time: i64,                                                                                              â
+â );                                                                                                                  â
+â                                                                                                                     â
+â Layout: 8 B disc + 32 B write_authority + 1 B verification_level + PriceFeedMessage + 8 B posted_slot. MirrSDK's PriceUpdateV2 struct once with Ancht, not the dep).                              â
+â                                                                                                            Test files:                                                                            â
+â - Update programs/calma/tests/test_flow.rs â pass (source = Manual, decimals, zeroed feed_ids) to feed createset_value now takes two u64s; assert nothsult is the same since ratio with equal       âdecimals reduces to collateral_price * PRICE_SCALE / lend_price).                                                   â
+â - New programs/feed/tests/test_pyth_source.rs â create a Pyth feed, write two mock PriceUpdateV2 accounts, set_from_pyth, assert prices + last_updatalue on a Pyth feed errors and set_from_pyth  âon a Manual feed errors.                                                                                            â
+â                                                                                                            8. Devnet smoke test (outline only)                                                    â
+â                                                                                                                     â
+â tests/devnet/pyth_smoke.ts:                                                                                1. HermesClient.getLatestPriceUpdates([COVAA.                                          â
+â 2. pythSolanaReceiver.newTransactionBuilder({ closeUpdateAccounts: false }).addPostPriceUpdates(vaa) â returns the two persistent PriceUpdateV2 pubkeys + ixs. Send.                                                          3. Call our set_from_pyth referencing tho                                              â
+â 4. Fetch the feed account; assert collateral_price, lend_price, last_updated_ts non-zero and within MAX_PYTH_AGE_SECS.                                                                                         5. Run one borrow against a Pyth-source dend.                                          â
+â                                                                                                            9. Migration                                                                           â
+â                                                                                                            Breaking layout change. Bump nothing â keloy, recreate all devnet feed accounts and    âdevnet pools. Acceptable pre-launch. Existing target/idl/feed.json and TS clients regenerate from anchor bu                                                                                       â
+â Critical files                                                                                                      â
+â                                                                                                            - programs/feed/src/state.rs â Feed strucapshot.                                       â
+â - programs/feed/src/instructions/create.rs â accept source + decimals + feed IDs.                                   â
+â - programs/feed/src/instructions/set_value.rs â gate on Manual, two prices.                                - programs/feed/src/instructions/set_fromonless Pyth setter.                           â
+â - programs/feed/src/instructions/get_value.rs â return FeedSnapshot; add get_state accessor.                        â
+â - programs/feed/src/pyth.rs â Pyth Price â PRICE_SCALE normalizer.                                         - programs/feed/src/lib.rs â register new                                              â
+â - programs/feed/Cargo.toml â add pyth-solana-receiver-sdk (or vendor the struct).                                   â
+â - programs/calma/src/hooks/oracle.rs â swap CPI to get_state, add staleness guard.                           - crates/bindings/src/state.rs â new Feedted ratio in math::Oracle::price(), new       âgetters.                                                                                                            â
+â - programs/calma/tests/common.rs â write_pyth_price_update helper.                                           - programs/calma/tests/test_flow.rs â adaptatures.                                       â
+â - programs/feed/tests/test_pyth_source.rs â new test for Pyth source path + cross-source gating.           - tests/devnet/pyth_smoke.ts â new devnet                                              â
+â                                                                                                            Open risks / trade-offs                                                                â
+â                                                                                                                     â
+â 1. Confidence interval is ignored. Wide conf on thin assets (TSLAx, NVDAx, CRCLx) lets borrows go through onoisy mid. Reserved bytes hold space for                                               â
+â 2. last_updated_ts = min(coll, lend) is conservative. Slower side gates the pair â correct for safety, may force more frequent refreshes.                                                                                   3. Feed IDs are immutable post-create. A overable; mitigated by exposing both IDs      âthrough WASM so the UI can show the bound Pyth feed ID and an operator can sanity-check before going live.          â
+â 4. Permissionless set_from_pyth accepts whatever PriceUpdateV2 is passed. SDK validates owner and feed_id; our hard-coded MAX_PYTH_AGE_SECS blocks replayed-stale posts.                                                           â
+â 5. Decimals stored at feed-create time. If a pool ever swaps mints, the feed must be recreated â but pools swap mints today, so this is fine.                                                     â
+â 6. Frontend cannot yet post Pyth updates. Out of scope this iteration. A devnet keeper (script or scheduledposts updates; the React app's math readsxisting FeedAccount adapter.                  â
+â                                                                                                            Verification                                                                           â
+â                                                                                                                     â
+â 1. Cargo / Anchor build clean. anchor build from repo root; cargo check -p feed -p calma -p bindings.        2. Unit tests. cargo test -p calma --test tal source, asserts no math drift) and cargo   âtest -p feed --test test_pyth_source (new path, mock PriceUpdateV2, asserts price + cross-source gating + staleness rejection).                                                                                                        â
+â 3. WASM binding parses new layout. wasm-pack test --node for crates/bindings, or just hit a UI page with a Pyth-source pool on devnet and confirm LT                                              â
+â 4. Devnet smoke. Deploy feed + calma to devnet, create a Pyth-source feed (e.g. SOL/USD vs USDC/USD), run tests/devnet/pyth_smoke.ts, then run borrpool and confirm the transaction lands and    â

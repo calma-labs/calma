@@ -9,7 +9,7 @@ import {
 import { createMint } from "@solana/spl-token";
 import { expect } from "chai";
 import { Guard } from "../../target/types/guard";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
@@ -130,11 +130,11 @@ describe("guard program", () => {
   });
 });
 
-describe("jbl create with guard", () => {
+describe("calma create with guard", () => {
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const jblProgram = anchor.workspace.Jbl as Program<Jbl>;
+  const calmaProgram = anchor.workspace.Calma as Program<Calma>;
   const guardProgram = anchor.workspace.Guard as Program<Guard>;
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
   const irmProgram = anchor.workspace.Irm as Program<Irm>;
@@ -162,16 +162,27 @@ describe("jbl create with guard", () => {
 
     // Create the feed once (shared across both sub-tests).
     [feedPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("feed"), payer.publicKey.toBuffer()],
+      [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
       feedProgram.programId
     );
     if (!(await provider.connection.getAccountInfo(feedPda))) {
       await feedProgram.methods
-        .create()
-        .accounts({ authority: payer.publicKey, payer: payer.publicKey })
+        .create(
+          0,
+          { manual: {} },
+          Array(32).fill(0),
+          Array(32).fill(0),
+          { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
+        )
+        .accounts({ feed: feedPda, authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
         .signers([payer])
         .rpc();
     }
+    await feedProgram.methods
+      .setValue(new BN(1_000_000), new BN(1_000_000))
+      .accounts({ authority: payer.publicKey, feed: feedPda })
+      .signers([payer])
+      .rpc();
 
     // Deploy a guard owned by guardAuthority.
     guardPda = findGuardPda(guardAuthority.publicKey, guardProgram.programId);
@@ -182,7 +193,7 @@ describe("jbl create with guard", () => {
       .rpc();
   });
 
-  /** Shared helper: allocates pool account, initialises IRM, then calls jbl::create. */
+  /** Shared helper: allocates pool account, initialises IRM, then calls calma::create. */
   async function createPool(poolAuthority: Keypair, guard: { program: PublicKey; state: PublicKey } | null) {
     const poolKeypair = Keypair.generate();
     const pool = poolKeypair.publicKey;
@@ -193,7 +204,10 @@ describe("jbl create with guard", () => {
     );
 
     await irmProgram.methods
-      .initialize()
+      .initialize([
+        { utilBps: 0, rateBps: 0 },
+        { utilBps: 10_000, rateBps: 500 },
+      ])
       .accounts({ pool, authority: poolAuthority.publicKey, payer: payer.publicKey })
       .signers([payer, poolAuthority])
       .rpc();
@@ -204,11 +218,11 @@ describe("jbl create with guard", () => {
       newAccountPubkey: pool,
       lamports: poolRent,
       space: POOL_SPACE,
-      programId: jblProgram.programId,
+      programId: calmaProgram.programId,
     });
 
-    await jblProgram.methods
-      .create(75)
+    await calmaProgram.methods
+      .create(75, 90)
       .accounts({
         pool,
         collateralMint,

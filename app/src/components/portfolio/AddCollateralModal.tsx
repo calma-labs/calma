@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm, UserPositionAccount } from "@jbl/wasm-lib";
+import { parse_token_amount, type PoolWithIrm, type UserPositionAccount } from "@calma/wasm-lib";
 import { AlertTriangle, Info, Wallet, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -41,14 +41,14 @@ export function AddCollateralModal({
 
   const { projectedLTV, projectedHF } = useMemo(() => {
     if (numAmount <= 0) return { projectedLTV: null, projectedHF: null };
-    const addedRaw = BigInt(Math.round(numAmount * 10 ** collateralDecimals));
+    const addedRaw = parse_token_amount(amount, collateralDecimals) ?? 0n;
     const ltvBps = poolData.projected_ltv_after_deposit(userPosition, addedRaw);
     const hfBps = poolData.projected_health_factor_after_deposit(userPosition, addedRaw);
     return {
       projectedLTV: ltvBps != null ? ltvBps / 100 : null,
       projectedHF: hfBps != null ? hfBps / 10_000 : null,
     };
-  }, [numAmount, collateralDecimals, poolData, userPosition]);
+  }, [amount, numAmount, collateralDecimals, poolData, userPosition]);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();

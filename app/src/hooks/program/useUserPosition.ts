@@ -1,6 +1,6 @@
 import { type GetProgramAccountsFilter, PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { UserPositionAccount } from '@jbl/wasm-lib'
+import { UserPositionAccount } from '@calma/wasm-lib'
 import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 

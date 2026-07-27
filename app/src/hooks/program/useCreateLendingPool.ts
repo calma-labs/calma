@@ -1,30 +1,38 @@
 import { useWalletConnection } from '@solana/react-hooks'
-import {
-    createInitializeMint2Instruction,
-    getMinimumBalanceForRentExemptMint,
-    MINT_SIZE,
-    TOKEN_PROGRAM_ID,
-} from '@solana/spl-token'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
-
-const IRM_PROGRAM_ID = new PublicKey('irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk')
-const FEED_PROGRAM_ID = new PublicKey('orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4')
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, program as readonlyProgram } from '../../lib/program'
+import { connection, feedPda, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmProgram, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
-import { MINTER_KEYPAIR } from '../../store/wallet.store'
 
-/** Decimal precision for auto-generated mints. */
-const MINT_DECIMALS = 6
+/** Space needed for a Pool account (8-byte discriminator + zero-copy struct).
+ * Must stay in sync with the on-chain `POOL_SPACE` constant exported by calma.
+ * Source of truth: `target/idl/calma.json` → constants[name=POOL_SPACE].value */
+const POOL_SPACE = 49_528
 
-/** Space needed for a Pool account (8-byte discriminator + zero-copy struct). */
-const POOL_SPACE = 41_256
+export interface IrmRatePointInput {
+    /** Utilization in basis points (0..=10_000). First point must be 0. */
+    utilBps: number
+    /** Borrow rate in basis points. */
+    rateBps: number
+}
 
 export interface CreatePoolParams {
+    collateralMint: PublicKey
+    lendMint: PublicKey
     ltvPercent?: number
+    /** Max age (seconds) a Pyth price may have when borrowing/withdrawing. */
+    maxFeedAgeSecs?: number
+    /** 2..=4 rate curve points. Defaults to the on-chain `DEFAULT_POINTS` if omitted. */
+    ratePoints?: IrmRatePointInput[]
 }
+
+const DEFAULT_RATE_POINTS: IrmRatePointInput[] = [
+    { utilBps: 0, rateBps: 50 },
+    { utilBps: 9500, rateBps: 450 },
+    { utilBps: 10000, rateBps: 1000 },
+]
 
 export interface CreatePoolResult {
     poolAddress: PublicKey
@@ -37,72 +45,38 @@ async function createPool(
     wallet: Parameters<typeof signAndSendV1>[1],
     payer: PublicKey,
 ): Promise<CreatePoolResult> {
-    const collateralMintKeypair = Keypair.generate()
-    const lendMintKeypair = Keypair.generate()
     const poolKeypair = Keypair.generate()
-
-    // Step 1: create and initialize both SPL mints in a single transaction
-    const mintLamports = await getMinimumBalanceForRentExemptMint(connection)
-
-    await handleTransaction(
-        async () => {
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash()
-            const tx = new Transaction({ blockhash, lastValidBlockHeight, feePayer: payer })
-            tx.add(
-                SystemProgram.createAccount({
-                    fromPubkey: payer,
-                    newAccountPubkey: collateralMintKeypair.publicKey,
-                    space: MINT_SIZE,
-                    lamports: mintLamports,
-                    programId: TOKEN_PROGRAM_ID,
-                }),
-                createInitializeMint2Instruction(
-                    collateralMintKeypair.publicKey,
-                    MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey,
-                    null,
-                ),
-                SystemProgram.createAccount({
-                    fromPubkey: payer,
-                    newAccountPubkey: lendMintKeypair.publicKey,
-                    space: MINT_SIZE,
-                    lamports: mintLamports,
-                    programId: TOKEN_PROGRAM_ID,
-                }),
-                createInitializeMint2Instruction(
-                    lendMintKeypair.publicKey,
-                    MINT_DECIMALS,
-                    MINTER_KEYPAIR.publicKey,
-                    null,
-                ),
-            )
-            tx.partialSign(collateralMintKeypair, lendMintKeypair)
-            return tx
-        },
-        wallet,
-        { loadingMessage: 'Creating token mints…', successMessage: 'Mints created' },
-    )
-
-    // Step 2: pre-allocate pool account + initialize the pool in a single transaction
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
+    const maxFeedAgeSecs = params.maxFeedAgeSecs ?? 90
 
     const [irmState] = PublicKey.findProgramAddressSync(
         [Buffer.from('irm_config'), poolKeypair.publicKey.toBuffer()],
         IRM_PROGRAM_ID,
     )
 
-    const [feedState] = PublicKey.findProgramAddressSync(
-        [Buffer.from('feed'), payer.toBuffer()],
-        FEED_PROGRAM_ID,
-    )
+    const feedState = feedPda(params.collateralMint, params.lendMint)
 
-    const createIx = await readonlyProgram.methods
-        .create(ltvPercent)
+    const ratePoints = (params.ratePoints ?? DEFAULT_RATE_POINTS).map((p) => ({
+        utilBps: p.utilBps,
+        rateBps: p.rateBps,
+    }))
+
+    const irmInitIx = await irmProgram.methods
+        .initialize(ratePoints)
         .accounts({
             pool: poolKeypair.publicKey,
-            collateralMint: collateralMintKeypair.publicKey,
-            lendMint: lendMintKeypair.publicKey,
+            authority: payer,
+            payer,
+        })
+        .instruction()
+
+    const createIx = await readonlyProgram.methods
+        .create(ltvPercent, maxFeedAgeSecs)
+        .accounts({
+            pool: poolKeypair.publicKey,
+            collateralMint: params.collateralMint,
+            lendMint: params.lendMint,
             authority: payer,
             payer,
             feedProgram: FEED_PROGRAM_ID,
@@ -126,6 +100,7 @@ async function createPool(
                     lamports: poolLamports,
                     programId: readonlyProgram.programId,
                 }),
+                irmInitIx,
                 createIx,
             )
             tx.partialSign(poolKeypair)
@@ -137,8 +112,8 @@ async function createPool(
 
     return {
         poolAddress: poolKeypair.publicKey,
-        collateralMint: collateralMintKeypair.publicKey,
-        lendMint: lendMintKeypair.publicKey,
+        collateralMint: params.collateralMint,
+        lendMint: params.lendMint,
     }
 }
 

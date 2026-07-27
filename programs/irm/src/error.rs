@@ -4,8 +4,8 @@ use anchor_lang::prelude::*;
 pub enum ErrorCode {
     #[msg("Math overflow")]
     MathOverflow,
-    #[msg("Curve index out of range (must be 0..3)")]
-    InvalidCurveIndex,
+    #[msg("Invalid point list (need 2..=4 points, first util_bps==0, strictly increasing util_bps)")]
+    InvalidPointList,
     #[msg("Signer is not the IRM authority")]
     Unauthorized,
 }

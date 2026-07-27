@@ -1,8 +1,8 @@
+import { useTokenBalance } from "@/hooks/useWalletBalances";
 import { cn } from "@/lib/utils";
+import { PublicKey } from "@solana/web3.js";
 import { Info, Wallet, X } from "lucide-react";
-import { useState } from "react";
-
-const MOCK_WALLET_BALANCE = 5_000;
+import { useMemo, useState } from "react";
 
 export interface SupplyMorePosition {
   asset: string;
@@ -10,6 +10,8 @@ export interface SupplyMorePosition {
   supplied: number;
   apy: number;
   collateralEnabled: boolean;
+  /** Mint of the supplied asset — used to read the real wallet balance. */
+  mint: string;
 }
 
 interface SupplyMoreModalProps {
@@ -26,8 +28,11 @@ export function SupplyMoreModal({
 }: SupplyMoreModalProps) {
   const [amount, setAmount] = useState("");
 
+  const mint = useMemo(() => new PublicKey(position.mint), [position.mint]);
+  const balanceToken = useTokenBalance(mint);
+  const walletBalance = balanceToken?.uiAmount ?? 0;
+
   const numAmount = parseFloat(amount) || 0;
-  const walletBalance = MOCK_WALLET_BALANCE;
   const totalAfter = position.supplied + numAmount;
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {

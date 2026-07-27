@@ -8,7 +8,9 @@
 //! Both AMD64 (server) and wasm32 (client) are little-endian, so no
 //! byte-swapping is required.
 
+use anchor_lang::AccountDeserialize;
 use bytemuck::Pod;
+use feed_state::Feed;
 use irm_state::IrmState;
 use math::{Clock, Core};
 use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
@@ -27,14 +29,14 @@ pub struct UserPositionAccount(pub(crate) UserPosition);
 /// Wasm-exposed wrapper around a parsed `IrmConfig` account from the irm program.
 #[wasm_bindgen]
 pub struct IrmConfigAccount(IrmState);
-/// Wasm-exposed wrapper around a parsed `Feed` account from the feed program.
+/// Wasm-exposed wrapper around a `PiecewiseLinearModel` — a 2..=4 point
+/// utilization → rate curve.  Constructed from parallel `utils` / `rates`
+/// arrays; `rate_bps` replays the on-chain evaluator exactly.
+#[wasm_bindgen]
+pub struct RatePointsAccount(irm_state::PiecewiseLinearModel);
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
-pub struct FeedAccount {
-    authority: [u8; 32],
-    pub value: u64,
-    pub bump: u8,
-}
+pub struct FeedAccount(pub(crate) Feed);
 pub struct RateHedgeOfferAccount(pub RateHedgeOffer);
 pub struct RateHedgeMatchAccount(pub RateHedgeMatch);
 
@@ -131,6 +133,24 @@ impl PoolAccount {
         self.0.lp_mint_bump
     }
 
+    /// Configured maximum age (seconds) the oracle feed may lag the current
+    /// clock before borrows / withdrawals reject the price as stale.
+    #[wasm_bindgen(getter)]
+    pub fn max_feed_age_secs(&self) -> u32 {
+        self.0.max_feed_age_secs
+    }
+
+    /// Delegates to `state::Pool::is_feed_snapshot_stale`. Given the feed's
+    /// on-chain `last_updated_ts` and the expected clock at borrow-tx landing,
+    /// returns `true` iff `borrow` / `withdraw_collateral` / `borrow_with_hedge`
+    /// would reject the price as `StaleOracle`. Distinct from
+    /// `FeedAccount::is_pyth_price_stale`, which only asks whether a *fresh
+    /// Hermes update* could be posted; the on-chain snapshot may still be
+    /// valid on its own.
+    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
+        self.0.is_feed_snapshot_stale(feed_last_updated_ts, clock_ts)
+    }
+
     /// IRM state (IRM config) pubkey as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn irm_state(&self) -> Vec<u8> {
@@ -223,7 +243,7 @@ impl UserPositionAccount {
     /// Human-readable collateral amount as a decimal string (e.g. `"1234.5678"`).
     /// Trailing zeros are trimmed; at most 6 decimal places are shown.
     pub fn format_collateral(&self, decimals: u8) -> String {
-        format_token_amount(self.0.collateral_deposited, decimals)
+        format_token_capped(self.0.collateral_deposited, decimals)
     }
 
     // NOTE: debt-derived metrics (debt amount, LTV, health factor, liquidation
@@ -231,6 +251,78 @@ impl UserPositionAccount {
     // `PoolWithIrm` (which carries the IRM) and are computed by replaying `Core`
     // — see `PoolWithIrm::debt_amount`, `ltv`, `health_factor`, `liq_price`,
     // `max_borrowable`, `format_debt`.
+}
+
+#[wasm_bindgen]
+impl RatePointsAccount {
+    /// Build from parallel `utils` (u16, 0..=10_000) and `rates` (u32 bps) arrays.
+    ///
+    /// Validates the on-chain invariants once, so `rate_bps` afterwards performs
+    /// zero checks (hot path — CU/perf matters).
+    ///
+    /// Returns `None` if any invariant fails:
+    ///   * `utils.len() == rates.len()`
+    ///   * length in `2..=4`
+    ///   * `utils[0] == 0`
+    ///   * `utils` strictly increasing
+    pub fn from_arrays(utils: Vec<u16>, rates: Vec<u32>) -> Option<RatePointsAccount> {
+        if utils.len() != rates.len() {
+            return None;
+        }
+        let len = utils.len();
+        if !(irm_state::MIN_POINTS..=irm_state::MAX_POINTS).contains(&len) {
+            return None;
+        }
+        if utils[0] != 0 {
+            return None;
+        }
+        for i in 1..len {
+            if utils[i] <= utils[i - 1] {
+                return None;
+            }
+        }
+
+        let mut points = [irm_state::RatePoint::default(); irm_state::MAX_POINTS];
+        for i in 0..len {
+            points[i] = irm_state::RatePoint::new(utils[i], rates[i]);
+        }
+        Some(RatePointsAccount(irm_state::PiecewiseLinearModel {
+            points,
+            len: len as u8,
+            _pad: [0; 7],
+        }))
+    }
+
+    /// Effective borrow rate in basis points at `utilization_bps`.
+    /// Delegates to `PiecewiseLinearModel::get_fee_bps` — no client-side math.
+    pub fn rate_bps(&self, utilization_bps: u64) -> u32 {
+        self.0.get_fee_bps(utilization_bps)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn len(&self) -> u8 {
+        self.0.len
+    }
+
+    /// Utilization (bps) of the point at index `i`. Returns 0 if `i >= len`.
+    pub fn util_at(&self, i: u8) -> u16 {
+        let idx = i as usize;
+        if idx >= self.0.len as usize {
+            0
+        } else {
+            self.0.points[idx].util_bps
+        }
+    }
+
+    /// Rate (bps) of the point at index `i`. Returns 0 if `i >= len`.
+    pub fn rate_at(&self, i: u8) -> u32 {
+        let idx = i as usize;
+        if idx >= self.0.len as usize {
+            0
+        } else {
+            self.0.points[idx].rate_bps
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -251,63 +343,157 @@ impl IrmConfigAccount {
         self.0.model.get_fee_bps(utilization_bps)
     }
 
-    /// Slope coefficient (a) for the given curve index (0–3).
-    pub fn fee_curve_a(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a)
+    /// Number of live rate points (2..=4).
+    pub fn points_len(&self) -> u8 {
+        self.0.model.len
     }
 
-    /// Base rate (b) for the given curve index (0–3).
-    pub fn fee_curve_b(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.b)
+    /// Utilization (bps) of the point at index `i`. Returns 0 if `i >= points_len()`.
+    pub fn point_util(&self, i: u8) -> u16 {
+        let idx = i as usize;
+        if idx >= self.0.model.len as usize {
+            0
+        } else {
+            self.0.model.points[idx].util_bps
+        }
     }
 
-    /// Post-kink slope (a2) for the given curve index (0–3).
-    pub fn fee_curve_a2(&self, curve: u8) -> i64 {
-        self.0.model.curves.get(curve as usize).map_or(0, |c| c.a2)
-    }
-
-    /// Kink point in utilization basis points (0..=10_000) for the given curve index (0–3).
-    pub fn fee_curve_kink(&self, curve: u8) -> u64 {
-        self.0
-            .model
-            .curves
-            .get(curve as usize)
-            .map_or(0, |c| c.kink)
-    }
-
-    /// Whether the given curve index (0–3) is enabled (non-zero = enabled).
-    pub fn fee_curve_enabled(&self, curve: u8) -> u8 {
-        self.0
-            .model
-            .curves
-            .get(curve as usize)
-            .map_or(0, |c| c.enabled)
+    /// Rate (bps) of the point at index `i`. Returns 0 if `i >= points_len()`.
+    pub fn point_rate(&self, i: u8) -> u32 {
+        let idx = i as usize;
+        if idx >= self.0.model.len as usize {
+            0
+        } else {
+            self.0.model.points[idx].rate_bps
+        }
     }
 }
 
 #[wasm_bindgen]
 impl FeedAccount {
     /// Parse from raw Anchor account bytes (8-byte discriminator included).
-    /// The body must be exactly 41 bytes: 32 (authority) + 8 (value) + 1 (bump).
+    /// Deserializes via Borsh through the shared `feed_state::Feed` type.
     pub fn from_bytes(account_data: &[u8]) -> Option<FeedAccount> {
-        let body = account_data.get(DISCRIMINATOR..)?;
-        if body.len() != 41 {
-            return None;
-        }
-        let authority = body[..32].try_into().ok()?;
-        let value = u64::from_le_bytes(body[32..40].try_into().ok()?);
-        let bump = body[40];
-        Some(FeedAccount {
-            authority,
-            value,
-            bump,
-        })
+        let mut data = account_data;
+        Feed::try_deserialize(&mut data).ok().map(FeedAccount)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn collateral_price(&self) -> u64 {
+        self.0.state.collateral_price
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lend_price(&self) -> u64 {
+        self.0.state.lend_price
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn last_updated_ts(&self) -> i64 {
+        self.0.state.last_updated_ts
+    }
+
+    /// Raw `PriceSource` discriminant:
+    /// - `0` = Manual (authority sets prices directly)
+    /// - `1` = Pyth (pull; `*_feed_id` are Pyth feed_id hashes; ephemeral `PriceUpdateV2`)
+    /// - `2` = PythPush (sponsored push; `*_feed_id` are the sponsored `PriceUpdateV2` account pubkeys)
+    #[wasm_bindgen(getter)]
+    pub fn source(&self) -> u8 {
+        self.0.config.source as u8
+    }
+
+    /// True when the feed is bound to a sponsored Pyth push feed (`PriceSource::PythPush`).
+    #[wasm_bindgen(getter)]
+    pub fn is_push(&self) -> bool {
+        self.0.config.source == feed_state::PriceSource::PythPush
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn bump(&self) -> u8 {
+        self.0.config.bump
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn max_age_ms(&self) -> u32 {
+        self.0.rules.max_age_ms
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn collateral_decimals(&self) -> u8 {
+        self.0.data.collateral_decimals
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lend_decimals(&self) -> u8 {
+        self.0.data.lend_decimals
     }
 
     /// Authority pubkey as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn authority(&self) -> Vec<u8> {
-        self.authority.to_vec()
+        self.0.config.authority.to_bytes().to_vec()
+    }
+
+    /// Collateral mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
+    #[wasm_bindgen(getter)]
+    pub fn collateral_mint(&self) -> Vec<u8> {
+        self.0.collateral_mint.to_bytes().to_vec()
+    }
+
+    /// Lend mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
+    #[wasm_bindgen(getter)]
+    pub fn lend_mint(&self) -> Vec<u8> {
+        self.0.lend_mint.to_bytes().to_vec()
+    }
+
+    /// Collateral Pyth feed ID as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn collateral_feed_id(&self) -> Vec<u8> {
+        self.0.config.collateral_feed_id.to_vec()
+    }
+
+    /// Lend Pyth feed ID as raw 32 bytes.
+    #[wasm_bindgen(getter)]
+    pub fn lend_feed_id(&self) -> Vec<u8> {
+        self.0.config.lend_feed_id.to_vec()
+    }
+
+    /// Max Pyth confidence as fraction of price, in bps. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_conf_bps(&self) -> u16 {
+        self.0.rules.max_conf_bps
+    }
+
+    /// Time-scaled deviation budget in bps per hour. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_deviation_bps_per_hour(&self) -> u16 {
+        self.0.rules.max_deviation_bps_per_hour
+    }
+
+    /// Max allowed divergence between spot and Pyth EMA in bps. `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn ema_divergence_bps(&self) -> u16 {
+        self.0.rules.ema_divergence_bps
+    }
+
+    /// Absolute floor on normalized price (PRICE_SCALE units). `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn min_price(&self) -> u64 {
+        self.0.rules.min_price
+    }
+
+    /// Absolute ceiling on normalized price (PRICE_SCALE units). `0` = disabled.
+    #[wasm_bindgen(getter)]
+    pub fn max_price(&self) -> u64 {
+        self.0.rules.max_price
+    }
+
+    /// Delegates to `feed_state::Feed::is_pyth_price_stale`. Callers pass their
+    /// expected `set_from_pyth[_push]` landing time (usually `now +
+    /// tx_confirmation_margin`) so the UI can predict `PriceTooOld` /
+    /// `StalePushPrice` and disable the action before spending a transaction.
+    pub fn is_pyth_price_stale(&self, publish_time: i64, clock_ts: i64) -> bool {
+        self.0.is_pyth_price_stale(publish_time, clock_ts)
     }
 }
 
@@ -322,7 +508,35 @@ impl FeedAccount {
 
 impl math::Oracle for FeedAccount {
     fn price(&self) -> u64 {
-        self.value
+        if self.0.state.lend_price == 0 {
+            return 0;
+        }
+        let coll_price = self.0.state.collateral_price as u128;
+        let lend_price = self.0.state.lend_price as u128;
+        let coll_dec_pow = match 10u128.checked_pow(self.0.data.collateral_decimals as u32) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let lend_dec_pow = match 10u128.checked_pow(self.0.data.lend_decimals as u32) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let numerator = match coll_price
+            .checked_mul(lend_dec_pow)
+            .and_then(|v| v.checked_mul(math::PRICE_SCALE))
+        {
+            Some(v) => v,
+            None => return 0,
+        };
+        let denominator = match lend_price.checked_mul(coll_dec_pow) {
+            Some(v) if v > 0 => v,
+            _ => return 0,
+        };
+        let ratio_u128 = match numerator.checked_div(denominator) {
+            Some(v) => v,
+            None => return 0,
+        };
+        u64::try_from(ratio_u128).unwrap_or(0)
     }
 }
 
@@ -517,13 +731,17 @@ impl PoolWithIrm {
             .map(|(amount, _)| amount)
     }
 
-    /// Maximum borrowable amount (raw lend units) for `position` at the pool's
-    /// LTV — same formula as the on-chain borrow check.
+    /// Maximum gross borrowable amount (raw lend units) for `position` at the
+    /// pool's LTV and current oracle price — the exact ceiling the on-chain
+    /// borrow check enforces via `Core::max_borrow_capacity`. Collateral value is
+    /// converted to lend units through the feed price; callers subtract
+    /// `debt_amount` for remaining headroom.
     pub fn max_borrowable(&self, position: &UserPositionAccount) -> u64 {
-        math::max_borrowable(
-            position.0.collateral_deposited,
-            self.pool.0.market.ltv_percent,
-        )
+        let core = Core::new(self.pool.0.market)
+            .with_position(position.0)
+            .with_oracle(self.feed);
+        let oracle_price = core.oracle_price();
+        core.max_borrow_capacity(position.0.collateral_deposited, oracle_price)
     }
 
     /// Loan-to-Value of `position` in basis points, using accrued debt.
@@ -555,7 +773,7 @@ impl PoolWithIrm {
     /// Human-readable debt of `position` as a decimal string, using accrued debt.
     pub fn format_debt(&self, position: &UserPositionAccount, decimals: u8) -> String {
         let amount = self.debt_amount(position).unwrap_or(0);
-        format_token_amount(amount, decimals)
+        format_token_capped(amount, decimals)
     }
 
     /// Net APY of a leveraged position at the given `leverage` multiple, in percent.
@@ -672,6 +890,11 @@ impl PoolWithIrm {
         self.pool.lp_mint_bump()
     }
 
+    #[wasm_bindgen(getter)]
+    pub fn max_feed_age_secs(&self) -> u32 {
+        self.pool.max_feed_age_secs()
+    }
+
     pub fn pending_withdrawals(&self) -> u64 {
         self.pool.pending_withdrawals()
     }
@@ -682,6 +905,32 @@ impl PoolWithIrm {
 
     pub fn available_liquidity(&self) -> u64 {
         self.pool.available_liquidity()
+    }
+
+    /// Max leverage a single flash-loop can reach for this pool.
+    ///
+    /// The borrow gate caps debt at `collateral × (oracle_price/PRICE_SCALE) × ltv`
+    /// (`Core::max_borrow_capacity`). The loop ends at token ratio `(L−1)/L`
+    /// collateral→debt, so the gate binds when `L ≤ 1/(1 − p·LTV)` where
+    /// `p = oracle_price / PRICE_SCALE`. A 1% safety margin is applied and the
+    /// result is floored to 0.1 steps so the slider ceiling never reverts on-chain.
+    /// Returns 30.0 when the effective LTV ≥ 1 (degenerate ceiling).
+    pub fn max_leverage(&self) -> f64 {
+        let ltv_percent = self.pool.0.market.ltv_percent as f64;
+        if ltv_percent <= 0.0 {
+            return 1.0;
+        }
+        let oracle_price = self.oracle_price() as f64;
+        let price_factor = if oracle_price > 0.0 {
+            oracle_price / math::PRICE_SCALE as f64
+        } else {
+            1.0
+        };
+        let eff_ltv = (ltv_percent / 100.0) * price_factor;
+        if eff_ltv >= 1.0 {
+            return 30.0;
+        }
+        f64::max(1.0, (1.0 / (1.0 - eff_ltv) * 0.99 * 10.0).floor() / 10.0)
     }
 
     /// Net APY in basis points for a leveraged position at the given leverage.
@@ -708,6 +957,120 @@ impl RateHedgeMatchAccount {
     }
 }
 
+// ── feed freshness ────────────────────────────────────────────────────────────
+
+/// Result of the combined feed freshness check — both the on-chain snapshot
+/// gate and the Hermes-price gate. Produced by [`FeedFreshnessResult::check`].
+#[wasm_bindgen]
+pub struct FeedFreshnessResult {
+    /// True when borrow/withdraw would revert `StaleOracle` and a Hermes refresh
+    /// cannot fix it (source isn't pull-Pyth, or Hermes prices are themselves too old).
+    pub will_fail: bool,
+    /// True when the on-chain snapshot exceeds `pool.max_feed_age_secs`.
+    pub snapshot_stale: bool,
+    /// Seconds since the on-chain snapshot was last written.
+    pub snapshot_age_secs: i64,
+    /// True when the collateral Hermes price is too old for `feed.rules.max_age_ms`.
+    pub hermes_coll_stale: bool,
+    /// True when the lend Hermes price is too old for `feed.rules.max_age_ms`.
+    pub hermes_lend_stale: bool,
+    /// Age (seconds) of the collateral Hermes price. 0 when unavailable.
+    pub hermes_coll_age_secs: i64,
+    /// Age (seconds) of the lend Hermes price. 0 when unavailable.
+    pub hermes_lend_age_secs: i64,
+    /// Pool-level max feed age in seconds (for display).
+    pub pool_max_age_secs: u32,
+    /// Feed-level Pyth max age in seconds, derived from `rules.max_age_ms` (for display).
+    pub feed_max_age_secs: u32,
+}
+
+#[wasm_bindgen]
+impl FeedFreshnessResult {
+    /// Evaluate the full feed freshness state.
+    ///
+    /// * `pool` – parsed pool account
+    /// * `feed` – parsed feed account
+    /// * `coll_hermes_ts` – Hermes `publish_time` for the collateral side (Unix seconds);
+    ///   pass `0` when unavailable or when the feed is not pull-Pyth.
+    /// * `lend_hermes_ts` – same for the lend side.
+    /// * `now` – current Unix timestamp in seconds.
+    ///
+    /// When `snapshot_stale` is false the Hermes timestamps are ignored and both
+    /// Hermes fields are returned as `false`/`0`. The caller is therefore free to
+    /// skip the Hermes fetch entirely when the snapshot is fresh — call `check`
+    /// once with `0, 0` to obtain the snapshot result, and only fetch Hermes (and
+    /// call `check` again with real timestamps) when `snapshot_stale` is true.
+    pub fn check(
+        pool: &PoolAccount,
+        feed: &FeedAccount,
+        coll_hermes_ts: i64,
+        lend_hermes_ts: i64,
+        now: i64,
+    ) -> FeedFreshnessResult {
+        let snapshot_age_secs = now.saturating_sub(feed.0.state.last_updated_ts);
+        let snapshot_stale = pool.0.is_feed_snapshot_stale(feed.0.state.last_updated_ts, now);
+        let pool_max_age_secs = pool.0.max_feed_age_secs;
+        let feed_max_age_secs = feed.0.rules.max_age_ms / 1000;
+
+        if !snapshot_stale {
+            return FeedFreshnessResult {
+                will_fail: false,
+                snapshot_stale: false,
+                snapshot_age_secs,
+                hermes_coll_stale: false,
+                hermes_lend_stale: false,
+                hermes_coll_age_secs: 0,
+                hermes_lend_age_secs: 0,
+                pool_max_age_secs,
+                feed_max_age_secs,
+            };
+        }
+
+        // Stale snapshot, but the source can't be refreshed by the app.
+        if feed.0.config.source != feed_state::PriceSource::Pyth {
+            return FeedFreshnessResult {
+                will_fail: true,
+                snapshot_stale: true,
+                snapshot_age_secs,
+                hermes_coll_stale: false,
+                hermes_lend_stale: false,
+                hermes_coll_age_secs: 0,
+                hermes_lend_age_secs: 0,
+                pool_max_age_secs,
+                feed_max_age_secs,
+            };
+        }
+
+        // Stale snapshot + pull-Pyth: check whether Hermes prices are fresh enough.
+        let hermes_coll_stale =
+            coll_hermes_ts == 0 || feed.0.is_pyth_price_stale(coll_hermes_ts, now);
+        let hermes_lend_stale =
+            lend_hermes_ts == 0 || feed.0.is_pyth_price_stale(lend_hermes_ts, now);
+        let hermes_coll_age_secs = if coll_hermes_ts == 0 {
+            0
+        } else {
+            now.saturating_sub(coll_hermes_ts)
+        };
+        let hermes_lend_age_secs = if lend_hermes_ts == 0 {
+            0
+        } else {
+            now.saturating_sub(lend_hermes_ts)
+        };
+
+        FeedFreshnessResult {
+            will_fail: hermes_coll_stale || hermes_lend_stale,
+            snapshot_stale: true,
+            snapshot_age_secs,
+            hermes_coll_stale,
+            hermes_lend_stale,
+            hermes_coll_age_secs,
+            hermes_lend_age_secs,
+            pool_max_age_secs,
+            feed_max_age_secs,
+        }
+    }
+}
+
 // ── standalone display helpers ────────────────────────────────────────────────
 
 /// Effective leverage of a position in basis points: `collateral / (collateral − debt) × 10_000`.
@@ -723,15 +1086,17 @@ pub fn position_leverage_bps(collateral: u64, debt: u64) -> u32 {
 
 // ── formatting helpers ────────────────────────────────────────────────────────
 
-/// Converts a raw token amount to a human-readable decimal string.
-/// Trims trailing fractional zeros and caps output at 6 decimal places.
+/// Converts a raw token amount to a human-readable decimal string, capped at 6
+/// decimal places for compact display. Trims trailing fractional zeros. This is
+/// lossy past 6 places — use [`format_token_amount`] for values that must round
+/// back to the same raw amount (e.g. filling an input).
 ///
 /// Examples (decimals = 6):
 ///   1_000_000 → "1"
 ///   1_500_000 → "1.5"
 ///   1_234_567 → "1.234567"
 ///   1_234_560 → "1.23456"
-fn format_token_amount(raw: u64, decimals: u8) -> String {
+fn format_token_capped(raw: u64, decimals: u8) -> String {
     if decimals == 0 {
         return raw.to_string();
     }
@@ -749,6 +1114,73 @@ fn format_token_amount(raw: u64, decimals: u8) -> String {
         return whole.to_string();
     }
     format!("{}.{}", whole, trimmed)
+}
+
+// ── exact token-amount conversions (frontend I/O) ─────────────────────────────
+//
+// Base-10 scaling between a UI decimal string and raw integer minor units. These
+// live here (not in the app) so the browser never re-expresses the on-chain
+// integer/decimal convention in its own JS float math — the same reason protocol
+// math replays `Core`. They are exact and round-trip: `parse_token_amount` floors
+// exactly like the chain, `format_token_amount` reproduces the full value.
+
+/// Parse a UI decimal string (e.g. `"12.345"`) into raw integer units for a mint
+/// with `decimals` places. Excess fractional digits are truncated (floored),
+/// never rounded up, so the result never exceeds what the user typed. Blank input
+/// is `0`. Returns `None` on malformed input (non-digits, a sign, exponent) or on
+/// `u64` overflow; callers treat that as "no amount". Plain decimal notation only.
+#[wasm_bindgen]
+pub fn parse_token_amount(value: &str, decimals: u8) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Some(0);
+    }
+    let (int_part, frac_part) = trimmed.split_once('.').unwrap_or((trimmed, ""));
+    let int_digits = if int_part.is_empty() { "0" } else { int_part };
+    if !int_digits.bytes().all(|b| b.is_ascii_digit())
+        || !frac_part.bytes().all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let dec = decimals as usize;
+    let frac_trunc = &frac_part[..dec.min(frac_part.len())];
+    let mut combined = String::with_capacity(int_digits.len() + dec);
+    combined.push_str(int_digits);
+    combined.push_str(frac_trunc);
+    for _ in frac_trunc.len()..dec {
+        combined.push('0');
+    }
+    combined.parse::<u64>().ok()
+}
+
+/// Format raw integer units into an exact UI decimal string with up to `decimals`
+/// places, trimming only trailing fractional zeros. Inverse of
+/// [`parse_token_amount`], so it is safe for filling input fields (e.g. a "Max"
+/// button) where the string must map back to the same raw amount.
+#[wasm_bindgen]
+pub fn format_token_amount(raw: u64, decimals: u8) -> String {
+    let dec = decimals as usize;
+    if dec == 0 {
+        return raw.to_string();
+    }
+    let padded = format!("{:0>width$}", raw, width = dec + 1);
+    let split = padded.len() - dec;
+    let int_part = &padded[..split];
+    let frac_part = padded[split..].trim_end_matches('0');
+    if frac_part.is_empty() {
+        int_part.to_string()
+    } else {
+        format!("{int_part}.{frac_part}")
+    }
+}
+
+/// Convert raw integer units to an `f64` for display, charts, and float math.
+/// Routed through the exact decimal string so the result is the correctly-rounded
+/// double in one step (unlike `raw / 10^decimals`, which rounds twice and drifts
+/// past 2^53). Lossy — never use the result to reconstruct an on-chain amount.
+#[wasm_bindgen]
+pub fn token_amount_to_f64(raw: u64, decimals: u8) -> f64 {
+    format_token_amount(raw, decimals).parse::<f64>().unwrap_or(0.0)
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -818,9 +1250,13 @@ mod tests {
     // ── PoolWithIrm helpers ───────────────────────────────────────────────────
 
     /// Build minimal valid wire bytes for a Feed account (all fields zeroed).
+    /// `FeedAccount::from_bytes` deserializes via Anchor's `try_deserialize`,
+    /// which validates the account discriminator — so it must be the real one,
+    /// not a filler. A zeroed body is a valid `Manual` feed (source = 0).
     fn feed_wire() -> Vec<u8> {
-        let mut v = vec![0u8; DISCRIMINATOR + 41];
-        v[..DISCRIMINATOR].fill(0xAA);
+        use anchor_lang::Discriminator;
+        let mut v = vec![0u8; DISCRIMINATOR + 225];
+        v[..DISCRIMINATOR].copy_from_slice(&Feed::DISCRIMINATOR);
         v
     }
 
@@ -840,13 +1276,14 @@ mod tests {
 
     // IrmState field offsets:
     //   0..31   : pool Pubkey
-    //   32..191 : model (PiecewiseLinearModel = 4 × LinearSegment = 4 × 40 B)
-    //     LinearSegment layout: a(i64) b(i64) a2(i64) kink(u64) enabled(u8) _pad[7]
-    //     Curve 0 starts at byte 32 of IrmState body
-    //   192..223 : authority Pubkey
-    //   224      : bump
-    //   225..231 : _pad[7]
-    const IRM_CURVE0_OFFSET: usize = 32; // relative to IrmState body (after discriminator)
+    //   32..71  : model (PiecewiseLinearModel = [RatePoint; 4] + len(u8) + _pad[7])
+    //     RatePoint layout: rate_bps(u32) util_bps(u16) _pad[2]  (8 bytes)
+    //     model.points starts at byte 32; model.len at byte 32 + 32 = 64
+    //   72..103 : authority Pubkey
+    //   104     : bump
+    //   105..111: _pad[7]
+    const IRM_POINTS_OFFSET: usize = 32; // relative to IrmState body (after discriminator)
+    const IRM_LEN_OFFSET: usize = IRM_POINTS_OFFSET + 32; // 4 × 8-byte points
 
     /// Build wire bytes for a Pool with the given market supply and borrow amounts.
     /// All other fields are zeroed.
@@ -858,21 +1295,22 @@ mod tests {
         v
     }
 
-    /// Build wire bytes for an IrmState with a single flat-rate curve at
-    /// `rate_bps` (curve 0: a=0, b=rate_bps, a2=0, kink=0, enabled=1).
-    /// All other curves are disabled.
-    fn irm_wire_flat(rate_bps: i64) -> Vec<u8> {
+    /// Build wire bytes for an IrmState with a flat rate `rate_bps` at every
+    /// utilization — encoded as the 2-point curve `[(0, rate), (10_000, rate)]`.
+    fn irm_wire_flat(rate_bps: u32) -> Vec<u8> {
         let mut v = account_bytes::<irm_state::IrmState>();
-        // LinearSegment 0: a=0 (i64), b=rate_bps (i64), a2=0 (i64), kink=0 (u64),
-        //                  enabled=1 (u8), _pad=[0;7]
-        let curve_base = DISCRIMINATOR + IRM_CURVE0_OFFSET;
-        // a at +0 (i64, LE) — already 0
-        // b at +8 (i64, LE)
-        v[curve_base + 8..curve_base + 16].copy_from_slice(&rate_bps.to_le_bytes());
-        // a2 at +16 — already 0
-        // kink at +24 — already 0
-        // enabled at +32
-        v[curve_base + 32] = 1;
+        // RatePoint layout: rate_bps(u32) util_bps(u16) _pad[2]  — 8 bytes.
+        let base = DISCRIMINATOR + IRM_POINTS_OFFSET;
+
+        // Point 0: (util=0, rate=rate_bps)
+        v[base..base + 4].copy_from_slice(&rate_bps.to_le_bytes());
+        v[base + 4..base + 6].copy_from_slice(&0u16.to_le_bytes());
+        // Point 1: (util=10_000, rate=rate_bps)
+        v[base + 8..base + 12].copy_from_slice(&rate_bps.to_le_bytes());
+        v[base + 12..base + 14].copy_from_slice(&10_000u16.to_le_bytes());
+
+        // len = 2
+        v[DISCRIMINATOR + IRM_LEN_OFFSET] = 2;
         v
     }
 
@@ -967,5 +1405,61 @@ mod tests {
         let returned_pool = pwi.pool();
         assert_eq!(returned_pool.total_supply_assets(), 12_345);
         assert_eq!(returned_pool.total_borrow_assets(), 6_789);
+    }
+}
+
+#[cfg(test)]
+mod token_amount_tests {
+    use super::{format_token_amount, parse_token_amount, token_amount_to_f64};
+
+    #[test]
+    fn parse_basic_and_truncates() {
+        assert_eq!(parse_token_amount("1", 6), Some(1_000_000));
+        assert_eq!(parse_token_amount("1.5", 6), Some(1_500_000));
+        assert_eq!(parse_token_amount(".5", 6), Some(500_000));
+        assert_eq!(parse_token_amount("0.008344", 6), Some(8_344));
+        // Excess precision is floored, never rounded up.
+        assert_eq!(parse_token_amount("12.345678999", 6), Some(12_345_678));
+        assert_eq!(parse_token_amount("1.9999999", 6), Some(1_999_999));
+    }
+
+    #[test]
+    fn parse_edge_cases() {
+        assert_eq!(parse_token_amount("", 6), Some(0));
+        assert_eq!(parse_token_amount("   ", 6), Some(0));
+        assert_eq!(parse_token_amount("42", 0), Some(42));
+        // Malformed input is rejected, not silently coerced.
+        assert_eq!(parse_token_amount("-1", 6), None);
+        assert_eq!(parse_token_amount("1e3", 6), None);
+        assert_eq!(parse_token_amount("1.2.3", 6), None);
+        assert_eq!(parse_token_amount("abc", 6), None);
+        // Overflow past u64 returns None.
+        assert_eq!(parse_token_amount("18446744073710", 6), None);
+    }
+
+    #[test]
+    fn format_trims_zeros() {
+        assert_eq!(format_token_amount(1_000_000, 6), "1");
+        assert_eq!(format_token_amount(1_500_000, 6), "1.5");
+        assert_eq!(format_token_amount(8_344, 6), "0.008344");
+        assert_eq!(format_token_amount(0, 6), "0");
+        assert_eq!(format_token_amount(42, 0), "42");
+        // Full precision retained past 6 places (unlike the capped display fmt).
+        assert_eq!(format_token_amount(1_234_567_890, 9), "1.23456789");
+    }
+
+    #[test]
+    fn parse_format_roundtrip() {
+        for raw in [0u64, 1, 8_344, 1_000_000, 12_345_678, u64::MAX] {
+            let s = format_token_amount(raw, 9);
+            assert_eq!(parse_token_amount(&s, 9), Some(raw), "roundtrip {raw}");
+        }
+    }
+
+    #[test]
+    fn to_f64_exact_for_small_values() {
+        assert_eq!(token_amount_to_f64(1_500_000, 6), 1.5);
+        assert_eq!(token_amount_to_f64(8_344, 6), 0.008344);
+        assert_eq!(token_amount_to_f64(0, 6), 0.0);
     }
 }

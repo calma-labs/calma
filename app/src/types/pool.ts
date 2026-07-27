@@ -1,4 +1,4 @@
-import type { PoolWithIrm } from '@jbl/wasm-lib'
+import type { PoolWithIrm } from '@calma/wasm-lib'
 
 export type Category = "stablecoin" | "volatile" | "lsd";
 

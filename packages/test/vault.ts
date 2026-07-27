@@ -3,7 +3,7 @@ import { Program, AnchorProvider, BN } from "@anchor-lang/core";
 import { PublicKey, Keypair, LAMPORTS_PER_SOL, SystemProgram } from "@solana/web3.js";
 import { createMint, getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { Jbl } from "../../target/types/jbl";
+import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { POOL_SPACE } from "./utils";
@@ -11,7 +11,7 @@ import { POOL_SPACE } from "./utils";
 describe("pool creation (create)", () => {
     describe("create pool with two mints", () => {
         let provider: AnchorProvider;
-        let program: Program<Jbl>;
+        let program: Program<Calma>;
         let feedProgram: Program<Feed>;
         let irmProgram: Program<Irm>;
         let feedPda: PublicKey;
@@ -30,14 +30,10 @@ describe("pool creation (create)", () => {
         before(async () => {
             provider = AnchorProvider.env();
             anchor.setProvider(provider);
-            program = anchor.workspace.Jbl as Program<Jbl>;
+            program = anchor.workspace.Calma as Program<Calma>;
             feedProgram = anchor.workspace.Feed as Program<Feed>;
             irmProgram = anchor.workspace.Irm as Program<Irm>;
             feedAuthority = provider.wallet.publicKey;
-            [feedPda] = PublicKey.findProgramAddressSync(
-                [Buffer.from("feed"), feedAuthority.toBuffer()],
-                feedProgram.programId
-            );
 
             payer = Keypair.generate();
             authority = Keypair.generate();
@@ -51,12 +47,20 @@ describe("pool creation (create)", () => {
             collateralMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
             lendMint = await createMint(provider.connection, payer, authority.publicKey, null, 6);
 
+            [feedPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
+                feedProgram.programId
+            );
+
             [irmConfigPda] = PublicKey.findProgramAddressSync(
                 [Buffer.from("irm_config"), poolKeypair.publicKey.toBuffer()],
                 irmProgram.programId
             );
             await irmProgram.methods
-                .initialize()
+                .initialize([
+                    { utilBps: 0, rateBps: 0 },
+                    { utilBps: 10_000, rateBps: 500 },
+                ])
                 .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
                 .signers([payer, authority])
                 .rpc();
@@ -78,11 +82,22 @@ describe("pool creation (create)", () => {
             // Create the feed account if it doesn't exist yet (shared provider wallet key).
             if (!(await provider.connection.getAccountInfo(feedPda))) {
                 await feedProgram.methods
-                    .create()
-                    .accounts({ authority: feedAuthority, payer: payer.publicKey })
+                    .create(
+                        0,
+                        { manual: {} },
+                        Array(32).fill(0),
+                        Array(32).fill(0),
+                        { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
+                    )
+                    .accounts({ feed: feedPda, authority: feedAuthority, collateralMint, lendMint, payer: payer.publicKey })
                     .signers([payer])
                     .rpc();
             }
+            // Always refresh the price so pool creation finds a fresh feed.
+            await feedProgram.methods
+                .setValue(new BN(1_000_000), new BN(1_000_000))
+                .accounts({ authority: feedAuthority, feed: feedPda })
+                .rpc();
         });
 
         it("creates pool account with correct initial state", async () => {
@@ -96,7 +111,7 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(75)
+                .create(75, 90)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -153,7 +168,7 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(75)
+                    .create(75, 90)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,

@@ -1,8 +1,15 @@
 import { useBorrow } from "@/hooks/program/useBorrow";
+import { useFeedFreshness } from "@/hooks/program/useFeedFreshness";
+import { OracleTable } from "@/components/common/OracleTable";
 import { useUserPosition } from "@/hooks/program/useUserPosition";
 import { useMintDecimals } from "@/hooks/useMintDecimals";
 import { cn } from "@/lib/utils";
-import type { PoolWithIrm } from "@jbl/wasm-lib";
+import {
+  format_token_amount,
+  parse_token_amount,
+  token_amount_to_f64,
+  type PoolWithIrm,
+} from "@calma/wasm-lib";
 import type { Pool } from "@/types/pool";
 import { useWalletConnection } from "@solana/react-hooks";
 import { PublicKey } from "@solana/web3.js";
@@ -34,34 +41,40 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   );
   const borrowMutation = useBorrow();
   const isPending = borrowMutation.isPending;
+  const { data: freshness } = useFeedFreshness(new PublicKey(pool.address));
+  const feedStale = freshness?.willFail ?? false;
 
   const displaySymbol = pool.lendSymbol;
   const displayIcon = pool.lendIcon;
-  // On-chain: max_borrowable = collateral_raw * ltv / 100 (raw lend units)
-  const userBorrowPower = useMemo(() => {
-    if (!userPosition || lendDecimals == null) return 0;
-    return Number(poolData.max_borrowable(userPosition)) / 10 ** lendDecimals;
+
+  // Remaining borrow power in raw lend units, kept as bigint end-to-end so the
+  // "Max"/percentage buttons and the submitted amount stay exact.
+  // On-chain: max_borrowable = collateral_raw * ltv / 100, capped by available
+  // liquidity, minus current debt.
+  const limitRaw = useMemo(() => {
+    if (!userPosition || lendDecimals == null) return 0n;
+    const borrowPower = poolData.max_borrowable(userPosition);
+    const debt = poolData.debt_amount(userPosition) ?? 0n;
+    const liquidity = poolData.available_liquidity();
+    const remaining = borrowPower > debt ? borrowPower - debt : 0n;
+    return remaining < liquidity ? remaining : liquidity;
   }, [userPosition, lendDecimals, poolData]);
 
-  // Current debt (to subtract from borrow power)
-  const currentDebtUi = useMemo(() => {
-    if (!userPosition || lendDecimals == null) return 0;
-    return Number(poolData.debt_amount(userPosition) ?? 0n) / 10 ** lendDecimals;
-  }, [userPosition, poolData, lendDecimals]);
+  // p% of the raw limit; integer division floors exactly, no float involved.
+  const rawForPercent = (p: number) => (limitRaw * BigInt(p)) / 100n;
 
-  // Remaining borrow power, capped by pool available liquidity
-  const limit = Math.max(
-    0,
-    Math.min(pool.availableLiquidity, userBorrowPower - currentDebtUi),
-  );
+  // Float forms for display only (precision doesn't matter here).
+  const limit = token_amount_to_f64(limitRaw, lendDecimals ?? 6);
+  const userBorrowPower = useMemo(() => {
+    if (!userPosition || lendDecimals == null) return 0;
+    return token_amount_to_f64(poolData.max_borrowable(userPosition), lendDecimals);
+  }, [userPosition, lendDecimals, poolData]);
 
   // Project borrow APY after this borrow based on post-borrow utilization.
   const DURATION_PREMIUM: Record<"1w" | "1m", number> = { "1w": 1.5, "1m": 1.5 * 1.08 };
 
   const projectedBorrowAPY = useMemo(() => {
-    const decimals = lendDecimals ?? 6;
-    const numAmount = parseFloat(amount);
-    const borrowRaw = numAmount > 0 ? BigInt(Math.round(numAmount * 10 ** decimals)) : 0n;
+    const borrowRaw = parse_token_amount(amount, lendDecimals ?? 6) ?? 0n;
     return poolData.projected_borrow_apy_bps(borrowRaw) / 100;
   }, [amount, lendDecimals, poolData]);
 
@@ -75,12 +88,14 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0 || !wallet) return;
 
-    const decimals = lendDecimals ?? 6;
-    const rawAmount = new BN(Math.floor(numAmount * 10 ** decimals));
+    const rawAmount = new BN(
+      (parse_token_amount(amount, lendDecimals ?? 6) ?? 0n).toString(),
+    );
 
     await borrowMutation.mutateAsync({
       pool: new PublicKey(pool.address),
       lendMint: new PublicKey(poolData.lend_mint),
+      feedState: new PublicKey(poolData.pool().feed_state),
       amount: rawAmount,
     });
 
@@ -88,7 +103,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   }
 
   const canSubmit =
-    !!amount && parseFloat(amount) > 0 && !isPending && !!wallet;
+    !!amount && parseFloat(amount) > 0 && !isPending && !!wallet && !feedStale;
 
   return (
     <div
@@ -118,7 +133,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
                 Amount
               </span>
               <button
-                onClick={() => setAmount(String(limit))}
+                onClick={() => setAmount(format_token_amount(limitRaw, lendDecimals ?? 6))}
                 className="flex items-center gap-1 text-xs text-surface-foreground/35 hover:text-surface-accent transition-colors cursor-pointer min-w-0"
               >
                 <Wallet className="h-3 w-3 flex-shrink-0" />
@@ -160,7 +175,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
             {[25, 50, 75, 100].map((p) => (
               <button
                 key={p}
-                onClick={() => setAmount(((limit * p) / 100).toFixed(6))}
+                onClick={() => setAmount(format_token_amount(rawForPercent(p), lendDecimals ?? 6))}
                 className="flex-1 rounded-lg border border-surface-accent/15 py-1.5 text-xs font-medium text-surface-foreground/35 hover:border-surface-accent/35 hover:text-surface-accent transition-all cursor-pointer"
               >
                 {p}%
@@ -265,6 +280,8 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
             </div>
           </div>
 
+          {freshness && <OracleTable freshness={freshness} />}
+
           {/* Submit */}
           <button
             disabled={!canSubmit}
@@ -277,7 +294,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
             )}
           >
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Borrow {displaySymbol}
+            {feedStale ? "Oracle stale" : `Borrow ${displaySymbol}`}
           </button>
         </div>
       </div>
