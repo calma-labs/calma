@@ -6,12 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
+faucet = "HALzjfshwyYKYjLNL6ectL9oBoM3tLcUCAabZNYrxwWy"
 feed = "orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4"
 guard = "grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt"
 irm = "irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk"
 calma = "c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8"
 
 [programs.localnet]
+faucet = "HALzjfshwyYKYjLNL6ectL9oBoM3tLcUCAabZNYrxwWy"
 feed = "orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4"
 guard = "grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt"
 irm = "irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk"
@@ -23,6 +25,6 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "bun run test"
-link-keys = "mkdir -p target/deploy && ln -sf ~/.config/solana/calma/orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4.json target/deploy/feed-keypair.json && ln -sf ~/.config/solana/calma/grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt.json target/deploy/guard-keypair.json && ln -sf ~/.config/solana/calma/irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk.json target/deploy/irm-keypair.json && ln -sf ~/.config/solana/calma/c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8.json target/deploy/calma-keypair.json"
+link-keys = "mkdir -p target/deploy && ln -sf ~/.config/solana/calma/orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4.json target/deploy/feed-keypair.json && ln -sf ~/.config/solana/calma/grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt.json target/deploy/guard-keypair.json && ln -sf ~/.config/solana/calma/irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk.json target/deploy/irm-keypair.json && ln -sf ~/.config/solana/calma/c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8.json target/deploy/calma-keypair.json && ln -sf ~/.config/solana/calma/HALzjfshwyYKYjLNL6ectL9oBoM3tLcUCAabZNYrxwWy.json target/deploy/faucet-keypair.json"
 
 [hooks]

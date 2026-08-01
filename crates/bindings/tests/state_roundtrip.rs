@@ -10,7 +10,7 @@
 
 use anchor_lang::prelude::Pubkey;
 use bytemuck::{bytes_of, Pod, Zeroable};
-use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
+use state::{Pool, UserPosition};
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 // ── WASM linear-memory layout ─────────────────────────────────────────────────
@@ -198,74 +198,6 @@ fn user_position_roundtrip_wasm() {
     assert_eq!(parsed.pool, original.pool);
     assert_eq!(parsed.collateral_deposited, original.collateral_deposited);
     assert_eq!(parsed.debt_shares, original.debt_shares);
-    assert_eq!(parsed.bump, original.bump);
-}
-
-// ── RateHedgeOffer ────────────────────────────────────────────────────────────
-
-#[test]
-fn rate_hedge_offer_roundtrip_wasm() {
-    let (mut store, instance) = build_and_load();
-
-    let mut original: RateHedgeOffer = Zeroable::zeroed();
-    original.pool = Pubkey::new_unique();
-    original.authority = Pubkey::new_unique();
-    original.amount = 10_000_000;
-    original.fixed_rate_bps = 500;
-    original.min_duration = 86_400;
-    original.max_duration = 2_592_000;
-    original.collateral_deposited = 1_000_000;
-    original.locked_tokens = 50_000;
-    original.bump = 7;
-
-    let parsed = wasm_call::<RateHedgeOffer>(
-        &mut store,
-        &instance,
-        "wasm_parse_rate_hedge_offer",
-        &wire(&original),
-    );
-
-    assert_eq!(parsed.pool, original.pool);
-    assert_eq!(parsed.authority, original.authority);
-    assert_eq!(parsed.amount, original.amount);
-    assert_eq!(parsed.fixed_rate_bps, original.fixed_rate_bps);
-    assert_eq!(parsed.min_duration, original.min_duration);
-    assert_eq!(parsed.max_duration, original.max_duration);
-    assert_eq!(parsed.collateral_deposited, original.collateral_deposited);
-    assert_eq!(parsed.locked_tokens, original.locked_tokens);
-    assert_eq!(parsed.bump, original.bump);
-}
-
-// ── RateHedgeMatch ────────────────────────────────────────────────────────────
-
-#[test]
-fn rate_hedge_match_roundtrip_wasm() {
-    let (mut store, instance) = build_and_load();
-
-    let mut original: RateHedgeMatch = Zeroable::zeroed();
-    original.offer = Pubkey::new_unique();
-    original.user_position = Pubkey::new_unique();
-    original.amount = 8_000_000;
-    original.upfront_fee = 40_000;
-    original.initial_debt_shares = 820;
-    original.start_ts = 1_716_000_000;
-    original.duration = 604_800;
-    original.bump = 2;
-
-    let parsed = wasm_call::<RateHedgeMatch>(
-        &mut store,
-        &instance,
-        "wasm_parse_rate_hedge_match",
-        &wire(&original),
-    );
-
-    assert_eq!(parsed.offer, original.offer);
-    assert_eq!(parsed.user_position, original.user_position);
-    assert_eq!(parsed.amount, original.amount);
-    assert_eq!(parsed.upfront_fee, original.upfront_fee);
-    assert_eq!(parsed.initial_debt_shares, original.initial_debt_shares);
-    assert_eq!(parsed.start_ts, original.start_ts);
-    assert_eq!(parsed.duration, original.duration);
     assert_eq!(parsed.bump, original.bump);
 }
 

@@ -1,19 +1,30 @@
 import { useWalletConnection } from '@solana/react-hooks'
-import {
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    createAssociatedTokenAccountIdempotentInstruction,
-    createMintToInstruction,
-    getAssociatedTokenAddressSync,
-    TOKEN_PROGRAM_ID,
-} from '@solana/spl-token'
-import { PublicKey, Transaction } from '@solana/web3.js'
+import { BN } from '@anchor-lang/core'
+import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection } from '../lib/program'
+import { connection, faucetProgram } from '../lib/program'
 import { queryKeys } from '../lib/queryKeys'
 import { handleTransaction } from '../lib/txHandler'
-import { MINTER_KEYPAIR, useWalletBalancesStore } from '../store/wallet.store'
+import { useWalletBalancesStore } from '../store/wallet.store'
 
-const FAUCET_AMOUNT = 1_000_000_000 // 1 000 tokens at 6 decimals
+const FAUCET_AMOUNT = new BN(1_000_000_000) // 1 000 tokens at 6 decimals
+
+/**
+ * One `faucet.mint` instruction: the program signs the mint with its
+ * `["mint_authority"]` PDA and creates the recipient's ATA if needed, so the
+ * client contributes no signature beyond the wallet's own.
+ */
+function faucetMintIx(mint: PublicKey, recipient: PublicKey): Promise<TransactionInstruction> {
+    return faucetProgram.methods
+        .mint(FAUCET_AMOUNT)
+        // mintAuthority and recipientTokenAccount are derived PDAs — Anchor resolves both.
+        .accounts({
+            payer: recipient,
+            recipient,
+            mint,
+        })
+        .instruction()
+}
 
 /**
  * Mutation hook for minting all provided test tokens in a single transaction.
@@ -36,26 +47,15 @@ export function useFaucetAll(mints: PublicKey[]) {
                     const { blockhash } = await connection.getLatestBlockhash()
                     tx.recentBlockhash = blockhash
 
-                    for (const mint of mints) {
-                        const ata = getAssociatedTokenAddressSync(
-                            mint, payer, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
-                        )
-                        tx.add(
-                            createAssociatedTokenAccountIdempotentInstruction(
-                                payer, ata, payer, mint, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
-                            ),
-                            createMintToInstruction(mint, ata, MINTER_KEYPAIR.publicKey, FAUCET_AMOUNT),
-                        )
-                    }
+                    tx.add(...(await Promise.all(mints.map((mint) => faucetMintIx(mint, payer)))))
 
-                    tx.partialSign(MINTER_KEYPAIR)
                     return tx
                 },
                 wallet,
                 {
                     loadingMessage: 'Minting test tokens…',
                     successMessage: `${mints.length} tokens minted to your wallet`,
-                    errorMessage: 'Faucet failed — mint authority mismatch',
+                    errorMessage: 'Faucet failed — mint is not owned by the faucet program',
                 },
             )
             return result
@@ -72,7 +72,7 @@ export function useFaucetAll(mints: PublicKey[]) {
 
 /**
  * Mutation hook for minting test tokens to the connected wallet.
- * Uses a hardcoded minter keypair as the mint authority.
+ * The faucet program mints under its own PDA authority — no client-held key.
  *
  * Automatically invalidates wallet balances on success so all balance
  * displays update without a manual refresh.
@@ -86,39 +86,23 @@ export function useFaucet(mint: PublicKey) {
             if (!wallet) throw new Error('Wallet not connected')
 
             const payer = new PublicKey(wallet.account.publicKey)
-            const ata = getAssociatedTokenAddressSync(
-                mint,
-                payer,
-                false,
-                TOKEN_PROGRAM_ID,
-                ASSOCIATED_TOKEN_PROGRAM_ID,
-            )
 
             const result = await handleTransaction(
                 async () => {
                     const tx = new Transaction()
                     tx.feePayer = payer
 
-                    // Get blockhash first - needed before partialSign
                     const { blockhash } = await connection.getLatestBlockhash()
                     tx.recentBlockhash = blockhash
 
-                    tx.add(
-                        createAssociatedTokenAccountIdempotentInstruction(
-                            payer, ata, payer, mint,
-                            TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
-                        ),
-                        createMintToInstruction(mint, ata, MINTER_KEYPAIR.publicKey, FAUCET_AMOUNT),
-                    )
-                    // Sign with hardcoded minter before wallet signs
-                    tx.partialSign(MINTER_KEYPAIR)
+                    tx.add(await faucetMintIx(mint, payer))
                     return tx
                 },
                 wallet,
                 {
                     loadingMessage: 'Minting test tokens…',
                     successMessage: '1 000 tokens minted to your wallet',
-                    errorMessage: 'Faucet failed — mint authority mismatch',
+                    errorMessage: 'Faucet failed — mint is not owned by the faucet program',
                 },
             )
             return result

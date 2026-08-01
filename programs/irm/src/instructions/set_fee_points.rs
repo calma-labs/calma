@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use irm_state::{IrmState, RatePoint, MAX_POINTS, MIN_POINTS};
+use irm_state::{IrmState, RatePoint, MAX_POINTS};
 
 use crate::error::ErrorCode;
 
@@ -13,31 +13,48 @@ pub struct RatePointArgs {
 
 #[derive(Accounts)]
 pub struct SetFeePoints<'info> {
+    /// Seeded on the **explicit `pool` account**, matching
+    /// [`BorrowRate`](super::borrow_rate::BorrowRate).
+    ///
+    /// Seeding it on `irm_state.load()?.pool` instead — reading the seed out of
+    /// the very account being derived — verifies fine on-chain but is a
+    /// self-referential PDA the client cannot reproduce: Anchor's IDL advertises
+    /// it as auto-resolvable, so generated clients refuse an explicitly passed
+    /// `irm_state` yet cannot derive it either without fetching the account
+    /// first. The guarantee is unchanged (the derivation still proves this state
+    /// belongs to `pool`); only the seed source moves to something a caller
+    /// already holds.
+    ///
+    /// Deliberately **no `has_one = pool`**. The seeds already prove the
+    /// relationship — re-deriving `["irm_config", pool]` with the stored bump and
+    /// requiring it to equal the account passed is exactly the statement
+    /// `has_one` would add. Including it also makes the two accounts mutually
+    /// resolvable in the generated IDL (`irm_state` from `pool` via the seeds,
+    /// `pool` from `irm_state` via the relation), and Anchor's TypeScript client
+    /// then treats *both* as auto-derived and rejects either being passed.
     #[account(
         mut,
-        seeds = [b"irm_config", irm_state.load()?.pool.as_ref()],
+        seeds = [b"irm_config", pool.key().as_ref()],
         bump = irm_state.load()?.bump,
         constraint = irm_state.load()?.authority == authority.key() @ ErrorCode::Unauthorized,
     )]
     pub irm_state: AccountLoader<'info, IrmState>,
+    /// CHECK: verified as the seed `irm_state` is derived from; a mismatched
+    /// `pool` yields a different PDA and fails the seeds check.
+    pub pool: UncheckedAccount<'info>,
     pub authority: Signer<'info>,
 }
 
 pub(crate) fn handler(ctx: Context<SetFeePoints>, points: Vec<RatePointArgs>) -> Result<()> {
     // All validation happens here (write time). The reader (`get_fee_bps`)
     // trusts these invariants and skips any runtime checks.
-    require!(
-        points.len() >= MIN_POINTS && points.len() <= MAX_POINTS,
-        ErrorCode::InvalidPointList
-    );
-    require!(points[0].util_bps == 0, ErrorCode::InvalidPointList);
-    for i in 1..points.len() {
-        require!(
-            points[i].util_bps > points[i - 1].util_bps,
-            ErrorCode::InvalidPointList
-        );
-    }
-
+    irm_state::validate_rate_points(
+        &points.iter().map(|p| (p.util_bps, p.rate_bps)).collect::<Vec<_>>(),
+    )
+    .map_err(|e| match e {
+        irm_state::RatePointError::InvalidPointList => ErrorCode::InvalidPointList,
+        irm_state::RatePointError::RateTooHigh => ErrorCode::RateTooHigh,
+    })?;
     let mut state = ctx.accounts.irm_state.load_mut()?;
     let mut buf = [RatePoint::default(); MAX_POINTS];
     for (i, p) in points.iter().enumerate() {

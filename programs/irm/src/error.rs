@@ -8,4 +8,6 @@ pub enum ErrorCode {
     InvalidPointList,
     #[msg("Signer is not the IRM authority")]
     Unauthorized,
+    #[msg("Rate point exceeds the maximum allowed borrow rate")]
+    RateTooHigh,
 }

@@ -59,6 +59,20 @@ pub struct DepositLent<'info> {
     )]
     pub lend_vault: Account<'info, TokenAccount>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ crate::error::ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.irm_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
+    /// CHECK: required iff `pool.guard_state` is set; validated in the handler.
+    pub guard_program: Option<UncheckedAccount<'info>>,
+
+    /// CHECK: required iff `pool.guard_state` is set; must equal it exactly.
+    pub guard_state: Option<UncheckedAccount<'info>>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -100,20 +114,50 @@ impl<'info> DepositLent<'info> {
 pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()> {
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
 
-    // Validate lend_mint matches what is stored in the pool.
-    {
+    // Validate lend_mint matches what is stored in the pool, and refuse to price
+    // shares while a flash loan is mid-flight (the vault is temporarily short).
+    let (utilization, pool_guard_state) = {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.lend_mint.key() == pool.lend_mint,
             crate::error::ErrorCode::InvalidAmount
         );
-    }
+        require!(
+            pool.market.flash_loan_outstanding == 0,
+            crate::error::ErrorCode::FlashLoanInProgress
+        );
+        (pool.calculate_utilization(), pool.guard_state)
+    };
 
-    // ── 1. Calculate LP tokens to mint, transfer lend tokens, mint LP ─────────
+    // Whitelist gate — entry only. `withdraw_lent` and `process_queue_entry`
+    // are deliberately never gated: a lender removed from the list must still be
+    // able to redeem, and the queue must stay drainable for everyone behind them.
+    crate::hooks::guard::enforce_pool_guard(
+        pool_guard_state,
+        &ctx.accounts.guard_program,
+        &ctx.accounts.guard_state,
+        ctx.accounts.authority.key(),
+    )?;
+
+    // ── 1. Accrue interest so LP is minted at the current share price ─────────
+    //
+    // Without this the depositor buys in at a stale, understated share price and
+    // captures a share of interest that accrued before they arrived.
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
+
+    // ── 2. Calculate LP tokens to mint, transfer lend tokens, mint LP ─────────
     let state_bump = ctx.bumps.state;
     let lp_to_mint = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market);
+        let mut core = math::Core::new(pool.market)
+            .with_irm(irm)
+            .accrue_interest()
+            .ok_or(crate::error::ErrorCode::InterestAccrualOverflow)?;
         let lp = core
             .deposit_lent(
                 amount,

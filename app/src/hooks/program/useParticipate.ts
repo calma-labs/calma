@@ -2,7 +2,7 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { program as readonlyProgram } from '../../lib/program'
+import { program as readonlyProgram, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
@@ -34,10 +34,14 @@ export function useParticipate() {
             const tx = await readonlyProgram.methods
                 .depositLent(amount)
                 .accounts({
+                    guardProgram: null,
+                    guardState: null,
                     pool,
                     lendMint,
                     authority,
                     userLendTokenAccount,
+                    rateProgram: IRM_PROGRAM_ID,
+                    irmState: irmStatePda(pool),
                 })
                 .transaction()
 

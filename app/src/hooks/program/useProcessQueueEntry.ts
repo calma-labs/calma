@@ -7,7 +7,8 @@ import { handleTransaction } from '../../lib/txHandler'
 
 export interface ProcessQueueEntryParams {
     pool: PublicKey
-    mint: PublicKey
+    /** The pool's lend mint — queued withdrawals always pay out lend tokens. */
+    lendMint: PublicKey
     /** Destination token account for the queued withdrawal (owned by the requester). */
     userTokenAccount: PublicKey
 }
@@ -21,7 +22,7 @@ export function useProcessQueueEntry() {
     const queryClient = useQueryClient()
 
     return useMutation({
-        mutationFn: async ({ pool, mint, userTokenAccount }: ProcessQueueEntryParams) => {
+        mutationFn: async ({ pool, lendMint, userTokenAccount }: ProcessQueueEntryParams) => {
             if (!connected || !wallet) throw new Error('Wallet not connected')
 
             const payer = new PublicKey(wallet.account.publicKey)
@@ -30,7 +31,7 @@ export function useProcessQueueEntry() {
                 .processQueueEntry()
                 .accounts({
                     pool,
-                    mint,
+                    lendMint,
                     userTokenAccount,
                 })
                 .transaction()

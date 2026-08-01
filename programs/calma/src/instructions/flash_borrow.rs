@@ -72,25 +72,15 @@ impl<'info> FlashBorrow<'info> {
 }
 
 pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()> {
-    require!(amount > 0, ErrorCode::InvalidAmount);
-    require!(
-        ctx.accounts.lend_vault.amount >= amount,
-        ErrorCode::InsufficientFunds
-    );
-
     // ── 1. Verify a matching flash_repay follows in this transaction ──────────
     //
-    // We scan every instruction that comes *after* the current one in the
-    // transaction. We require at least one that:
-    //   a) targets this program
-    //   b) has the flash_repay discriminator
-    //   c) references the same pool (first account)
-    //   d) carries a repay amount >= amount + fee (bytes [8..16])
+    // This is the one genuinely chain-shaped check: it reads the instruction
+    // sysvar, which only exists on-chain. The pairing guarantee itself lives in
+    // `Core::flash_borrow` — the scan alone could not provide it, since nothing
+    // marked the repay consumed and several borrows were able to point at one.
     let sysvar_info = ctx.accounts.sysvar_instructions.to_account_info();
     let current_index = load_current_index_checked(&sysvar_info)? as usize;
-
-    let fee = math::flash_fee(amount).ok_or(ErrorCode::MathOverflow)?;
-    let min_repay = amount.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
+    let min_repay = math::flash_min_repay(amount).ok_or(ErrorCode::MathOverflow)?;
     let pool_key = ctx.accounts.pool.key();
 
     let mut found = false;
@@ -122,26 +112,25 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     }
     require!(found, ErrorCode::FlashRepayMissing);
 
-    // ── 2. Transfer tokens from lend vault to user ────────────────────────────
-    ctx.accounts
-        .transfer_lend_to_user(amount, ctx.bumps.state)?;
-
-    // ── 3. Update pool accounting ─────────────────────────────────────────────
-    {
+    // ── 2. Open the loan via Core, which performs the token transfer ──────────
+    let vault_balance = ctx.accounts.lend_vault.amount;
+    let state_bump = ctx.bumps.state;
+    let min_repay = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_supply_assets = pool
-            .market
-            .total_supply_assets
-            .checked_sub(amount)
-            .ok_or(ErrorCode::MathOverflow)?;
-    }
+        let mut core = math::Core::new(pool.market);
+        let min_repay = core
+            .flash_borrow(amount, vault_balance, |amt| {
+                ctx.accounts.transfer_lend_to_user(amt, state_bump)
+            })
+            .map_err(|e| match e {
+                math::MathError::Transfer(e) => e,
+                e => ErrorCode::from(e).into(),
+            })?;
+        pool.market = core.market;
+        min_repay
+    };
 
-    msg!(
-        "FlashBorrow: amount={} fee={} min_repay={}",
-        amount,
-        fee,
-        min_repay,
-    );
+    msg!("FlashBorrow: amount={} min_repay={}", amount, min_repay);
 
     Ok(())
 }

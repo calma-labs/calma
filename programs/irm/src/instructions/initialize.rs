@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use irm_state::{IrmState, RatePoint, MAX_POINTS, MIN_POINTS};
+use irm_state::{IrmState, RatePoint, MAX_POINTS};
 
 use crate::{error::ErrorCode, instructions::set_fee_points::RatePointArgs};
 
@@ -23,18 +23,13 @@ pub struct Initialize<'info> {
 }
 
 pub(crate) fn handler(ctx: Context<Initialize>, points: Vec<RatePointArgs>) -> Result<()> {
-    require!(
-        points.len() >= MIN_POINTS && points.len() <= MAX_POINTS,
-        ErrorCode::InvalidPointList
-    );
-    require!(points[0].util_bps == 0, ErrorCode::InvalidPointList);
-    for i in 1..points.len() {
-        require!(
-            points[i].util_bps > points[i - 1].util_bps,
-            ErrorCode::InvalidPointList
-        );
-    }
-
+    irm_state::validate_rate_points(
+        &points.iter().map(|p| (p.util_bps, p.rate_bps)).collect::<Vec<_>>(),
+    )
+    .map_err(|e| match e {
+        irm_state::RatePointError::InvalidPointList => ErrorCode::InvalidPointList,
+        irm_state::RatePointError::RateTooHigh => ErrorCode::RateTooHigh,
+    })?;
     let mut config = ctx.accounts.irm_config.load_init()?;
     config.pool = ctx.accounts.pool.key();
     config.authority = ctx.accounts.authority.key();

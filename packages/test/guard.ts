@@ -12,10 +12,14 @@ import { Guard } from "../../target/types/guard";
 import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
-import { POOL_SPACE } from "./utils";
+import { POOL_SPACE, createGuard, ensureGuard, whitelistAuthority } from "./utils";
 
-function findGuardPda(authority: PublicKey, programId: PublicKey): PublicKey {
+function localFindGuardPda(programId: PublicKey, authority: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
+    // Per-authority whitelist, so several subsets can coexist. Safe only
+    // because consumers pin the *state* account, not just the program: `calma`
+    // records it in `Pool.guard_state` at market creation and rejects anything
+    // else. See guard::instructions::initialize.
     [Buffer.from("guard"), authority.toBuffer()],
     programId
   );
@@ -42,16 +46,12 @@ describe("guard program", () => {
       await provider.connection.requestAirdrop(authority.publicKey, LAMPORTS_PER_SOL)
     );
 
-    guardPda = findGuardPda(authority.publicKey, program.programId);
+    const guard = await ensureGuard(provider.connection, program, payer);
+    guardPda = guard.pda;
+    authority = guard.authority;
   });
 
   it("create initialises an empty whitelist", async () => {
-    await program.methods
-      .create()
-      .accounts({ authority: authority.publicKey, payer: payer.publicKey })
-      .signers([payer, authority])
-      .rpc();
-
     const state = await program.account.guardState.fetch(guardPda);
     expect(state.authority.toString()).to.equal(authority.publicKey.toString());
     expect(state.whitelist).to.have.length(0);
@@ -184,13 +184,10 @@ describe("calma create with guard", () => {
       .signers([payer])
       .rpc();
 
-    // Deploy a guard owned by guardAuthority.
-    guardPda = findGuardPda(guardAuthority.publicKey, guardProgram.programId);
-    await guardProgram.methods
-      .create()
-      .accounts({ authority: guardAuthority.publicKey, payer: payer.publicKey })
-      .signers([payer, guardAuthority])
-      .rpc();
+    // Adopt the run-shared whitelist (creating it if this block runs first).
+    const guard = await ensureGuard(provider.connection, guardProgram, payer);
+    guardPda = guard.pda;
+    guardAuthority = guard.authority;
   });
 
   /** Shared helper: allocates pool account, initialises IRM, then calls calma::create. */
@@ -222,7 +219,7 @@ describe("calma create with guard", () => {
     });
 
     await calmaProgram.methods
-      .create(75, 90)
+      .create(75, 90_000)
       .accounts({
         pool,
         collateralMint,
@@ -284,7 +281,7 @@ describe("calma create with guard", () => {
     }
   });
 
-  it("succeeds without a guard (open pool creation)", async () => {
+  it("succeeds without a guard — creation is permissionless", async () => {
     const poolAuthority = Keypair.generate();
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
@@ -293,5 +290,97 @@ describe("calma create with guard", () => {
     const pool = await createPool(poolAuthority, null);
     const info = await provider.connection.getAccountInfo(pool);
     expect(info).to.not.be.null;
+  });
+
+  it("records the chosen whitelist on the pool", async () => {
+    const poolAuthority = Keypair.generate();
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
+    );
+    await guardProgram.methods
+      .add(poolAuthority.publicKey)
+      .accounts({ guardState: guardPda, authority: guardAuthority.publicKey } as any)
+      .signers([guardAuthority])
+      .rpc();
+
+    // The PDA is derived from the guard's own authority, so it is reproducible
+    // off-chain from that pubkey alone.
+    expect(localFindGuardPda(guardProgram.programId, guardAuthority.publicKey).toString()).to.equal(
+      guardPda.toString()
+    );
+
+    const gated = await createPool(poolAuthority, {
+      program: guardProgram.programId,
+      state: guardPda,
+    });
+    const gatedPool = await calmaProgram.account.pool.fetch(gated);
+    expect(gatedPool.guardState.toString()).to.equal(guardPda.toString());
+
+    // An ungated market records the default pubkey and is open to everyone.
+    const openAuthority = Keypair.generate();
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(openAuthority.publicKey, LAMPORTS_PER_SOL)
+    );
+    const open = await createPool(openAuthority, null);
+    const openPool = await calmaProgram.account.pool.fetch(open);
+    expect(openPool.guardState.toString()).to.equal(PublicKey.default.toString());
+  });
+
+  it("whitelists are per-authority, so several can coexist", async () => {
+    const second = await createGuard(provider.connection, guardProgram, payer);
+    expect(second.pda.toString()).to.not.equal(guardPda.toString());
+    expect(second.pda.toString()).to.equal(
+      localFindGuardPda(guardProgram.programId, second.authority.publicKey).toString()
+    );
+
+    // Membership does not leak between lists.
+    const member = Keypair.generate().publicKey;
+    await guardProgram.methods
+      .add(member)
+      .accounts({ guardState: second.pda, authority: second.authority.publicKey } as any)
+      .signers([second.authority])
+      .rpc();
+
+    const a = await guardProgram.account.guardState.fetch(guardPda);
+    const b = await guardProgram.account.guardState.fetch(second.pda);
+    expect(b.whitelist.map((k: PublicKey) => k.toString())).to.include(member.toString());
+    expect(a.whitelist.map((k: PublicKey) => k.toString())).to.not.include(member.toString());
+  });
+
+  it("rejects a guard_state that is not a guard account", async () => {
+    // Creation lets the creator *choose* a whitelist, but the CPI still has to
+    // land on a real, canonically derived one — the guard program re-derives
+    // ["guard", authority] from the account's own recorded authority.
+    const poolAuthority = Keypair.generate();
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
+    );
+
+    try {
+      await createPool(poolAuthority, {
+        program: guardProgram.programId,
+        state: Keypair.generate().publicKey,
+      });
+      expect.fail("expected pool creation with a non-guard account to fail");
+    } catch (e: any) {
+      expect(e.message).to.match(/AccountNotInitialized|AccountOwnedByWrongProgram|ConstraintSeeds/);
+    }
+  });
+
+  it("rejects an impostor guard program", async () => {
+    const poolAuthority = Keypair.generate();
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
+    );
+
+    try {
+      await createPool(poolAuthority, {
+        program: Keypair.generate().publicKey,
+        state: guardPda,
+      });
+      expect.fail("expected pool creation with a foreign guard program to fail");
+    } catch (e: any) {
+      expect(e.message).to.include("InvalidProgramId");
+    }
   });
 });

@@ -5,10 +5,14 @@ import {
   createMint,
   createAssociatedTokenAccount,
   mintTo,
+  setAuthority,
+  AuthorityType,
 } from "@solana/spl-token";
 import { Calma } from "../../target/types/calma";
 import { Irm } from "../../target/types/irm";
 import { Feed } from "../../target/types/feed";
+import { Guard } from "../../target/types/guard";
+import { Faucet } from "../../target/types/faucet";
 
 import CalmaIdl from "../../target/idl/calma.json";
 export const POOL_SPACE: number = Number(
@@ -40,6 +44,10 @@ export interface TestSetup {
   feedProgram: Program<Feed>;
   feedPda: PublicKey;
   feedAuthority: PublicKey;
+  /** Test-only 1:1 burn/mint faucet, split out of the calma program. */
+  faucetProgram: Program<Faucet>;
+  /** The faucet's `[b"mint_authority"]` PDA — mint authority for every faucet-owned mint. */
+  faucetMintAuthorityPda: PublicKey;
 }
 
 /**
@@ -52,9 +60,87 @@ export interface TestSetup {
  * @param ltvPercent - The LTV percentage for the pool (default: 75).
  * @returns A TestSetup object with all necessary accounts, PDAs, and program references.
  */
+/**
+ * One whitelist shared by the whole test run. Whitelists are per-authority
+ * (`["guard", authority]`), so several can coexist — tests that need a *second*
+ * subset should call `createGuard` for a fresh authority rather than reusing
+ * this one.
+ */
+let sharedGuard: { pda: PublicKey; authority: Keypair } | null = null;
+
+export function findGuardPda(guardProgramId: PublicKey, authority: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("guard"), authority.toBuffer()],
+    guardProgramId
+  )[0];
+}
+
+/** Stand up a fresh whitelist under a newly generated authority. */
+export async function createGuard(
+  connection: Connection,
+  guardProgram: Program<Guard>,
+  payer: Keypair
+): Promise<{ pda: PublicKey; authority: Keypair }> {
+  const authority = Keypair.generate();
+  await connection.confirmTransaction(
+    await connection.requestAirdrop(authority.publicKey, LAMPORTS_PER_SOL)
+  );
+  const pda = findGuardPda(guardProgram.programId, authority.publicKey);
+  if (!(await connection.getAccountInfo(pda))) {
+    await guardProgram.methods
+      .create()
+      .accounts({ authority: authority.publicKey, payer: payer.publicKey })
+      .signers([payer, authority])
+      .rpc();
+  }
+  return { pda, authority };
+}
+
+/**
+ * The shared whitelist, created on first use. Every file must go through this
+ * rather than rolling its own — two independent lazy initialisers would each
+ * create a *different* per-authority list, and a pool pinned to one would reject
+ * members added to the other.
+ */
+export async function ensureGuard(
+  connection: Connection,
+  guardProgram: Program<Guard>,
+  payer: Keypair
+): Promise<{ pda: PublicKey; authority: Keypair }> {
+  if (sharedGuard === null) {
+    sharedGuard = await createGuard(connection, guardProgram, payer);
+  }
+  return sharedGuard;
+}
+
+export async function whitelistAuthority(
+  connection: Connection,
+  guardProgram: Program<Guard>,
+  payer: Keypair,
+  authority: PublicKey
+): Promise<{ program: PublicKey; state: PublicKey }> {
+  const guard = await ensureGuard(connection, guardProgram, payer);
+  await guardProgram.methods
+    .add(authority)
+    .accounts({ guardState: guard.pda, authority: guard.authority.publicKey })
+    .signers([guard.authority])
+    .rpc();
+  return { program: guardProgram.programId, state: guard.pda };
+}
+
 export async function setupTest(
   ltvPercent: number = 75,
-  opts: { poolKeypair?: Keypair; rateProgram?: PublicKey; rateState?: PublicKey } = {}
+  opts: {
+    poolKeypair?: Keypair;
+    rateProgram?: PublicKey;
+    rateState?: PublicKey;
+    /**
+     * Pool authority. Supply this whenever you pre-create the IRM yourself
+     * (i.e. alongside `rateProgram`/`rateState`) — `calma::create` requires the
+     * market authority to own its rate curve, so both must be the same key.
+     */
+    authority?: Keypair;
+  } = {}
 ): Promise<TestSetup> {
   const provider = AnchorProvider.env();
   anchor.setProvider(provider);
@@ -62,15 +148,19 @@ export async function setupTest(
   const program = anchor.workspace.Calma as Program<Calma>;
   const connection = provider.connection;
 
-  const authority = Keypair.generate();
+  const authority = opts.authority ?? Keypair.generate();
   const payer = Keypair.generate();
 
   // Airdrop SOL to payer and authority
   const airdropPayer = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
   await connection.confirmTransaction(airdropPayer);
 
-  const airdropAuthority = await connection.requestAirdrop(authority.publicKey, 2 * LAMPORTS_PER_SOL);
-  await connection.confirmTransaction(airdropAuthority);
+  // A caller-supplied authority is usually already funded; a second identical
+  // airdrop can be rejected as a duplicate transaction.
+  if ((await connection.getBalance(authority.publicKey)) === 0) {
+    const airdropAuthority = await connection.requestAirdrop(authority.publicKey, 2 * LAMPORTS_PER_SOL);
+    await connection.confirmTransaction(airdropAuthority);
+  }
 
   // Create two test token mints (6 decimals each).
   // collateralMint: deposited by borrowers as collateral.
@@ -83,6 +173,8 @@ export async function setupTest(
   const pool = poolKeypair.publicKey;
 
   const feedProgram = anchor.workspace.Feed as Program<Feed>;
+  const faucetProgram = anchor.workspace.Faucet as Program<Faucet>;
+  const guardProgram = anchor.workspace.Guard as Program<Guard>;
   const feedAuthority = provider.wallet.publicKey;
   const [feedPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
@@ -96,6 +188,11 @@ export async function setupTest(
   );
   const irmProgramId = opts.rateProgram ?? irmProgram.programId;
   const irmConfig = opts.rateState ?? irmConfigPda;
+
+  const [faucetMintAuthorityPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("mint_authority")],
+    faucetProgram.programId
+  );
 
   const [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
 
@@ -184,7 +281,7 @@ export async function setupTest(
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, 90)
+    .create(ltvPercent, 90_000)
     .accounts({
       pool,
       collateralMint,
@@ -195,8 +292,8 @@ export async function setupTest(
       feedState: feedPda,
       rateProgram: irmProgramId,
       irmState: irmConfig,
-      guardProgram: null,
-      guardState: null,
+        guardProgram: null,
+        guardState: null,
     })
     .preInstructions([createPoolIx])
     .signers([payer, authority, poolKeypair])
@@ -223,7 +320,31 @@ export async function setupTest(
     feedProgram,
     feedPda,
     feedAuthority,
+    faucetProgram,
+    faucetMintAuthorityPda,
   };
+}
+
+/**
+ * Hands both of the pool's mints over to the faucet's mint-authority PDA.
+ *
+ * `mock_swap` mints via that PDA, so it only accepts faucet-owned mints. Call this
+ * after `setupTest()` has finished funding users — once authority moves, the
+ * `authority` keypair can no longer `mintTo` (use `faucetProgram.methods.mint`).
+ */
+export async function transferMintsToFaucet(setup: TestSetup): Promise<void> {
+  const { connection, payer, authority, collateralMint, lendMint, faucetMintAuthorityPda } = setup;
+
+  for (const mint of [collateralMint, lendMint]) {
+    await setAuthority(
+      connection,
+      payer,
+      mint,
+      authority,
+      AuthorityType.MintTokens,
+      faucetMintAuthorityPda
+    );
+  }
 }
 
 /**
@@ -294,10 +415,14 @@ export async function participateInPool(setup: TestSetup, amount: number): Promi
   await setup.program.methods
     .depositLent(new BN(amount))
     .accounts({
+      guardProgram: null,
+      guardState: null,
       pool: setup.pool,
       lendMint: setup.lendMint,
       authority: setup.authority.publicKey,
       userLendTokenAccount: setup.userLendTokenAccount,
+      rateProgram: setup.irmProgramId,
+      irmState: setup.irmConfig,
     })
     .signers([setup.authority])
     .rpc();

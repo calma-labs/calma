@@ -1,6 +1,6 @@
 use crate::error::ErrorCode;
 use crate::pyth::normalize;
-use crate::rules::{check_bounds, check_conf, check_deviation, check_ema_divergence};
+use crate::rules::{check_bounds, check_conf, check_deviation, check_ema_divergence, check_max_age};
 use crate::state::{Feed, PriceSource};
 use anchor_lang::prelude::*;
 use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
@@ -31,18 +31,23 @@ pub fn set_from_pyth_handler(ctx: Context<SetFromPyth>) -> Result<()> {
     );
 
     let clock = Clock::get()?;
-    let max_age_secs = (feed.rules.max_age_ms / 1_000) as u64;
 
-    let coll = ctx.accounts.collateral_price_update.get_price_no_older_than(
-        &clock,
-        max_age_secs,
-        &feed.config.collateral_feed_id,
-    )?;
-    let lend = ctx.accounts.lend_price_update.get_price_no_older_than(
-        &clock,
-        max_age_secs,
-        &feed.config.lend_feed_id,
-    )?;
+    // `get_price_unchecked` verifies the feed id but leaves freshness to us. The
+    // SDK's age check takes whole seconds, so routing through it required
+    // `max_age_ms / 1_000` — truncating any sub-second budget to 0 (which
+    // rejects every price and bricks the feed) and any 1_500 ms budget to
+    // 1_000. `check_max_age` applies the configured value in milliseconds, and
+    // is the same gate the push path uses.
+    let coll = ctx
+        .accounts
+        .collateral_price_update
+        .get_price_unchecked(&feed.config.collateral_feed_id)?;
+    let lend = ctx
+        .accounts
+        .lend_price_update
+        .get_price_unchecked(&feed.config.lend_feed_id)?;
+    check_max_age(coll.publish_time, clock.unix_timestamp, feed.rules.max_age_ms)?;
+    check_max_age(lend.publish_time, clock.unix_timestamp, feed.rules.max_age_ms)?;
 
     let coll_norm = normalize(coll.price, coll.exponent)?;
     let lend_norm = normalize(lend.price, lend.exponent)?;

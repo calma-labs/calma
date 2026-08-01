@@ -23,7 +23,7 @@ export interface CreatePoolParams {
     lendMint: PublicKey
     ltvPercent?: number
     /** Max age (seconds) a Pyth price may have when borrowing/withdrawing. */
-    maxFeedAgeSecs?: number
+    maxFeedAgeMs?: number
     /** 2..=4 rate curve points. Defaults to the on-chain `DEFAULT_POINTS` if omitted. */
     ratePoints?: IrmRatePointInput[]
 }
@@ -48,7 +48,7 @@ async function createPool(
     const poolKeypair = Keypair.generate()
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
-    const maxFeedAgeSecs = params.maxFeedAgeSecs ?? 90
+    const maxFeedAgeMs = params.maxFeedAgeMs ?? 90_000
 
     const [irmState] = PublicKey.findProgramAddressSync(
         [Buffer.from('irm_config'), poolKeypair.publicKey.toBuffer()],
@@ -72,7 +72,7 @@ async function createPool(
         .instruction()
 
     const createIx = await readonlyProgram.methods
-        .create(ltvPercent, maxFeedAgeSecs)
+        .create(ltvPercent, maxFeedAgeMs)
         .accounts({
             pool: poolKeypair.publicKey,
             collateralMint: params.collateralMint,

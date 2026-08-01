@@ -9,6 +9,8 @@ async function depositCollateral(setup: TestSetup, amount: BN | number) {
     await setup.program.methods
         .depositCollateral(new BN(amount.toString()))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             collateralMint: setup.collateralMint,
             authority: setup.authority.publicKey,
@@ -22,6 +24,8 @@ async function borrow(setup: TestSetup, amount: BN | number) {
     await setup.program.methods
         .borrow(new BN(amount.toString()))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             lendMint: setup.lendMint,
             authority: setup.authority.publicKey,
@@ -54,10 +58,14 @@ async function depositLent(setup: TestSetup, amount: BN) {
     await setup.program.methods
         .depositLent(amount)
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             lendMint: setup.lendMint,
             authority: setup.authority.publicKey,
             userLendTokenAccount: setup.userLendTokenAccount,
+            rateProgram: setup.irmProgramId,
+            irmState: setup.irmConfig,
         })
         .signers([setup.authority])
         .rpc();

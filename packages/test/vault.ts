@@ -111,7 +111,7 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(75, 90)
+                .create(75, 90_000)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
@@ -168,7 +168,7 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(75, 90)
+                    .create(75, 90_000)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,
@@ -177,8 +177,12 @@ describe("pool creation (create)", () => {
                         payer: payer.publicKey,
                         feedProgram: feedProgram.programId,
                         feedState: feedPda,
+                        rateProgram: irmProgram.programId,
+                        irmState: irmConfigPda,
+                        guardProgram: null,
+                        guardState: null,
                     })
-                    .signers([payer, authority])
+                    .signers([payer, authority, poolKeypair])
                     .rpc();
                 expect.fail("Expected second create to fail");
             } catch (err: unknown) {

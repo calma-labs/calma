@@ -65,9 +65,16 @@ pub fn check_ema_divergence(price: i64, ema_price: i64, ema_divergence_bps: u16)
 
 /// Time-scaled deviation guard. The allowed jump grows with the elapsed time
 /// since the last accepted price so feeds that are updated infrequently
-/// (hours or days apart) aren't rejected on legitimate price moves. The
-/// effective ceiling is clamped at 10_000 bps (100%), which for any tightly
-/// configured feed produces an eventual "any move accepted" horizon.
+/// (hours or days apart) aren't rejected on legitimate price moves.
+///
+/// The budget is **purely** time-scaled, with no ceiling. It used to be clamped
+/// at 10_000 bps (100%), which silently made any move larger than a doubling
+/// unrepresentable: `diff / last > 100%` failed the comparison no matter how
+/// much time had passed, so a feed whose asset genuinely tripled would reject
+/// every subsequent update and stay frozen at the stale price forever — the
+/// worst possible failure for a price oracle. Staleness is bounded by
+/// `max_age_ms`, not by this gate; this one only rates how fast a price may
+/// move while it *is* being updated.
 ///
 /// Skipped on the first update (`last == 0` or `last_ts == 0`).
 pub fn check_deviation(
@@ -85,30 +92,52 @@ pub fn check_deviation(
     // budget so a legitimate update seconds after the previous one isn't
     // gated purely by rounding.
     let elapsed_hours = ((elapsed_secs as u128) + 3_599) / 3_600;
-    let raw_budget = elapsed_hours.saturating_mul(max_deviation_bps_per_hour as u128);
-    let effective_bps = raw_budget.min(BPS_DENOM);
+    let effective_bps = elapsed_hours.saturating_mul(max_deviation_bps_per_hour as u128);
 
     let new = new as u128;
     let last = last as u128;
     let diff = if new >= last { new - last } else { last - new };
-    let lhs = diff
-        .checked_mul(BPS_DENOM)
-        .ok_or(ErrorCode::PriceDeviationTooLarge)?;
-    let rhs = last
-        .checked_mul(effective_bps)
-        .ok_or(ErrorCode::PriceDeviationTooLarge)?;
+    // Saturating rather than checked: an overflowing budget means "so much time
+    // has passed that any move is allowed", which must accept, not reject.
+    let lhs = diff.saturating_mul(BPS_DENOM);
+    let rhs = last.saturating_mul(effective_bps);
     require!(lhs <= rhs, ErrorCode::PriceDeviationTooLarge);
     Ok(())
 }
 
-/// Reject if `clock_ts − publish_time` (in seconds) exceeds `max_age_ms`
-/// milliseconds. `max_age_ms == 0` disables the check (returns `Ok`).
+/// Reject if the price is older than `max_age_ms` milliseconds.
+/// `max_age_ms == 0` disables the check (returns `Ok`), matching every other
+/// rule in this module.
+///
+/// **Not the same convention as `state::Pool::snapshot_stale_at`**, which takes
+/// an identically named `max_age_ms` and treats `0` as *reject everything*. The
+/// difference is deliberate and the two are not interchangeable: this gate is an
+/// opt-in validation on ingestion, so `0` means "don't run it"; that one is the
+/// borrow gate, so `0` means "no budget, refuse". Disabling this one is safe
+/// precisely because the pool-side gate still applies — `set_from_pyth` stamps
+/// `last_updated_ts` from the Pyth publish time, so an old price ingested here
+/// still reads as old there.
+///
+/// The comparison is done entirely in milliseconds so a configured age is never
+/// truncated on its way to the gate. Note the *measurement* is still bounded by
+/// its inputs: both `publish_time` and `clock_ts` are Unix seconds on Solana, so
+/// elapsed time only ever lands on whole-second multiples. Millisecond
+/// configuration therefore buys precision in the threshold, not in the clock —
+/// `max_age_ms = 1_500` admits a one-second-old price and rejects a two-second
+/// one, where the previous `max_age_ms / 1_000` truncation silently reduced it
+/// to 1_000 and a sub-second setting collapsed to 0, rejecting everything.
+///
+/// A `publish_time` ahead of the clock (Pyth can publish slightly early) yields
+/// a negative elapsed time and passes, which is correct — it is not stale.
 pub fn check_max_age(publish_time: i64, clock_ts: i64, max_age_ms: u32) -> Result<()> {
     if max_age_ms == 0 {
         return Ok(());
     }
-    let elapsed_ms = clock_ts.saturating_sub(publish_time).saturating_mul(1_000);
-    require!(elapsed_ms <= max_age_ms as i64, ErrorCode::StalePushPrice);
+    let elapsed_ms = (clock_ts as i128 - publish_time as i128) * 1_000;
+    require!(
+        elapsed_ms <= max_age_ms as i128,
+        ErrorCode::StalePushPrice
+    );
     Ok(())
 }
 
@@ -212,11 +241,51 @@ mod tests {
     }
 
     #[test]
-    fn deviation_ceiling_clamped_at_100pct() {
-        // With 100 bps/hour, after ~100 hours the budget is 100%. Even a
-        // doubling should be accepted; a 3× move should not (exceeds diff/last=200%).
+    fn max_age_sub_second_threshold_is_not_truncated() {
+        // 1_500 ms admits a 1s-old price and rejects a 2s-old one. Under the old
+        // `max_age_ms / 1_000` truncation this behaved as 1_000 ms.
+        assert!(check_max_age(1_700_000_000, 1_700_000_001, 1_500).is_ok());
+        assert!(check_max_age(1_700_000_000, 1_700_000_002, 1_500).is_err());
+        // A sub-second budget admits only a same-second price — it no longer
+        // collapses to "reject everything".
+        assert!(check_max_age(1_700_000_000, 1_700_000_000, 500).is_ok());
+        assert!(check_max_age(1_700_000_000, 1_700_000_001, 500).is_err());
+    }
+
+    #[test]
+    fn max_age_accepts_a_price_published_ahead_of_the_clock() {
+        assert!(check_max_age(1_700_000_005, 1_700_000_000, 1_000).is_ok());
+    }
+
+    #[test]
+    fn max_age_extreme_timestamps_do_not_overflow() {
+        assert!(check_max_age(i64::MIN, i64::MAX, 1_000).is_err());
+        assert!(check_max_age(i64::MAX, i64::MIN, 1_000).is_ok());
+    }
+
+    #[test]
+    fn deviation_budget_is_uncapped_so_large_moves_eventually_pass() {
+        // With 100 bps/hour, 100 hours buys a 100% budget: a doubling passes, a
+        // tripling does not — yet.
         let last: u64 = 1_000_000;
         assert!(check_deviation(2_000_000, last, 1_000, 1_000 + 100 * 3_600, 100).is_ok());
         assert!(check_deviation(3_000_000, last, 1_000, 1_000 + 100 * 3_600, 100).is_err());
+        // Given 200 hours the budget reaches 200% and the tripling is accepted.
+        // Under the old 100% clamp this stayed rejected forever, freezing the
+        // feed at a stale price.
+        assert!(check_deviation(3_000_000, last, 1_000, 1_000 + 200 * 3_600, 100).is_ok());
+        // A 10x move clears once enough time has accrued.
+        assert!(check_deviation(10_000_000, last, 1_000, 1_000 + 900 * 3_600, 100).is_ok());
+    }
+
+    #[test]
+    fn deviation_extreme_inputs_stay_total() {
+        // A 100% move with an enormous time budget is accepted.
+        assert!(check_deviation(u64::MAX, u64::MAX / 2, 1, i64::MAX, u16::MAX).is_ok());
+        // The guard is *relative*, so an astronomically large ratio is still
+        // refused however long has elapsed — from a price of 1, reaching
+        // u64::MAX is a ~1.8e19x move and no realistic budget covers it. The
+        // point here is that it decides without panicking.
+        assert!(check_deviation(u64::MAX, 1, 1, i64::MAX, u16::MAX).is_err());
     }
 }

@@ -69,6 +69,27 @@ pub fn create_token_account_ixs(
     ]
 }
 
+/// Hands a mint's `MintTokens` authority to `new_authority`.
+///
+/// `faucet::mock_swap` mints under the faucet's `["mint_authority"]` PDA, so any
+/// mint it swaps must be moved over first — after all `mint_to_ix` funding, since
+/// the old authority can no longer mint afterwards.
+pub fn set_mint_authority_ix(
+    mint: &Pubkey,
+    current_authority: &Pubkey,
+    new_authority: &Pubkey,
+) -> Instruction {
+    spl_token::instruction::set_authority(
+        &spl_token::id(),
+        mint,
+        Some(new_authority),
+        spl_token::instruction::AuthorityType::MintTokens,
+        current_authority,
+        &[],
+    )
+    .unwrap()
+}
+
 pub fn mint_to_ix(mint: &Pubkey, dest: &Pubkey, authority: &Pubkey, amount: u64) -> Instruction {
     spl_token::instruction::mint_to(&spl_token::id(), mint, dest, authority, &[], amount).unwrap()
 }
@@ -77,3 +98,4 @@ pub fn read_token_balance(svm: &LiteSVM, account: &Pubkey) -> u64 {
     let data = svm.get_account(account).unwrap().data;
     spl_token::state::Account::unpack(&data).unwrap().amount
 }
+

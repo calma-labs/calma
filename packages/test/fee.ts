@@ -1,56 +1,23 @@
-import { BN } from "@anchor-lang/core";
 import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { expect } from "chai";
 import { setupTest, TestSetup } from "./utils";
 
-// Interest accrual (which mints the fee shares) is exercised with clock control
-// in the Rust LiteSVM suite (`programs/calma/tests/test_fee.rs`) and the math
-// unit tests. Here we cover the on-chain plumbing through the real Anchor stack:
-// the authority-only `set_fee`/`claim_fees` entrypoints and their guard paths.
+// The fee rate is fixed at 0 — there is no setter — so nothing ever accrues.
+// That the accrual path honours the 0 rate is proven with clock control in the
+// Rust LiteSVM suite (`programs/calma/tests/test_fee.rs`) and the math unit
+// tests. Here we cover the on-chain plumbing through the real Anchor stack: the
+// rate a created pool exposes, and the authority-only `claim_fees` guard paths.
 describe("protocol fee", () => {
-    describe("set_fee", () => {
+    describe("fee rate", () => {
         let setup: TestSetup;
         before(async () => {
             setup = await setupTest();
         });
 
-        it("authority sets the fee rate", async () => {
-            await setup.program.methods
-                .setFee(new BN(2000))
-                .accounts({ pool: setup.pool, authority: setup.authority.publicKey })
-                .signers([setup.authority])
-                .rpc();
+        it("is 0 on a created pool and has no setter", async () => {
             const pool = await setup.program.account.pool.fetch(setup.pool);
-            expect(pool.market.fee.toString()).to.equal("2000");
-        });
-
-        it("rejects a fee above MAX_FEE_BPS", async () => {
-            try {
-                await setup.program.methods
-                    .setFee(new BN(2501))
-                    .accounts({ pool: setup.pool, authority: setup.authority.publicKey })
-                    .signers([setup.authority])
-                    .rpc();
-                expect.fail("over-cap fee should have been rejected");
-            } catch (e: any) {
-                expect(e.toString()).to.include("FeeTooHigh");
-            }
-        });
-
-        it("rejects a non-authority caller", async () => {
-            const stranger = Keypair.generate();
-            const sig = await setup.connection.requestAirdrop(stranger.publicKey, LAMPORTS_PER_SOL);
-            await setup.connection.confirmTransaction(sig);
-            try {
-                await setup.program.methods
-                    .setFee(new BN(100))
-                    .accounts({ pool: setup.pool, authority: stranger.publicKey })
-                    .signers([stranger])
-                    .rpc();
-                expect.fail("non-authority set_fee should have been rejected");
-            } catch (e: any) {
-                expect(e.toString()).to.include("Unauthorized");
-            }
+            expect(pool.market.fee.toString()).to.equal("0");
+            expect(setup.program.methods).to.not.have.property("setFee");
         });
     });
 

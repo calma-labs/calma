@@ -13,7 +13,7 @@ use bytemuck::Pod;
 use feed_state::Feed;
 use irm_state::IrmState;
 use math::{Clock, Core};
-use state::{Pool, RateHedgeMatch, RateHedgeOffer, UserPosition};
+use state::{Pool, UserPosition};
 use wasm_bindgen::prelude::*;
 
 const DISCRIMINATOR: usize = 8;
@@ -37,8 +37,6 @@ pub struct RatePointsAccount(irm_state::PiecewiseLinearModel);
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
 pub struct FeedAccount(pub(crate) Feed);
-pub struct RateHedgeOfferAccount(pub RateHedgeOffer);
-pub struct RateHedgeMatchAccount(pub RateHedgeMatch);
 
 // ── parsing ───────────────────────────────────────────────────────────────────
 
@@ -136,13 +134,13 @@ impl PoolAccount {
     /// Configured maximum age (seconds) the oracle feed may lag the current
     /// clock before borrows / withdrawals reject the price as stale.
     #[wasm_bindgen(getter)]
-    pub fn max_feed_age_secs(&self) -> u32 {
-        self.0.max_feed_age_secs
+    pub fn max_feed_age_ms(&self) -> u32 {
+        self.0.max_feed_age_ms
     }
 
     /// Delegates to `state::Pool::is_feed_snapshot_stale`. Given the feed's
     /// on-chain `last_updated_ts` and the expected clock at borrow-tx landing,
-    /// returns `true` iff `borrow` / `withdraw_collateral` / `borrow_with_hedge`
+    /// returns `true` iff `borrow` / `withdraw_collateral`
     /// would reject the price as `StaleOracle`. Distinct from
     /// `FeedAccount::is_pyth_price_stale`, which only asks whether a *fresh
     /// Hermes update* could be posted; the on-chain snapshot may still be
@@ -161,6 +159,21 @@ impl PoolAccount {
     #[wasm_bindgen(getter)]
     pub fn feed_state(&self) -> Vec<u8> {
         bytemuck::bytes_of(&self.0.feed_state).to_vec()
+    }
+
+    /// Whitelist this market is gated on, as raw 32 bytes — all zeroes for an
+    /// open market (see [`Self::is_guarded`]). Entry instructions
+    /// (`deposit_collateral`, `borrow`, `deposit_lent`) must be sent with
+    /// `guard_program` + this account whenever it is set, or they fail
+    /// `GuardRequired`.
+    #[wasm_bindgen(getter)]
+    pub fn guard_state(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.guard_state).to_vec()
+    }
+
+    /// `true` when entering this market requires being on its whitelist.
+    pub fn is_guarded(&self) -> bool {
+        self.0.guard_state != anchor_lang::prelude::Pubkey::default()
     }
 
     /// Total lend tokens committed to pending withdrawals in the on-chain queue.
@@ -640,8 +653,15 @@ impl PoolWithIrm {
     /// Underlying lend tokens redeemable for `shares` LP tokens at the current
     /// pool ratio. Replays `Core::calc_lend_for_shares` — returns `None` when
     /// the pool has no LP supply yet.
+    ///
+    /// Accrues first, exactly as `withdraw_lent` does on-chain, so the quote
+    /// matches what the instruction would actually pay out rather than a stale
+    /// share price.
     pub fn lend_for_shares(&self, shares: u64) -> Option<u64> {
-        Core::new(self.pool.0.market).calc_lend_for_shares(shares)
+        Core::new(self.pool.0.market)
+            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .accrue_interest()?
+            .calc_lend_for_shares(shares)
     }
 
     /// Oracle price from the feed account wired into this pool via `with_oracle`.
@@ -668,7 +688,7 @@ impl PoolWithIrm {
             .0
             .collateral_deposited
             .checked_add(added_collateral_raw)?;
-        math::compute_ltv(debt, new_collateral)
+        math::compute_ltv(debt, new_collateral, self.oracle_price())
     }
 
     /// Projected health factor in bps after depositing `added_collateral_raw`
@@ -684,23 +704,32 @@ impl PoolWithIrm {
             .0
             .collateral_deposited
             .checked_add(added_collateral_raw)?;
-        math::compute_health_factor(new_collateral, self.pool.0.market.ltv_percent, debt)
+        math::compute_health_factor(
+            new_collateral,
+            self.pool.0.market.ltv_percent,
+            debt,
+            self.oracle_price(),
+        )
     }
 
-    /// Debt shares minted if `position` borrows `amount` now.
-    /// Replays `Core::borrow`, so the result is `None` when the borrow would be
-    /// undercollateralized — exactly the on-chain LTV check.
+    /// Debt shares minted if `position` borrows `amount` now, against a lend
+    /// vault holding `vault_balance` raw units.
+    ///
+    /// Replays `Core::borrow`, so the result is `None` in exactly the cases the
+    /// on-chain instruction rejects: over the LTV limit, or more than the vault
+    /// can lend once assets reserved for the withdrawal queue are excluded.
     pub fn borrow_shares(
         &self,
         position: &UserPositionAccount,
         amount: u64,
+        vault_balance: u64,
     ) -> Option<u64> {
         let mut core = Core::new(self.pool.0.market)
             .with_position(position.0)
             .with_oracle(self.feed)
             .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
             .accrue_interest()?;
-        core.borrow(amount, |_| Ok::<(), ()>(())).ok()
+        core.borrow(amount, vault_balance, |_| Ok::<(), ()>(())).ok()
     }
 
     /// Debt shares burned if `position` repays `amount` now.
@@ -736,7 +765,7 @@ impl PoolWithIrm {
     /// borrow check enforces via `Core::max_borrow_capacity`. Collateral value is
     /// converted to lend units through the feed price; callers subtract
     /// `debt_amount` for remaining headroom.
-    pub fn max_borrowable(&self, position: &UserPositionAccount) -> u64 {
+    pub fn max_borrowable(&self, position: &UserPositionAccount) -> Option<u64> {
         let core = Core::new(self.pool.0.market)
             .with_position(position.0)
             .with_oracle(self.feed);
@@ -747,7 +776,7 @@ impl PoolWithIrm {
     /// Loan-to-Value of `position` in basis points, using accrued debt.
     pub fn ltv(&self, position: &UserPositionAccount) -> Option<u32> {
         let debt = self.debt_amount(position)?;
-        math::compute_ltv(debt, position.0.collateral_deposited)
+        math::compute_ltv(debt, position.0.collateral_deposited, self.oracle_price())
     }
 
     /// Health Factor of `position` in basis points (1.0 = 10_000), using accrued debt.
@@ -757,6 +786,7 @@ impl PoolWithIrm {
             position.0.collateral_deposited,
             self.pool.0.market.ltv_percent,
             debt,
+            self.oracle_price(),
         )
     }
 
@@ -891,8 +921,8 @@ impl PoolWithIrm {
     }
 
     #[wasm_bindgen(getter)]
-    pub fn max_feed_age_secs(&self) -> u32 {
-        self.pool.max_feed_age_secs()
+    pub fn max_feed_age_ms(&self) -> u32 {
+        self.pool.max_feed_age_ms()
     }
 
     pub fn pending_withdrawals(&self) -> u64 {
@@ -921,11 +951,15 @@ impl PoolWithIrm {
             return 1.0;
         }
         let oracle_price = self.oracle_price() as f64;
-        let price_factor = if oracle_price > 0.0 {
-            oracle_price / math::PRICE_SCALE as f64
-        } else {
-            1.0
-        };
+        if oracle_price <= 0.0 {
+            // No usable price means no borrow capacity at all
+            // (`max_borrow_capacity` is 0), so no loop can close. Falling back to
+            // parity here offered a 4× slider on a pool that rejects every
+            // borrow — the same "assume 1:1 when the oracle is silent" mistake
+            // that made `compute_health_factor` overstate safety.
+            return 1.0;
+        }
+        let price_factor = oracle_price / math::PRICE_SCALE as f64;
         let eff_ltv = (ltv_percent / 100.0) * price_factor;
         if eff_ltv >= 1.0 {
             return 30.0;
@@ -945,18 +979,6 @@ impl PoolWithIrm {
     }
 }
 
-impl RateHedgeOfferAccount {
-    pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
-        parse(account_data).map(Self)
-    }
-}
-
-impl RateHedgeMatchAccount {
-    pub fn from_bytes(account_data: &[u8]) -> Option<Self> {
-        parse(account_data).map(Self)
-    }
-}
-
 // ── feed freshness ────────────────────────────────────────────────────────────
 
 /// Result of the combined feed freshness check — both the on-chain snapshot
@@ -966,7 +988,7 @@ pub struct FeedFreshnessResult {
     /// True when borrow/withdraw would revert `StaleOracle` and a Hermes refresh
     /// cannot fix it (source isn't pull-Pyth, or Hermes prices are themselves too old).
     pub will_fail: bool,
-    /// True when the on-chain snapshot exceeds `pool.max_feed_age_secs`.
+    /// True when the on-chain snapshot exceeds `pool.max_feed_age_ms`.
     pub snapshot_stale: bool,
     /// Seconds since the on-chain snapshot was last written.
     pub snapshot_age_secs: i64,
@@ -1009,7 +1031,7 @@ impl FeedFreshnessResult {
     ) -> FeedFreshnessResult {
         let snapshot_age_secs = now.saturating_sub(feed.0.state.last_updated_ts);
         let snapshot_stale = pool.0.is_feed_snapshot_stale(feed.0.state.last_updated_ts, now);
-        let pool_max_age_secs = pool.0.max_feed_age_secs;
+        let pool_max_age_secs = pool.0.max_feed_age_ms;
         let feed_max_age_secs = feed.0.rules.max_age_ms / 1000;
 
         if !snapshot_stale {
@@ -1195,12 +1217,13 @@ mod tests {
         v
     }
 
+    /// Layout pin: both the program and the browser cast raw account bytes into
+    /// these structs, so a size change that is not deliberate is silent
+    /// corruption. Update these numbers only alongside an intended layout change.
     #[test]
     fn struct_sizes() {
-        assert_eq!(core::mem::size_of::<Pool>(), 49520);
+        assert_eq!(core::mem::size_of::<Pool>(), 49_768);
         assert_eq!(core::mem::size_of::<UserPosition>(), 88);
-        assert_eq!(core::mem::size_of::<RateHedgeOffer>(), 152);
-        assert_eq!(core::mem::size_of::<RateHedgeMatch>(), 112);
     }
 
     #[test]

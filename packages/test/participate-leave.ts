@@ -76,6 +76,8 @@ describe("participate and leave", () => {
                     pool,
                     lendMint,
                     authority: authority.publicKey,
+                    rateProgram: setup.irmProgramId,
+                    irmState: setup.irmConfig,
                 })
                 .signers([authority])
                 .rpc();
@@ -139,7 +141,7 @@ describe("participate and leave", () => {
             try {
                 await program.methods
                     .withdrawLent(new BN(0))
-                    .accounts({ pool, lendMint, authority: authority.publicKey })
+                    .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
                     .signers([authority])
                     .rpc();
                 expect.fail("Expected leave(0) to fail with InvalidAmount");
@@ -166,7 +168,7 @@ describe("participate and leave", () => {
             try {
                 await program.methods
                     .withdrawLent(new BN(tooManyShares))
-                    .accounts({ pool, lendMint, authority: authority.publicKey })
+                    .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
                     .signers([authority])
                     .rpc();
                 expect.fail("Expected leave with excess shares to fail with InsufficientFunds");
@@ -201,6 +203,8 @@ describe("participate and leave", () => {
             await setup.program.methods
                 .depositCollateral(new anchor.BN(COLLATERAL_DEPOSIT))
                 .accounts({
+                    guardProgram: null,
+                    guardState: null,
                     pool: setup.pool,
                     collateralMint: setup.collateralMint,
                     authority: setup.authority.publicKey,
@@ -212,6 +216,8 @@ describe("participate and leave", () => {
             await setup.program.methods
                 .borrow(new anchor.BN(BORROW_AMOUNT))
                 .accounts({
+                    guardProgram: null,
+                    guardState: null,
                     pool: setup.pool,
                     lendMint: setup.lendMint,
                     authority: setup.authority.publicKey,
@@ -234,7 +240,7 @@ describe("participate and leave", () => {
             // Attempt to leave with all LP shares.
             await program.methods
                 .withdrawLent(new BN(LEND_AMOUNT))
-                .accounts({ pool, lendMint, authority: authority.publicKey })
+                .accounts({ pool, lendMint, authority: authority.publicKey, rateProgram: setup.irmProgramId, irmState: setup.irmConfig })
                 .signers([authority])
                 .rpc();
 

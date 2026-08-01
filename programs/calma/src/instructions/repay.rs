@@ -9,6 +9,9 @@ pub struct Repay<'info> {
     pub pool: AccountLoader<'info, Pool>,
 
     /// The lend token mint (token being repaid).
+    #[account(
+        constraint = lend_mint.key() == pool.load()?.lend_mint @ crate::error::ErrorCode::InvalidMint
+    )]
     pub lend_mint: Account<'info, Mint>,
 
     /// The borrower

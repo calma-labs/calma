@@ -2,10 +2,10 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram } from '../../lib/program'
+import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram, faucetProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
-import { MINTER_KEYPAIR, useWalletBalancesStore } from '../../store/wallet.store'
+import { useWalletBalancesStore } from '../../store/wallet.store'
 import { flash_fee } from '@calma/wasm-lib'
 import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
@@ -79,7 +79,9 @@ export function useOpenMultiply() {
                 await Promise.all([
                     readonlyProgram.methods
                         .depositCollateral(amountRaw)
-                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta })
+                        .accounts({
+                            guardProgram: null,
+                            guardState: null, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
                         .instruction(),
                     readonlyProgram.methods
                         .flashBorrow(extraRaw)
@@ -90,10 +92,10 @@ export function useOpenMultiply() {
                             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })
                         .instruction(),
-                    readonlyProgram.methods
+                    faucetProgram.methods
                         .mockSwap(extraRaw)
+                        // mintAuthority is a const-seed PDA — Anchor derives it.
                         .accounts({
-                            mintAuthority: MINTER_KEYPAIR.publicKey,
                             tokenOwner: authority,
                             mintIn: lendMint,
                             mintOut: collateralMint,
@@ -103,7 +105,9 @@ export function useOpenMultiply() {
                         .instruction(),
                     readonlyProgram.methods
                         .depositCollateral(extraRaw)
-                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta })
+                        .accounts({
+                            guardProgram: null,
+                            guardState: null, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
                         .instruction(),
                     // Borrow enough lend tokens to cover the flash repay
                     readonlyProgram.methods
@@ -133,12 +137,10 @@ export function useOpenMultiply() {
             )
             tx.feePayer = authority
 
-            // Get blockhash first - needed before partialSign
             const { blockhash } = await connection.getLatestBlockhash()
             tx.recentBlockhash = blockhash
 
-            // Sign with hardcoded minter before wallet signs (required for mockSwap)
-            tx.partialSign(MINTER_KEYPAIR)
+            // No minter signature: mockSwap mints under the faucet's PDA authority.
 
             return handleTransaction(
                 async () => tx,

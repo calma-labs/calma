@@ -22,15 +22,60 @@ pub enum MathError<E> {
     InsufficientBalance,
     /// The requested amount is too small to mint even one share.
     AmountTooSmall,
+    /// A zero (or otherwise meaningless) amount was supplied.
+    InvalidAmount,
+    /// The vault cannot cover the request once assets reserved for the
+    /// withdrawal queue are excluded.
+    InsufficientLiquidity,
+    /// A flash loan is already in flight on this market.
+    FlashLoanOutstanding,
+    /// No flash loan is in flight to repay.
+    NoFlashLoan,
+    /// The repayment does not cover the outstanding principal plus its fee.
+    FlashLoanUnderRepaid,
     Transfer(E),
 }
 
+/// Maximum loan-to-value a market may be configured with, in percent.
+///
+/// Enforces the hard solvency invariant only: at 100 or above a borrower can
+/// draw at least what their collateral is worth and walk away — the debt is
+/// unsecured on arrival, no price move required. Everything below is left to the
+/// market creator as risk appetite (the leverage products depend on very high
+/// LTVs). A market near this ceiling has almost no margin before debt exceeds
+/// collateral, and until a liquidation path exists nothing can close such a
+/// position.
+pub const MAX_LTV_PERCENT: u8 = 99;
+
+/// `true` iff `ltv_percent` is a usable market configuration.
+pub fn is_valid_ltv_percent(ltv_percent: u8) -> bool {
+    ltv_percent > 0 && ltv_percent <= MAX_LTV_PERCENT
+}
+
+/// Lend tokens actually available to borrow from a vault holding
+/// `vault_balance`.
+///
+/// Assets reserved for queued withdrawals are excluded: those lenders have
+/// already burned their LP and are owed exactly those tokens, so lending them
+/// out again would leave the queue unpayable.
+pub fn borrowable_liquidity(vault_balance: u64, assets_in_queue: u64) -> u64 {
+    vault_balance.saturating_sub(assets_in_queue)
+}
+
+/// Share of the pool's assets that is unavailable to borrowers, in bps.
+///
+/// `assets_in_queue` appears on both sides: queued assets no longer belong to
+/// current lenders (they left `total_supply_assets` when the exit was queued) but
+/// are still pool assets until paid out, and they are just as unavailable to a
+/// new borrower as lent-out assets are. Counting them only as "borrowed" without
+/// adding them back to the base would overstate utilization as the queue grows.
 pub fn utilization_bps(
     total_supply_assets: u64,
     total_borrow_assets: u64,
     assets_in_queue: u64,
 ) -> u64 {
-    if total_supply_assets == 0 {
+    let total_assets = total_supply_assets.saturating_add(assets_in_queue);
+    if total_assets == 0 {
         return 0;
     }
     let effective_borrowed = total_borrow_assets.saturating_add(assets_in_queue);
@@ -38,7 +83,7 @@ pub fn utilization_bps(
     // so no masking is needed. If utilization exceeds u64 (only when supply is a
     // tiny fraction of borrowed), saturate high — never report 0, which would
     // falsely signal an idle pool.
-    let util = (effective_borrowed as u128) * 10_000 / (total_supply_assets as u128);
+    let util = (effective_borrowed as u128) * 10_000 / (total_assets as u128);
     u64::try_from(util).unwrap_or(u64::MAX)
 }
 
@@ -92,25 +137,105 @@ pub fn shares_to_amount(shares: u64, total_borrowed: u64, total_debt_shares: u64
     u64::try_from(result).ok()
 }
 
-pub fn compute_ltv(debt: u64, collateral: u64) -> Option<u32> {
+/// Value of `collateral` collateral-token units expressed in lend-token units,
+/// as a `u128` so callers can keep scaling without an intermediate clamp.
+///
+/// This is *the* collateral→lend conversion in the protocol: every solvency and
+/// risk figure — the on-chain borrow gate, the client's LTV, the health factor —
+/// resolves to this one expression, so none of them can drift from the others.
+/// Rounds **down**, understating collateral value, which is the conservative
+/// direction for every one of those uses.
+///
+/// `oracle_price` is lend raw units per collateral raw unit scaled by
+/// [`PRICE_SCALE`]; the feed folds the two mints' decimal exponents into it (see
+/// `feed::instructions::get_value`), so no decimal adjustment belongs here. A
+/// zero price yields zero value — collateral with no usable price is worth
+/// nothing for risk purposes.
+fn collateral_value_in_lend(collateral: u64, oracle_price: u64) -> u128 {
+    // Both operands are ≤ u64::MAX, so the product cannot exceed u128.
+    (collateral as u128).saturating_mul(oracle_price as u128) / PRICE_SCALE
+}
+
+/// Value of `collateral` collateral-token units in lend-token units at
+/// `oracle_price`, clamped to `u64`.
+///
+/// Inverse of [`lend_to_collateral_amount`]. Rounds **down**; see
+/// [`collateral_value_in_lend`] for the shared conversion.
+pub fn collateral_to_lend_amount(collateral: u64, oracle_price: u64) -> u64 {
+    u64::try_from(collateral_value_in_lend(collateral, oracle_price)).unwrap_or(u64::MAX)
+}
+
+/// Convert a lend-denominated `amount` into collateral units at `oracle_price`.
+///
+/// Inverse of the `collateral × price / PRICE_SCALE` conversion in
+/// [`Core::max_borrow_capacity`](crate::Core::max_borrow_capacity). Rounds
+/// **up**, so a party settling a lend-side obligation out of posted collateral
+/// always surrenders at least the full value — rounding favors the pool.
+///
+/// Returns `None` when `oracle_price` is 0 (no usable price, so no honest
+/// conversion exists) or the result exceeds `u64`.
+pub fn lend_to_collateral_amount(amount: u64, oracle_price: u64) -> Option<u64> {
+    if amount == 0 {
+        return Some(0);
+    }
+    if oracle_price == 0 {
+        return None;
+    }
+    let collateral = (amount as u128)
+        .checked_mul(PRICE_SCALE)?
+        .div_ceil(oracle_price as u128);
+    u64::try_from(collateral).ok()
+}
+
+/// Loan-to-value of a position in bps: debt as a fraction of the *lend value* of
+/// its collateral at `oracle_price`.
+///
+/// Debt is denominated in lend units and collateral in collateral units, so the
+/// two are only comparable once collateral has crossed the oracle. Dividing them
+/// directly silently assumed price parity and equal decimals — it reported the
+/// right number only for a 1:1 pair, and understated LTV for exactly the
+/// positions most at risk (collateral cheaper than the borrowed asset).
+///
+/// Returns `None` when there is no debt (nothing to measure), and when the
+/// collateral has no lend value — a zero or missing price, where the true LTV is
+/// unbounded rather than zero. Reporting `Some(0)` there would paint an
+/// unbacked position as perfectly safe; callers should surface "unknown".
+pub fn compute_ltv(debt: u64, collateral: u64, oracle_price: u64) -> Option<u32> {
     if debt == 0 {
         return None;
     }
-    if collateral == 0 {
-        return Some(0);
+    let collateral_value = collateral_value_in_lend(collateral, oracle_price);
+    if collateral_value == 0 {
+        return None;
     }
-    let ltv_bps = (debt as u128).checked_mul(10_000)? / (collateral as u128);
+    let ltv_bps = (debt as u128).checked_mul(10_000)? / collateral_value;
     u32::try_from(ltv_bps).ok()
 }
 
-pub fn compute_health_factor(collateral: u64, ltv_percent: u8, debt: u64) -> Option<u32> {
+/// Health factor of a position in bps, where 10_000 is exactly at the limit.
+///
+/// Defined as `max_borrow_capacity / debt`, so it crosses 10_000 at precisely
+/// the point [`Core::borrow`](crate::Core::borrow) starts rejecting — the client
+/// warns on the same boundary the chain enforces. Like [`compute_ltv`] this needs
+/// `oracle_price` to value the collateral; without it the figure was only correct
+/// for a 1:1 pair and overstated health when collateral was worth less than the
+/// borrowed asset.
+///
+/// Returns `None` when there is no debt. Collateral with no lend value yields
+/// `Some(0)` — maximally unhealthy, which is the truthful reading.
+pub fn compute_health_factor(
+    collateral: u64,
+    ltv_percent: u8,
+    debt: u64,
+    oracle_price: u64,
+) -> Option<u32> {
     if debt == 0 {
         return None;
     }
-    let numerator = (collateral as u128)
+    let capacity = collateral_value_in_lend(collateral, oracle_price)
         .checked_mul(ltv_percent as u128)?
-        .checked_mul(100)?;
-    let hf_bps = numerator / (debt as u128);
+        / 100;
+    let hf_bps = capacity.checked_mul(10_000)? / (debt as u128);
     u32::try_from(hf_bps).ok()
 }
 
@@ -157,6 +282,8 @@ mod tests {
     use super::*;
 
     const YEAR: u64 = SECONDS_PER_YEAR;
+    /// Oracle price at parity: 1 collateral unit is worth 1 lend unit.
+    const PARITY: u64 = PRICE_SCALE as u64;
 
     #[test]
     fn zero_elapsed_is_zero_interest() {
@@ -343,14 +470,14 @@ mod tests {
     #[test]
     fn huge_compute_ltv_at_75pct() {
         // 75M debt / 100M collateral = 7500 bps.
-        assert_eq!(compute_ltv(SEVENTY_FIVE_M, HUNDRED_M), Some(7_500));
+        assert_eq!(compute_ltv(SEVENTY_FIVE_M, HUNDRED_M, PARITY), Some(7_500));
     }
 
     #[test]
     fn huge_health_factor_at_liquidation_limit() {
         // collateral=100M, ltv=75%, debt=75M → HF = 100M×75×100/75M = 10_000 (exactly at limit).
         assert_eq!(
-            compute_health_factor(HUNDRED_M, 75, SEVENTY_FIVE_M),
+            compute_health_factor(HUNDRED_M, 75, SEVENTY_FIVE_M, PARITY),
             Some(10_000)
         );
     }
@@ -359,7 +486,7 @@ mod tests {
     fn huge_health_factor_healthy() {
         // collateral=100M, ltv=75%, debt=50M → HF = 100M×75×100/50M = 15_000.
         assert_eq!(
-            compute_health_factor(HUNDRED_M, 75, FIFTY_M),
+            compute_health_factor(HUNDRED_M, 75, FIFTY_M, PARITY),
             Some(15_000)
         );
     }
@@ -428,13 +555,13 @@ mod tests {
     #[test]
     fn health_factor_overflows_u32_returns_none() {
         // collateral=u64::MAX, ltv=100, debt=1 → HF ≫ u32::MAX → None.
-        assert_eq!(compute_health_factor(u64::MAX, 100, 1), None);
+        assert_eq!(compute_health_factor(u64::MAX, 100, 1, PARITY), None);
     }
 
     #[test]
     fn health_factor_zero_debt_returns_none() {
         // debt == 0 is the early-return guard; removing it would cause a divide-by-zero panic.
-        assert_eq!(compute_health_factor(1_000_000, 75, 0), None);
+        assert_eq!(compute_health_factor(1_000_000, 75, 0, PARITY), None);
     }
 
     // ── compute_ltv missing None test ─────────────────────────────────────────
@@ -442,7 +569,7 @@ mod tests {
     #[test]
     fn compute_ltv_overflows_u32_returns_none() {
         // ltv_bps = u64::MAX × 10_000 / 1 ≈ 1.84×10²³ >> u32::MAX → try_from fails.
-        assert_eq!(compute_ltv(u64::MAX, 1), None);
+        assert_eq!(compute_ltv(u64::MAX, 1, PARITY), None);
     }
 
     // ── compute_liquidation_threshold — full four-band coverage ───────────────
@@ -549,8 +676,18 @@ mod tests {
     #[test]
     fn utilization_half_and_zero_supply() {
         assert_eq!(utilization_bps(1_000_000, 500_000, 0), 5_000);
-        assert_eq!(utilization_bps(1_000_000, 400_000, 100_000), 5_000); // queue counts
         assert_eq!(utilization_bps(0, 500_000, 0), 0);
+    }
+
+    #[test]
+    fn utilization_counts_queued_assets_on_both_sides() {
+        // A pool holding 1_100_000 assets with 400_000 lent out and 100_000
+        // reserved for the queue has 500_000 unavailable of 1_100_000.
+        assert_eq!(utilization_bps(1_000_000, 400_000, 100_000), 4_545);
+        // Everything reserved for the queue and nothing lent: fully utilized.
+        assert_eq!(utilization_bps(0, 0, 100_000), 10_000);
+        // An idle pool with an empty queue stays at zero.
+        assert_eq!(utilization_bps(1_000_000, 0, 0), 0);
     }
 
     // ── L4: amount_to_shares rejects inconsistent one-sided-zero state ────────
@@ -561,5 +698,108 @@ mod tests {
         assert_eq!(amount_to_shares(500, 0, 1_000_000), None);
         // borrowed assets but zero shares — equally inconsistent.
         assert_eq!(amount_to_shares(500, 1_000_000, 0), None);
+    }
+
+    // ── collateral_to_lend_amount: the shared oracle conversion ───────────────
+
+    const HALF: u64 = PRICE_SCALE as u64 / 2; // collateral worth 0.5 lend
+    const DOUBLE: u64 = PRICE_SCALE as u64 * 2; // collateral worth 2 lend
+
+    #[test]
+    fn collateral_value_zero_and_minimal() {
+        assert_eq!(collateral_to_lend_amount(0, DOUBLE), 0);
+        assert_eq!(collateral_to_lend_amount(1, PARITY), 1);
+        // Rounds down: one unit of near-worthless collateral is worth nothing.
+        assert_eq!(collateral_to_lend_amount(1, 1), 0);
+    }
+
+    #[test]
+    fn collateral_value_scales_with_price() {
+        assert_eq!(collateral_to_lend_amount(HUNDRED_M, PARITY), HUNDRED_M);
+        assert_eq!(collateral_to_lend_amount(HUNDRED_M, HALF), HUNDRED_M / 2);
+        assert_eq!(collateral_to_lend_amount(HUNDRED_M, DOUBLE), HUNDRED_M * 2);
+        // No price is no value — never treat unpriced collateral as free money.
+        assert_eq!(collateral_to_lend_amount(HUNDRED_M, 0), 0);
+    }
+
+    #[test]
+    fn collateral_value_clamps_high_rather_than_wrapping() {
+        // u64::MAX² / PRICE_SCALE ≈ 3.4×10³² — far past u64, so it clamps.
+        assert_eq!(collateral_to_lend_amount(u64::MAX, u64::MAX), u64::MAX);
+    }
+
+    #[test]
+    fn collateral_value_inverts_lend_to_collateral() {
+        // The two conversions are inverses; they round opposite ways (down here,
+        // up there), so a round trip lands within one unit — never below.
+        for price in [HALF, PARITY, DOUBLE] {
+            let lend = collateral_to_lend_amount(1_000_000, price);
+            let back = lend_to_collateral_amount(lend, price).unwrap();
+            assert!(
+                back.abs_diff(1_000_000) <= 1,
+                "round trip at price {price}: {back} vs 1_000_000"
+            );
+        }
+    }
+
+    // ── LTV / health factor must cross the oracle (finding 4) ────────────────
+
+    #[test]
+    fn ltv_measures_debt_against_priced_collateral() {
+        // 25 debt against 100 collateral worth 0.5 each = 50 lend → 5_000 bps.
+        // Dividing the raw units instead reported 2_500 — half the real LTV.
+        assert_eq!(compute_ltv(25, 100, HALF), Some(5_000));
+        assert_eq!(compute_ltv(25, 100, PARITY), Some(2_500));
+        assert_eq!(compute_ltv(25, 100, DOUBLE), Some(1_250));
+    }
+
+    #[test]
+    fn ltv_is_unknown_without_a_usable_price() {
+        // Debt against collateral of no lend value: the true LTV is unbounded.
+        // `Some(0)` would render an unbacked position as perfectly safe.
+        assert_eq!(compute_ltv(1_000_000, 1_000_000, 0), None);
+        assert_eq!(compute_ltv(1_000_000, 0, PARITY), None);
+        // No debt is not a risk figure at all.
+        assert_eq!(compute_ltv(0, 1_000_000, PARITY), None);
+    }
+
+    #[test]
+    fn health_factor_hits_the_limit_where_the_borrow_gate_does() {
+        // capacity = 1_000_000 collateral × 0.5 × 75% = 375_000 lend.
+        // At exactly that debt the position sits on the gate: HF = 10_000.
+        assert_eq!(compute_health_factor(1_000_000, 75, 375_000, HALF), Some(10_000));
+        // Half the debt is twice the headroom.
+        assert_eq!(compute_health_factor(1_000_000, 75, 187_500, HALF), Some(20_000));
+        // Ignoring the price reported 20_000 for the at-limit case above — a
+        // position one tick from rejection shown as 2× overcollateralized.
+        assert!(
+            compute_health_factor(1_000_000, 75, 375_000, PARITY).unwrap() > 10_000,
+            "parity must not be the answer for a 0.5-priced pair"
+        );
+    }
+
+    #[test]
+    fn health_factor_of_unpriceable_collateral_is_zero() {
+        // Unlike LTV this is well defined: no value backing debt is as unhealthy
+        // as a position gets, and 0 is the honest reading.
+        assert_eq!(compute_health_factor(1_000_000, 75, 1_000, 0), Some(0));
+        assert_eq!(compute_health_factor(0, 75, 1_000, PARITY), Some(0));
+    }
+
+    #[test]
+    fn health_factor_and_ltv_agree_at_the_configured_ltv() {
+        // A position whose LTV reads exactly the market's `ltv_percent` is by
+        // definition at HF 1.0, whatever the price. This is the invariant the two
+        // functions must satisfy jointly — it failed for every non-parity price
+        // while they disagreed about whether to consult the oracle.
+        for price in [HALF, PARITY, DOUBLE] {
+            let collateral = 1_000_000u64;
+            let debt = collateral_to_lend_amount(collateral, price) * 75 / 100;
+            assert_eq!(compute_ltv(debt, collateral, price), Some(7_500));
+            assert_eq!(
+                compute_health_factor(collateral, 75, debt, price),
+                Some(10_000)
+            );
+        }
     }
 }

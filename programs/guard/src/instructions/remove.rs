@@ -3,7 +3,12 @@ use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct Remove<'info> {
-    #[account(mut, has_one = authority)]
+    #[account(
+        mut,
+        seeds = [b"guard", authority.key().as_ref()],
+        bump = guard_state.bump,
+        has_one = authority,
+    )]
     pub guard_state: Account<'info, GuardState>,
     pub authority: Signer<'info>,
 }

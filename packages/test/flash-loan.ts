@@ -7,7 +7,7 @@ import {
 } from "@solana/web3.js";
 import { getAccount } from "@solana/spl-token";
 import { expect } from "chai";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, transferMintsToFaucet, TestSetup } from "./utils";
 
 const LEND_LIQUIDITY = 500_000_000;
 
@@ -123,6 +123,9 @@ describe("flash-loan", () => {
             setup = await setupTest();
             await participateInPool(setup, LEND_LIQUIDITY);
 
+            // mock_swap mints via the faucet PDA, so both mints must be faucet-owned.
+            await transferMintsToFaucet(setup);
+
             const {
                 program,
                 pool,
@@ -144,10 +147,10 @@ describe("flash-loan", () => {
                 userLendTokenAccount
             );
 
-            const swapIx = await program.methods
+            const swapIx = await setup.faucetProgram.methods
                 .mockSwap(new BN(BORROW_AMOUNT))
+                // mintAuthority is a const-seed PDA — Anchor derives it.
                 .accounts({
-                    mintAuthority: authority.publicKey,
                     tokenOwner: authority.publicKey,
                     mintIn: lendMint,
                     mintOut: collateralMint,
@@ -159,6 +162,8 @@ describe("flash-loan", () => {
             const depositIx = await program.methods
                 .depositCollateral(new BN(BORROW_AMOUNT))
                 .accounts({
+                    guardProgram: null,
+                    guardState: null,
                     pool,
                     collateralMint,
                     authority: authority.publicKey,

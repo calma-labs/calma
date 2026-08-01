@@ -41,6 +41,12 @@ pub struct DepositCollateral<'info> {
     )]
     pub user_position: AccountLoader<'info, UserPosition>,
 
+    /// CHECK: required iff `pool.guard_state` is set; validated in the handler.
+    pub guard_program: Option<UncheckedAccount<'info>>,
+
+    /// CHECK: required iff `pool.guard_state` is set; must equal it exactly.
+    pub guard_state: Option<UncheckedAccount<'info>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -65,13 +71,24 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
 
     // Validate the mint matches the pool's collateral_mint.
-    {
+    let pool_guard_state = {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.collateral_mint.key() == pool.collateral_mint,
             crate::error::ErrorCode::InvalidAmount
         );
-    }
+        pool.guard_state
+    };
+
+    // Whitelist gate — entry only. `withdraw_collateral` is deliberately never
+    // gated: a depositor removed from the list afterwards must still be able to
+    // get their collateral out.
+    crate::hooks::guard::enforce_pool_guard(
+        pool_guard_state,
+        &ctx.accounts.guard_program,
+        &ctx.accounts.guard_state,
+        ctx.accounts.authority.key(),
+    )?;
 
     let needs_init = {
         let account_info = ctx.accounts.user_position.to_account_info();

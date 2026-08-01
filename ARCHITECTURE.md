@@ -1,6 +1,8 @@
 # Architecture
 
-Calma is a decentralized lending protocol on Solana. Users deposit collateral to borrow tokens, lenders earn LP yields, and borrowers can hedge interest rates with fixed-rate agreements.
+Calma is a decentralized lending protocol on Solana. Users deposit collateral to borrow tokens and lenders earn LP yields.
+
+> The fixed-rate hedging subsystem was removed before launch — see [docs/rate-hedge-removal.md](docs/rate-hedge-removal.md).
 
 ---
 
@@ -44,7 +46,7 @@ graph LR
 
     subgraph Chain["Solana Network"]
         ANCHOR["programs/calma\nAnchor Program"]
-        ACCOUNTS["Accounts\nPool · UserPosition\nRateHedgeOffer · RateHedgeMatch"]
+        ACCOUNTS["Accounts\nPool · UserPosition"]
     end
 
     subgraph Shared["Shared Rust Logic"]
@@ -103,9 +105,9 @@ sequenceDiagram
 ```mermaid
 graph BT
     MATH["math\n─────────\ncompute_interest()\namount_to_shares()\nshares_to_amount()\nmax_borrowable()"]
-    STATE["state\n─────────\nPool (41 KB, zero-copy)\nUserPosition (88 B)\nRateHedgeOffer\nWithdrawalQueue"]
+    STATE["state\n─────────\nPool (49 KB, zero-copy)\nUserPosition (88 B)\nWithdrawalQueue"]
     WASM["bindings\n─────────\n#[wasm_bindgen]\nexports"]
-    PROG["programs/calma\n─────────\n13 instructions"]
+    PROG["programs/calma\n─────────\n12 instructions"]
 
     STATE --> MATH
     WASM --> MATH
@@ -140,12 +142,6 @@ graph TD
     subgraph Flash["Flash Loans"]
         FL_BORROW["flash_borrow"]
         FL_REPAY["flash_repay"]
-    end
-
-    subgraph Hedge["Rate Hedging"]
-        HEDGE_OFFER["create_rate_hedge_offer"]
-        BORROW_HEDGE["borrow_with_hedge"]
-        SETTLE["settle_rate_hedge_match"]
     end
 
     subgraph Queue["Async Queue"]
@@ -187,30 +183,7 @@ erDiagram
         u8 bump
     }
 
-    RateHedgeOffer {
-        pubkey pool
-        pubkey authority
-        u64 amount
-        u32 fixed_rate_bps
-        u64 min_duration
-        u64 max_duration
-        u64 collateral_deposited
-        u64 locked_tokens
-    }
-
-    RateHedgeMatch {
-        pubkey pool
-        pubkey borrower
-        pubkey offer
-        u64 initial_debt_shares
-        u64 upfront_fee
-        u64 duration
-        i64 settled_at
-    }
-
     Pool ||--o{ UserPosition : "has many"
-    Pool ||--o{ RateHedgeOffer : "has many"
-    RateHedgeOffer ||--o{ RateHedgeMatch : "matched to"
 ```
 
 ---

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     amount_to_shares, amount_to_shares_burned, compute_interest, shares_to_amount, IrmRate, Market,
-    MathError, Oracle, Position, PRICE_SCALE,
+    MathError, Oracle, Position,
 };
 
 /// Flash loan fee in basis points (9 bps = 0.09%). Single source of truth shared
@@ -23,6 +23,14 @@ pub fn flash_fee(amount: u64) -> Option<u64> {
         .div_ceil(10_000)
         .max(1);
     u64::try_from(fee).ok()
+}
+
+/// Minimum repayment owed on a flash loan of `amount`: principal plus fee.
+///
+/// Shared with the on-chain instruction-sysvar scan, which must know the figure
+/// *before* `Core::flash_borrow` runs, so the formula is not restated there.
+pub fn flash_min_repay(amount: u64) -> Option<u64> {
+    amount.checked_add(flash_fee(amount)?)
 }
 
 pub struct NotAccrued;
@@ -90,6 +98,117 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
         .ok()
     }
 
+    /// Open a flash loan of `amount` against a vault holding `vault_balance`.
+    ///
+    /// Takes the pairing lock and hands the tokens out; returns the minimum
+    /// repayment (`amount` + fee) the caller must see returned before the
+    /// transaction ends.
+    ///
+    /// `total_supply_assets` is deliberately **not** debited. A flash loan does
+    /// not reduce what lenders own — the tokens are contractually back before
+    /// the transaction ends. Debiting it mid-transaction moved the LP share
+    /// price, letting a caller mint LP at the depressed price between borrow and
+    /// repay and redeem at the restored one (and, when the loan emptied the
+    /// supply side, mint 1:1 against the whole outstanding share supply). Only
+    /// the fee is credited, on repay.
+    pub fn flash_borrow<E, F>(
+        &mut self,
+        amount: u64,
+        vault_balance: u64,
+        transfer: F,
+    ) -> Result<u64, MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        if amount == 0 {
+            return Err(MathError::InvalidAmount);
+        }
+        if self.market.flash_loan_outstanding() != 0 {
+            return Err(MathError::FlashLoanOutstanding);
+        }
+        if amount > crate::borrowable_liquidity(vault_balance, self.market.assets_in_queue()) {
+            return Err(MathError::InsufficientLiquidity);
+        }
+        let fee = crate::flash_fee(amount).ok_or(MathError::Arithmetic)?;
+        let min_repay = amount.checked_add(fee).ok_or(MathError::Arithmetic)?;
+        *self.market.flash_loan_outstanding_mut() = amount;
+        transfer(amount).map_err(MathError::Transfer)?;
+        Ok(min_repay)
+    }
+
+    /// Close the in-flight flash loan with a repayment of `amount`.
+    ///
+    /// Returns `(principal, fee)`. Everything above the principal is credited to
+    /// the supply side as lender yield; the lock is released only once the
+    /// repayment has actually been made.
+    pub fn flash_repay<E, F>(&mut self, amount: u64, transfer: F) -> Result<(u64, u64), MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        let principal = self.market.flash_loan_outstanding();
+        if principal == 0 {
+            return Err(MathError::NoFlashLoan);
+        }
+        let fee = crate::flash_fee(principal).ok_or(MathError::Arithmetic)?;
+        let min_repay = principal.checked_add(fee).ok_or(MathError::Arithmetic)?;
+        if amount < min_repay {
+            return Err(MathError::FlashLoanUnderRepaid);
+        }
+        transfer(amount).map_err(MathError::Transfer)?;
+        let surplus = amount.saturating_sub(principal);
+        *self.market.total_supply_assets_mut() = self
+            .market
+            .total_supply_assets()
+            .checked_add(surplus)
+            .ok_or(MathError::Arithmetic)?;
+        *self.market.flash_loan_outstanding_mut() = 0;
+        Ok((principal, fee))
+    }
+
+    /// `true` while a flash loan is in flight, i.e. while the vault is
+    /// temporarily short and share-price-sensitive operations must not run.
+    pub fn flash_loan_in_progress(&self) -> bool {
+        self.market.flash_loan_outstanding() != 0
+    }
+
+    /// Settle one previously queued withdrawal of `amount` lend tokens.
+    ///
+    /// Counterpart to [`Self::withdraw_lent_queued`], which already burned the
+    /// shares and moved `amount` out of `total_supply_assets` into
+    /// `assets_in_queue`. Here that reservation is simply released as the tokens
+    /// go out, so the two operations together are exactly equivalent to
+    /// [`Self::withdraw_lent_immediate`].
+    ///
+    /// Unlike the other LP operations this is **not** share-price sensitive and
+    /// so needs no `Accrued` market: the shares are already gone and `amount`
+    /// was fixed when the entry was enqueued. Any interest accrued since then
+    /// stays with the lenders still in the pool.
+    pub fn process_queued_withdrawal<E, F>(
+        &mut self,
+        amount: u64,
+        transfer: F,
+    ) -> Result<(), MathError<E>>
+    where
+        F: FnOnce(u64) -> Result<(), E>,
+    {
+        *self.market.assets_in_queue_mut() = self
+            .market
+            .assets_in_queue()
+            .checked_sub(amount)
+            .ok_or(MathError::Arithmetic)?;
+        transfer(amount).map_err(MathError::Transfer)
+    }
+}
+
+// ── LP entry / exit — only valid on an accrued market ─────────────────────────
+//
+// These move value between the lender and the pool at the current share price,
+// so they MUST run against a market whose interest is up to date. Living behind
+// the `Accrued` typestate makes a missing `accrue_interest()` a compile error
+// rather than a silent mispricing: a caller who skips accrual lets a
+// just-in-time depositor mint shares at the stale (low) price, poke accrual, and
+// redeem a cut of interest that accrued before they arrived.
+impl<M: Market, I, P, O> Core<M, I, P, O, Accrued> {
     /// Share-inflation posture: the classic ERC-4626 donation/inflation attack
     /// is closed here because `total_supply_assets` is **internally accounted**
     /// (updated only by this crate), not read from the vault's token balance — a
@@ -108,6 +227,9 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
         F1: FnOnce(u64) -> Result<(), E>,
         F2: FnOnce(u64) -> Result<(), E>,
     {
+        if amount == 0 {
+            return Err(MathError::InvalidAmount);
+        }
         let lp = if self.market.total_supply_shares() == 0 || self.market.total_supply_assets() == 0
         {
             amount
@@ -168,13 +290,29 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
         Ok(lend)
     }
 
+    /// Queue a withdrawal: burn the shares now, pay the tokens later.
+    ///
+    /// Both sides of the ratio must move together. Burning the shares while
+    /// leaving their assets in `total_supply_assets` inflates the share price for
+    /// everyone still in the pool, so each subsequent queued exit is quoted
+    /// against a denominator that keeps shrinking against a fixed numerator —
+    /// three equal lenders queueing in turn were quoted 1x, 1.5x and 3x their
+    /// deposit. The queue then promises more than the pool holds and whoever is
+    /// last in line can never be paid.
+    ///
+    /// Moving the assets into `assets_in_queue` at the same time keeps the share
+    /// price flat for remaining lenders and makes the claim exactly what an
+    /// immediate withdrawal would have paid.
     pub fn withdraw_lent_queued(&mut self, shares: u64) -> Option<u64> {
         let lend = self.calc_lend_for_shares(shares)?;
         *self.market.total_supply_shares_mut() =
             self.market.total_supply_shares().checked_sub(shares)?;
+        *self.market.total_supply_assets_mut() =
+            self.market.total_supply_assets().checked_sub(lend)?;
         *self.market.assets_in_queue_mut() = self.market.assets_in_queue().checked_add(lend)?;
         Some(lend)
     }
+
 }
 
 impl<M: Market, I, P: Position, O, S> Core<M, I, P, O, S> {
@@ -182,6 +320,9 @@ impl<M: Market, I, P: Position, O, S> Core<M, I, P, O, S> {
     where
         F: FnOnce(u64) -> Result<(), E>,
     {
+        if amount == 0 {
+            return Err(MathError::InvalidAmount);
+        }
         *self.position.collateral_deposited_mut() = self
             .position
             .collateral_deposited()
@@ -193,19 +334,25 @@ impl<M: Market, I, P: Position, O, S> Core<M, I, P, O, S> {
     /// Maximum borrowable amount against `collateral` at the market LTV and
     /// `oracle_price`, in lend units.
     ///
-    /// Uses **saturating** arithmetic and clamps to `u64::MAX` on overflow (only
-    /// reachable at astronomically large collateral). This is the capacity
-    /// *ceiling* the LTV gate compares against, so clamping high is safe — the
-    /// actual borrow is itself a `u64` and other checks (vault balance) still
-    /// apply — and it avoids bricking a large-but-valid position with an
-    /// arithmetic error. The intermediate `collateral × oracle_price` cannot
-    /// overflow u128 (both operands ≤ `u64::MAX`).
-    pub fn max_borrow_capacity(&self, collateral: u64, oracle_price: u64) -> u64 {
-        let capacity = (collateral as u128).saturating_mul(oracle_price as u128)
-            / PRICE_SCALE
-            * (self.market.ltv_percent() as u128)
-            / 100;
-        u64::try_from(capacity).unwrap_or(u64::MAX)
+    /// Returns `None` rather than clamping when the capacity exceeds `u64`.
+    /// Clamping to `u64::MAX` was the **unsafe** direction: this figure is the
+    /// ceiling every LTV gate compares against, so an overflow that saturated
+    /// high silently granted unlimited borrow headroom and let
+    /// `withdraw_collateral` release collateral it should have held. Refusing an
+    /// unrepresentable position is the conservative failure.
+    ///
+    /// The collateral→lend conversion is
+    /// [`collateral_value_in_lend`](crate::collateral_value_in_lend), shared with
+    /// the client's LTV and health-factor figures so the warning a user sees and
+    /// the gate the chain enforces cannot drift apart. It cannot overflow `u128`
+    /// (both operands ≤ `u64::MAX`), and neither can the `ltv_percent` scaling
+    /// that follows (≤ `u64::MAX²/PRICE_SCALE × 99`).
+    pub fn max_borrow_capacity(&self, collateral: u64, oracle_price: u64) -> Option<u64> {
+        let capacity =
+            crate::collateral_value_in_lend(collateral, oracle_price)
+                * (self.market.ltv_percent() as u128)
+                / 100;
+        u64::try_from(capacity).ok()
     }
 
     fn current_debt_amount(&self) -> Option<u64> {
@@ -328,81 +475,6 @@ impl<M: Market, I, P: Position, O> Core<M, I, P, O, Accrued> {
         transfer(repay_amount).map_err(MathError::Transfer)?;
         Ok((repay_amount, shares_to_burn))
     }
-
-    /// Settle a matured rate hedge: close the borrower's floating debt
-    /// (`initial_shares`) and re-borrow the fixed `borrow_amount`, paying the
-    /// excess floating cost from the provider's collateral and the `upfront_fee`
-    /// to the provider.
-    ///
-    /// **Solvency invariant (intentional):** the re-borrow is NOT gated by an LTV
-    /// / oracle check. Settlement is a matured obligation — it must always
-    /// complete so the provider's locked collateral and fee are released;
-    /// blocking it on LTV would let a borrower whose collateral fell trap the
-    /// counterparty's funds. If the settled position ends up above max LTV it
-    /// becomes a liquidation target, which is the correct remedy — not a gate
-    /// here. This is why the impl block carries no `O: Oracle` bound.
-    pub fn settle_hedge<E, F1, F2>(
-        &mut self,
-        initial_shares: u64,
-        borrow_amount: u64,
-        upfront_fee: u64,
-        excess_fn: F1,
-        fee_fn: F2,
-    ) -> Result<(u64, u64), MathError<E>>
-    where
-        F1: FnOnce(u64) -> Result<(), E>,
-        F2: FnOnce(u64) -> Result<(), E>,
-    {
-        let current_value = shares_to_amount(
-            initial_shares,
-            self.market.total_borrow_assets(),
-            self.market.total_borrow_shares(),
-        )
-        .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_shares_mut() = self
-            .market
-            .total_borrow_shares()
-            .checked_sub(initial_shares)
-            .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_assets_mut() = self
-            .market
-            .total_borrow_assets()
-            .checked_sub(current_value)
-            .ok_or(MathError::Arithmetic)?;
-        *self.market.total_supply_assets_mut() = self
-            .market
-            .total_supply_assets()
-            .saturating_sub(upfront_fee);
-        let new_shares = amount_to_shares(
-            borrow_amount,
-            self.market.total_borrow_assets(),
-            self.market.total_borrow_shares(),
-        )
-        .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_shares_mut() = self
-            .market
-            .total_borrow_shares()
-            .checked_add(new_shares)
-            .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_assets_mut() = self
-            .market
-            .total_borrow_assets()
-            .checked_add(borrow_amount)
-            .ok_or(MathError::Arithmetic)?;
-        let old_debt = self.position.debt_shares();
-        *self.position.debt_shares_mut() = old_debt
-            .checked_sub(initial_shares)
-            .ok_or(MathError::Arithmetic)?
-            .checked_add(new_shares)
-            .ok_or(MathError::Arithmetic)?;
-        let fixed_total = borrow_amount
-            .checked_add(upfront_fee)
-            .ok_or(MathError::Arithmetic)?;
-        let excess = current_value.saturating_sub(fixed_total);
-        excess_fn(excess).map_err(MathError::Transfer)?;
-        fee_fn(upfront_fee).map_err(MathError::Transfer)?;
-        Ok((current_value, new_shares))
-    }
 }
 
 // ── Methods available after accrual, requiring oracle ─────────────────────────
@@ -414,13 +486,25 @@ impl<M: Market, I, P, O: Oracle, S> Core<M, I, P, O, S> {
 }
 
 impl<M: Market, I, P: Position, O: Oracle> Core<M, I, P, O, Accrued> {
-    pub fn borrow<E, F>(&mut self, amount: u64, transfer: F) -> Result<u64, MathError<E>>
+    pub fn borrow<E, F>(
+        &mut self,
+        amount: u64,
+        vault_balance: u64,
+        transfer: F,
+    ) -> Result<u64, MathError<E>>
     where
         F: FnOnce(u64) -> Result<(), E>,
     {
+        if amount == 0 {
+            return Err(MathError::InvalidAmount);
+        }
+        if amount > crate::borrowable_liquidity(vault_balance, self.market.assets_in_queue()) {
+            return Err(MathError::InsufficientLiquidity);
+        }
         let oracle_price = self.oracle.price();
-        let max_borrowable =
-            self.max_borrow_capacity(self.position.collateral_deposited(), oracle_price);
+        let max_borrowable = self
+            .max_borrow_capacity(self.position.collateral_deposited(), oracle_price)
+            .ok_or(MathError::Arithmetic)?;
         let current_debt = self.current_debt_amount().ok_or(MathError::Arithmetic)?;
         if amount
             > max_borrowable
@@ -457,57 +541,6 @@ impl<M: Market, I, P: Position, O: Oracle> Core<M, I, P, O, Accrued> {
         Ok(new_shares)
     }
 
-    pub fn borrow_with_fee<E, F>(
-        &mut self,
-        amount: u64,
-        total_debt_amount: u64,
-        transfer: F,
-    ) -> Result<u64, MathError<E>>
-    where
-        F: FnOnce(u64) -> Result<(), E>,
-    {
-        let oracle_price = self.oracle.price();
-        let max_borrowable =
-            self.max_borrow_capacity(self.position.collateral_deposited(), oracle_price);
-        let current_debt = self.current_debt_amount().ok_or(MathError::Arithmetic)?;
-        // The position owes `total_debt_amount` (principal + fee), so the LTV gate
-        // must be checked against the full recorded debt — not the pre-fee
-        // `amount` the borrower receives — or the fee escapes collateralization.
-        if total_debt_amount
-            > max_borrowable
-                .checked_sub(current_debt)
-                .ok_or(MathError::Undercollateralized)?
-        {
-            return Err(MathError::Undercollateralized);
-        }
-        let new_shares = amount_to_shares(
-            total_debt_amount,
-            self.market.total_borrow_assets(),
-            self.market.total_borrow_shares(),
-        )
-        .ok_or(MathError::Arithmetic)?;
-        if new_shares == 0 {
-            return Err(MathError::AmountTooSmall);
-        }
-        *self.position.debt_shares_mut() = self
-            .position
-            .debt_shares()
-            .checked_add(new_shares)
-            .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_shares_mut() = self
-            .market
-            .total_borrow_shares()
-            .checked_add(new_shares)
-            .ok_or(MathError::Arithmetic)?;
-        *self.market.total_borrow_assets_mut() = self
-            .market
-            .total_borrow_assets()
-            .checked_add(total_debt_amount)
-            .ok_or(MathError::Arithmetic)?;
-        transfer(amount).map_err(MathError::Transfer)?;
-        Ok(new_shares)
-    }
-
     pub fn withdraw_collateral<E, F>(
         &mut self,
         amount: u64,
@@ -516,13 +549,18 @@ impl<M: Market, I, P: Position, O: Oracle> Core<M, I, P, O, Accrued> {
     where
         F: FnOnce(u64) -> Result<(), E>,
     {
+        if amount == 0 {
+            return Err(MathError::InvalidAmount);
+        }
         let oracle_price = self.oracle.price();
         let remaining = self
             .position
             .collateral_deposited()
             .checked_sub(amount)
             .ok_or(MathError::InsufficientBalance)?;
-        let max_borrowable = self.max_borrow_capacity(remaining, oracle_price);
+        let max_borrowable = self
+            .max_borrow_capacity(remaining, oracle_price)
+            .ok_or(MathError::Arithmetic)?;
         let current_debt = self.current_debt_amount().ok_or(MathError::Arithmetic)?;
         if current_debt > max_borrowable {
             return Err(MathError::Undercollateralized);

@@ -10,6 +10,10 @@ pub trait Market {
     fn accrued_fee_shares(&self) -> u64;
     fn assets_in_queue(&self) -> u64;
     fn ltv_percent(&self) -> u8;
+    /// Principal of the flash loan currently in flight, or 0 when none is.
+    /// Lives on the market (not the account wrapper) so `Core` owns the whole
+    /// borrow/repay state machine and the client can replay it.
+    fn flash_loan_outstanding(&self) -> u64;
     fn total_supply_assets_mut(&mut self) -> &mut u64;
     fn total_supply_shares_mut(&mut self) -> &mut u64;
     fn accrued_fee_shares_mut(&mut self) -> &mut u64;
@@ -17,6 +21,7 @@ pub trait Market {
     fn total_borrow_assets_mut(&mut self) -> &mut u64;
     fn total_borrow_shares_mut(&mut self) -> &mut u64;
     fn last_update_mut(&mut self) -> &mut i64;
+    fn flash_loan_outstanding_mut(&mut self) -> &mut u64;
 }
 
 pub trait Position {

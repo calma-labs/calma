@@ -1,5 +1,6 @@
 mod common;
-use common::{create_mint_ixs, send_ixs};
+use common::{
+create_mint_ixs, send_ixs};
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
@@ -145,7 +146,9 @@ fn test_create() {
         irm::accounts::Initialize {
             irm_config,
             pool: pool_pubkey,
-            authority: payer.pubkey(),
+            // Must match the pool authority — `calma::create` requires the market's
+            // own authority to control its rate curve.
+            authority: authority.pubkey(),
             payer: payer.pubkey(),
             system_program: anchor_lang::solana_program::system_program::id(),
         }
@@ -155,7 +158,7 @@ fn test_create() {
         &mut svm,
         &[create_pool_account_ix, irm_init_ix],
         &payer,
-        &[&payer, &pool_keypair],
+        &[&payer, &pool_keypair, &authority],
     );
 
     // ── Build create instruction ──────────────────────────────────────────────
@@ -163,7 +166,7 @@ fn test_create() {
         program_id,
         &calma::instruction::Create {
             ltv_percent: 75,
-            max_feed_age_secs: 90u32,
+            max_feed_age_ms: 90_000u32,
         }
         .data(),
         calma::accounts::Create {
@@ -188,5 +191,5 @@ fn test_create() {
         .to_account_metas(None),
     );
 
-    send_ixs(&mut svm, &[instruction], &payer, &[&payer, &authority]);
+    send_ixs(&mut svm, &[instruction], &payer, &[&payer, &authority, &pool_keypair]);
 }

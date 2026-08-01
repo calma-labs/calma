@@ -70,6 +70,12 @@ pub struct Borrow<'info> {
     #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidAmount)]
     pub feed_state: UncheckedAccount<'info>,
 
+    /// CHECK: required iff `pool.guard_state` is set; validated in the handler.
+    pub guard_program: Option<UncheckedAccount<'info>>,
+
+    /// CHECK: required iff `pool.guard_state` is set; must equal it exactly.
+    pub guard_state: Option<UncheckedAccount<'info>>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -95,17 +101,30 @@ impl<'info> Borrow<'info> {
 }
 
 pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<()> {
-    require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
-    require!(
-        ctx.accounts.lend_vault.amount >= amount,
-        crate::error::ErrorCode::InsufficientFunds
-    );
-
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
-    let (utilization, max_feed_age) = {
+    //
+    // Amount and liquidity rules (including excluding assets reserved for the
+    // withdrawal queue) are enforced inside `Core::borrow`.
+    let (utilization, max_feed_age, pool_guard_state) = {
         let pool = ctx.accounts.pool.load()?;
-        (pool.calculate_utilization(), pool.max_feed_age_secs)
+        (
+            pool.calculate_utilization(),
+            pool.max_feed_age_ms,
+            pool.guard_state,
+        )
     };
+
+    // Whitelist gate — entry only. `repay` is deliberately never gated: a
+    // borrower removed from the list must always be able to clear their debt.
+    // Checked before the oracle/IRM CPIs so a rejected caller costs the minimum.
+    crate::hooks::guard::enforce_pool_guard(
+        pool_guard_state,
+        &ctx.accounts.guard_program,
+        &ctx.accounts.guard_state,
+        ctx.accounts.authority.key(),
+    )?;
+
+    let vault_balance = ctx.accounts.lend_vault.amount;
     let oracle = OracleState::new(
         ctx.accounts.feed_program.to_account_info(),
         ctx.accounts.feed_state.to_account_info(),
@@ -127,7 +146,7 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
             .accrue_interest()
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
         let new_shares = core
-            .borrow(amount, |amt| {
+            .borrow(amount, vault_balance, |amt| {
                 ctx.accounts.transfer_lend_to_user(amt, state_bump)
             })
             .map_err(|e| match e {

@@ -7,12 +7,16 @@ import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountIdempotentInstruction,
   createMintToInstruction,
+  getAccount,
+  getMint,
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Calma } from "../../target/types/calma";
+import { Faucet } from "../../target/types/faucet";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
+import { Guard } from "../../target/types/guard";
 import { POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
@@ -260,7 +264,7 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75, 90)
+        .create(75, 90_000)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint
@@ -271,8 +275,8 @@ describe("hardcoded minter faucet", () => {
           feedState: feedPda,
           rateProgram: irmProgram.programId,
           irmState: irmConfigPda,
-          guardProgram: null,
-          guardState: null,
+            guardProgram: null,
+            guardState: null,
         })
         .preInstructions([createPoolIx])
         .signers([payer, authority, poolKeypair])
@@ -337,6 +341,8 @@ describe("hardcoded minter faucet", () => {
       await program.methods
         .depositCollateral(new BN(500_000_000)) // Deposit 500 tokens
         .accounts({
+          guardProgram: null,
+          guardState: null,
           pool,
           collateralMint: testMint,
           authority: borrower.publicKey,
@@ -350,6 +356,193 @@ describe("hardcoded minter faucet", () => {
       // Verify collateral was deposited
       const finalCollateralAccount = await getAccount(connection, borrowerCollateralAta);
       expect(finalCollateralAccount.amount.toString()).to.equal("500000000"); // 500 tokens left
+    });
+  });
+});
+
+describe("faucet program create/mint", () => {
+  let provider: AnchorProvider;
+  let connection: anchor.web3.Connection;
+  let faucetProgram: anchor.Program<Faucet>;
+  let payer: Keypair;
+  let mintAuthorityPda: PublicKey;
+  let faucetMint: PublicKey;
+  let symbol: string;
+
+  const DECIMALS = 6;
+  const MINT_AMOUNT = new BN(1_000_000_000); // 1,000 tokens at 6 decimals
+
+  // Mints are PDAs derived from their symbol, so a fixed symbol would collide on
+  // a validator that survives between runs. Randomize it per run.
+  function randomSymbol(prefix = "T"): string {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let out = prefix;
+    while (out.length < 6) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    return out;
+  }
+
+  function mintPda(sym: string): PublicKey {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("mint"), Buffer.from(sym)],
+      faucetProgram.programId
+    )[0];
+  }
+
+  async function expectRejected(label: string, needle: string, fn: () => Promise<void>) {
+    try {
+      await fn();
+      expect.fail(`expected ${label} to be rejected`);
+    } catch (e: any) {
+      const msg = e.message as string;
+      if (msg.includes("expected") && msg.includes("to be rejected")) throw e;
+      expect(msg).to.include(needle);
+    }
+  }
+
+  before(async () => {
+    provider = AnchorProvider.env();
+    anchor.setProvider(provider);
+    connection = provider.connection;
+    faucetProgram = anchor.workspace.Faucet as anchor.Program<Faucet>;
+
+    payer = Keypair.generate();
+    const airdrop = await connection.requestAirdrop(payer.publicKey, 2 * LAMPORTS_PER_SOL);
+    await connection.confirmTransaction(airdrop);
+
+    [mintAuthorityPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("mint_authority")],
+      faucetProgram.programId
+    );
+
+    symbol = randomSymbol();
+    faucetMint = mintPda(symbol);
+  });
+
+  it("creates a mint owned by the faucet's mint-authority PDA", async () => {
+    await faucetProgram.methods
+      .create(symbol, DECIMALS)
+      .accounts({ payer: payer.publicKey,  })
+      .signers([payer])
+      .rpc();
+
+    const mintInfo = await getMint(connection, faucetMint);
+    expect(mintInfo.mintAuthority?.toBase58()).to.equal(mintAuthorityPda.toBase58());
+    expect(mintInfo.freezeAuthority).to.equal(null);
+    expect(mintInfo.decimals).to.equal(DECIMALS);
+    expect(mintInfo.supply.toString()).to.equal("0");
+  });
+
+  it("mints to a wallet that has no token account yet", async () => {
+    const recipient = Keypair.generate();
+    const recipientAta = getAssociatedTokenAddressSync(faucetMint, recipient.publicKey);
+
+    expect(await connection.getAccountInfo(recipientAta)).to.equal(null);
+
+    await faucetProgram.methods
+      .mint(MINT_AMOUNT)
+      .accounts({
+        payer: payer.publicKey,
+        recipient: recipient.publicKey,
+        mint: faucetMint,
+      })
+      .signers([payer])
+      .rpc();
+
+    const account = await getAccount(connection, recipientAta);
+    expect(account.amount.toString()).to.equal(MINT_AMOUNT.toString());
+    expect(account.owner.toBase58()).to.equal(recipient.publicKey.toBase58());
+  });
+
+  it("mints again into an existing token account", async () => {
+    const recipient = Keypair.generate();
+    const recipientAta = getAssociatedTokenAddressSync(faucetMint, recipient.publicKey);
+
+    const mintOnce = () =>
+      faucetProgram.methods
+        .mint(MINT_AMOUNT)
+        .accounts({
+          payer: payer.publicKey,
+          recipient: recipient.publicKey,
+          mint: faucetMint,
+        })
+        .signers([payer])
+        .rpc();
+
+    await mintOnce();
+    await mintOnce();
+
+    const account = await getAccount(connection, recipientAta);
+    expect(account.amount.toString()).to.equal(MINT_AMOUNT.muln(2).toString());
+  });
+
+  it("lets a caller who is not the payer of create still mint", async () => {
+    // The whole point of the PDA authority: no shipped keypair, any signer works.
+    const stranger = Keypair.generate();
+    const airdrop = await connection.requestAirdrop(stranger.publicKey, LAMPORTS_PER_SOL);
+    await connection.confirmTransaction(airdrop);
+
+    const strangerAta = getAssociatedTokenAddressSync(faucetMint, stranger.publicKey);
+
+    await faucetProgram.methods
+      .mint(MINT_AMOUNT)
+      .accounts({
+        payer: stranger.publicKey,
+        recipient: stranger.publicKey,
+        mint: faucetMint,
+      })
+      .signers([stranger])
+      .rpc();
+
+    const account = await getAccount(connection, strangerAta);
+    expect(account.amount.toString()).to.equal(MINT_AMOUNT.toString());
+  });
+
+  it("rejects a zero amount", async () => {
+    const recipient = Keypair.generate();
+    const recipientAta = getAssociatedTokenAddressSync(faucetMint, recipient.publicKey);
+
+    await expectRejected("a zero-amount mint", "InvalidAmount", async () => {
+      await faucetProgram.methods
+        .mint(new BN(0))
+        .accounts({
+          payer: payer.publicKey,
+          recipient: recipient.publicKey,
+          mint: faucetMint,
+        })
+        .signers([payer])
+        .rpc();
+    });
+  });
+
+  it("rejects a mint the faucet does not have authority over", async () => {
+    const foreignMint = await createMint(connection, payer, payer.publicKey, null, DECIMALS);
+    const recipient = Keypair.generate();
+    const recipientAta = getAssociatedTokenAddressSync(foreignMint, recipient.publicKey);
+
+    await expectRejected("minting a foreign mint", "Unauthorized", async () => {
+      await faucetProgram.methods
+        .mint(MINT_AMOUNT)
+        .accounts({
+          payer: payer.publicKey,
+          recipient: recipient.publicKey,
+          mint: foreignMint,
+        })
+        .signers([payer])
+        .rpc();
+    });
+  });
+
+  it("rejects a symbol longer than 8 bytes", async () => {
+    const longSymbol = "TOOLONGSYMBOL";
+
+    await expectRejected("an oversized symbol", "InvalidSymbol", async () => {
+      await faucetProgram.methods
+        .create(longSymbol, DECIMALS)
+        .accounts({
+          payer: payer.publicKey,
+        })
+        .signers([payer])
+        .rpc();
     });
   });
 });

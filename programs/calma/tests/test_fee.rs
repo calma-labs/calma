@@ -1,8 +1,5 @@
 mod common;
-use common::{
-    create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_balance, send_ixs,
-    try_send_ixs,
-};
+use common::{create_mint_ixs, create_token_account_ixs, mint_to_ix, send_ixs, try_send_ixs};
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::clock::Clock;
@@ -21,7 +18,6 @@ const ATP_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const LEND_DEPOSIT: u64 = 10_000_000;
 const COL_DEPOSIT: u64 = 10_000_000;
 const BORROW_AMOUNT: u64 = 5_000_000; // 50% utilization
-const FEE_BPS: u64 = 2_000; // 20% of interest to the protocol
 const YEAR: i64 = 31_557_600;
 
 /// `pool.market.accrued_fee_shares` lives at Pool offset 192 (8-byte disc + 128
@@ -31,10 +27,19 @@ fn read_accrued_fee_shares(svm: &LiteSVM, pool: &Pubkey) -> u64 {
     u64::from_le_bytes(acct.data[200..208].try_into().unwrap())
 }
 
-/// Full flow proving the protocol fee wiring end-to-end: set a fee, let interest
-/// accrue over a year, and confirm fee shares are minted and claimable as LP.
+/// `pool.market.fee` sits at market-relative 40, i.e. account-data offset 176
+/// (see [`read_accrued_fee_shares`] for the prefix breakdown).
+fn read_fee_bps(svm: &LiteSVM, pool: &Pubkey) -> u64 {
+    let acct = svm.get_account(pool).unwrap();
+    u64::from_le_bytes(acct.data[176..184].try_into().unwrap())
+}
+
+/// The protocol fee is permanently 0: `create` stamps it and no instruction can
+/// change it. This drives a full year of interest through a real borrow/repay
+/// and proves nothing is ever skimmed — the rate stays 0, no fee shares are
+/// minted, and `claim_fees` therefore has nothing to hand out.
 #[test]
-fn test_protocol_fee_accrues_and_is_claimable() {
+fn test_protocol_fee_is_fixed_at_zero() {
     let calma_id = calma::id();
     let irm_id = irm::id();
     let feed_id = feed::id();
@@ -159,7 +164,7 @@ fn test_protocol_fee_accrues_and_is_claimable() {
         &mut svm,
         &[Instruction::new_with_bytes(
             calma_id,
-            &calma::instruction::Create { ltv_percent: 75, max_feed_age_secs: 90u32 }.data(),
+            &calma::instruction::Create { ltv_percent: 75, max_feed_age_ms: 90_000u32 }.data(),
             calma::accounts::Create {
                 pool: pool_pk,
                 state: state_pda,
@@ -182,39 +187,11 @@ fn test_protocol_fee_accrues_and_is_claimable() {
             .to_account_metas(None),
         )],
         &payer,
-        &[&payer],
+        &[&payer, &pool_kp],
     );
 
-    // ── Set the protocol fee (authority-only) ───────────────────────────────────
-    send_ixs(
-        &mut svm,
-        &[Instruction::new_with_bytes(
-            calma_id,
-            &calma::instruction::SetFee { fee_bps: FEE_BPS }.data(),
-            calma::accounts::SetFee { pool: pool_pk, authority: payer.pubkey() }.to_account_metas(None),
-        )],
-        &payer,
-        &[&payer],
-    );
-
-    // Guard: fee above MAX_FEE_BPS is rejected (FeeTooHigh).
-    let over_cap = Instruction::new_with_bytes(
-        calma_id,
-        &calma::instruction::SetFee { fee_bps: 2_501 }.data(),
-        calma::accounts::SetFee { pool: pool_pk, authority: payer.pubkey() }.to_account_metas(None),
-    );
-    assert!(!try_send_ixs(&mut svm, &[over_cap], &payer, &[&payer]), "fee over cap must be rejected");
-
-    // Guard: a non-authority cannot set the fee (Unauthorized).
-    let intruder_set = Instruction::new_with_bytes(
-        calma_id,
-        &calma::instruction::SetFee { fee_bps: 100 }.data(),
-        calma::accounts::SetFee { pool: pool_pk, authority: intruder.pubkey() }.to_account_metas(None),
-    );
-    assert!(
-        !try_send_ixs(&mut svm, &[intruder_set], &intruder, &[&intruder]),
-        "non-authority set_fee must be rejected"
-    );
+    // A freshly created pool starts — and stays — at a 0 fee rate.
+    assert_eq!(read_fee_bps(&svm, &pool_pk), 0, "create must stamp a 0 fee");
 
     // ── User token accounts + funding ───────────────────────────────────────────
     let user_lend_src_kp = Keypair::new();
@@ -246,6 +223,8 @@ fn test_protocol_fee_accrues_and_is_claimable() {
             calma_id,
             &calma::instruction::DepositLent { amount: LEND_DEPOSIT }.data(),
             calma::accounts::DepositLent {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -254,6 +233,8 @@ fn test_protocol_fee_accrues_and_is_claimable() {
                 user_lend_token_account: user_lend_src,
                 user_lp_token_account: user_lp_ata,
                 lend_vault,
+                rate_program: irm_id,
+                irm_state: irm_config,
                 token_program: spl_token::id(),
                 associated_token_program: atp_id,
                 system_program: anchor_lang::solana_program::system_program::id(),
@@ -269,6 +250,8 @@ fn test_protocol_fee_accrues_and_is_claimable() {
             calma_id,
             &calma::instruction::DepositCollateral { amount: COL_DEPOSIT }.data(),
             calma::accounts::DepositCollateral {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 collateral_mint: col_mint,
                 authority: payer.pubkey(),
@@ -289,6 +272,8 @@ fn test_protocol_fee_accrues_and_is_claimable() {
             calma_id,
             &calma::instruction::Borrow { amount: BORROW_AMOUNT }.data(),
             calma::accounts::Borrow {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -370,12 +355,15 @@ fn test_protocol_fee_accrues_and_is_claimable() {
         &[&payer],
     );
 
-    // Interest accrued → protocol fee shares were minted.
-    let fee_shares = read_accrued_fee_shares(&svm, &pool_pk);
-    assert!(fee_shares > 0, "expected protocol fee shares to accrue");
+    // A year of interest accrued at a 0 fee rate → nothing was skimmed.
+    assert_eq!(read_fee_bps(&svm, &pool_pk), 0, "fee rate must still be 0 after accrual");
+    assert_eq!(
+        read_accrued_fee_shares(&svm, &pool_pk),
+        0,
+        "a 0 fee rate must mint no protocol fee shares"
+    );
 
-    // Guard: a non-authority cannot claim the fee (Unauthorized), even with
-    // accrued shares available.
+    // Guard: a non-authority cannot claim the fee (Unauthorized).
     let (intruder_lp_ata, _) = Pubkey::find_program_address(
         &[intruder.pubkey().as_ref(), spl_token::id().as_ref(), lp_mint.as_ref()],
         &atp_id,
@@ -399,36 +387,29 @@ fn test_protocol_fee_accrues_and_is_claimable() {
         !try_send_ixs(&mut svm, &[intruder_claim], &intruder, &[&intruder]),
         "non-authority claim_fees must be rejected"
     );
-    // The failed claim must not have touched the accrued counter.
-    assert_eq!(read_accrued_fee_shares(&svm, &pool_pk), fee_shares);
 
-    // ── Claim fees → authority receives matching LP, counter resets ─────────────
-    let lp_before = read_token_balance(&svm, &user_lp_ata);
-    // Distinct blockhash: the successful claim is otherwise byte-identical to the
-    // earlier NoFeesToClaim probe and would collide as AlreadyProcessed.
+    // ── Even the authority has nothing to claim (NoFeesToClaim) ─────────────────
+    // Distinct blockhash: byte-identical to the pre-accrual probe above, which
+    // would otherwise collide as AlreadyProcessed.
     svm.expire_blockhash();
-    send_ixs(
-        &mut svm,
-        &[Instruction::new_with_bytes(
-            calma_id,
-            &calma::instruction::ClaimFees {}.data(),
-            calma::accounts::ClaimFees {
-                pool: pool_pk,
-                state: state_pda,
-                lp_mint,
-                authority: payer.pubkey(),
-                authority_lp_token_account: user_lp_ata,
-                token_program: spl_token::id(),
-                associated_token_program: atp_id,
-                system_program: anchor_lang::solana_program::system_program::id(),
-            }
-            .to_account_metas(None),
-        )],
-        &payer,
-        &[&payer],
+    let authority_claim = Instruction::new_with_bytes(
+        calma_id,
+        &calma::instruction::ClaimFees {}.data(),
+        calma::accounts::ClaimFees {
+            pool: pool_pk,
+            state: state_pda,
+            lp_mint,
+            authority: payer.pubkey(),
+            authority_lp_token_account: user_lp_ata,
+            token_program: spl_token::id(),
+            associated_token_program: atp_id,
+            system_program: anchor_lang::solana_program::system_program::id(),
+        }
+        .to_account_metas(None),
     );
-
-    let lp_after = read_token_balance(&svm, &user_lp_ata);
-    assert_eq!(lp_after - lp_before, fee_shares, "authority receives fee shares as LP");
-    assert_eq!(read_accrued_fee_shares(&svm, &pool_pk), 0, "counter reset after claim");
+    assert!(
+        !try_send_ixs(&mut svm, &[authority_claim], &payer, &[&payer]),
+        "claim must stay rejected — a 0 fee never accrues anything to claim"
+    );
+    assert_eq!(read_accrued_fee_shares(&svm, &pool_pk), 0);
 }

@@ -75,14 +75,23 @@ describe("irm initialize", () => {
             irmProgram.programId
         );
 
+        // `calma::create` requires the market authority to own its rate curve,
+        // so the IRM is created immediately before the pool under a fresh
+        // keypair that then serves as the pool authority too.
+        const poolAuthority = Keypair.generate();
+        await provider.connection.confirmTransaction(
+            await provider.connection.requestAirdrop(poolAuthority.publicKey, 2 * LAMPORTS_PER_SOL)
+        );
+
         await irmProgram.methods
             .initialize(FLAT_100_BPS)
-            .accounts({ pool: poolKeypair.publicKey, authority: authority.publicKey, payer: payer.publicKey })
-            .signers([payer, authority])
+            .accounts({ pool: poolKeypair.publicKey, authority: poolAuthority.publicKey, payer: payer.publicKey })
+            .signers([payer, poolAuthority])
             .rpc();
 
         const calmaSetup: TestSetup = await setupTest(75, {
             poolKeypair,
+            authority: poolAuthority,
             rateProgram: irmProgram.programId,
             rateState: cpiIrmConfig,
         });
@@ -92,6 +101,8 @@ describe("irm initialize", () => {
         await calmaSetup.program.methods
             .depositCollateral(new BN(100_000_000))
             .accounts({
+                guardProgram: null,
+                guardState: null,
                 pool: calmaSetup.pool,
                 collateralMint: calmaSetup.collateralMint,
                 authority: calmaSetup.authority.publicKey,
@@ -103,6 +114,8 @@ describe("irm initialize", () => {
         const sig = await calmaSetup.program.methods
             .borrow(new BN(50_000_000))
             .accounts({
+                guardProgram: null,
+                guardState: null,
                 pool: calmaSetup.pool,
                 lendMint: calmaSetup.lendMint,
                 authority: calmaSetup.authority.publicKey,

@@ -1,5 +1,6 @@
 mod common;
-use common::{create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_balance, send_ixs};
+use common::{
+create_mint_ixs, create_token_account_ixs, mint_to_ix, read_token_balance, send_ixs};
 
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
@@ -182,7 +183,7 @@ fn test_flow() {
             calma_id,
             &calma::instruction::Create {
                 ltv_percent: 75,
-                max_feed_age_secs: 90u32,
+                max_feed_age_ms: 90_000u32,
             }
             .data(),
             calma::accounts::Create {
@@ -207,7 +208,7 @@ fn test_flow() {
             .to_account_metas(None),
         )],
         &payer,
-        &[&payer],
+        &[&payer, &pool_kp],
     );
 
     // ── User token accounts ────────────────────────────────────────────────────
@@ -259,6 +260,8 @@ fn test_flow() {
             }
             .data(),
             calma::accounts::DepositLent {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -267,6 +270,8 @@ fn test_flow() {
                 user_lend_token_account: user_lend_src,
                 user_lp_token_account: user_lp_ata,
                 lend_vault,
+                rate_program: irm_id,
+                irm_state: irm_config,
                 token_program: spl_token::id(),
                 associated_token_program: atp_id,
                 system_program: anchor_lang::solana_program::system_program::id(),
@@ -287,6 +292,8 @@ fn test_flow() {
             }
             .data(),
             calma::accounts::DepositCollateral {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 collateral_mint: col_mint,
                 authority: payer.pubkey(),
@@ -312,6 +319,8 @@ fn test_flow() {
             }
             .data(),
             calma::accounts::Borrow {
+                guard_program: None,
+                guard_state: None,
                 pool: pool_pk,
                 state: state_pda,
                 lend_mint,
@@ -419,6 +428,8 @@ fn test_flow() {
                 user_lp_token_account: user_lp_ata,
                 user_lend_token_account: user_lend_ata,
                 lend_vault,
+                rate_program: irm_id,
+                irm_state: irm_config,
                 token_program: spl_token::id(),
                 associated_token_program: atp_id,
                 system_program: anchor_lang::solana_program::system_program::id(),

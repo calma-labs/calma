@@ -12,6 +12,7 @@ describe("piecewise linear model edge cases", () => {
     let payer: Keypair;
     let authority: Keypair;
     let irmConfig: PublicKey;
+    let pool: PublicKey;
 
     beforeEach(async () => {
         payer = Keypair.generate();
@@ -22,7 +23,7 @@ describe("piecewise linear model edge cases", () => {
         const sigAuth = await provider.connection.requestAirdrop(authority.publicKey, 2 * LAMPORTS_PER_SOL);
         await provider.connection.confirmTransaction(sigAuth);
 
-        const pool = Keypair.generate().publicKey;
+        pool = Keypair.generate().publicKey;
         [irmConfig] = PublicKey.findProgramAddressSync(
             [Buffer.from("irm_config"), pool.toBuffer()],
             irmProgram.programId
@@ -45,7 +46,7 @@ describe("piecewise linear model edge cases", () => {
                 { utilBps: 9_500, rateBps: 450 },
                 { utilBps: 10_000, rateBps: 1_000 },
             ])
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
+            .accounts({ pool, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
@@ -64,7 +65,7 @@ describe("piecewise linear model edge cases", () => {
                 { utilBps: 7_500, rateBps: 500 },
                 { utilBps: 10_000, rateBps: 1_200 },
             ])
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
+            .accounts({ pool, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
@@ -85,13 +86,13 @@ describe("piecewise linear model edge cases", () => {
                 { utilBps: 9_500, rateBps: 500 },
                 { utilBps: 10_000, rateBps: 1_000 },
             ])
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
+            .accounts({ pool, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
-        const pool = Keypair.generate().publicKey;
+        const pool2 = Keypair.generate().publicKey;
         const [irmConfig2] = PublicKey.findProgramAddressSync(
-            [Buffer.from("irm_config"), pool.toBuffer()],
+            [Buffer.from("irm_config"), pool2.toBuffer()],
             irmProgram.programId
         );
         await irmProgram.methods
@@ -100,13 +101,13 @@ describe("piecewise linear model edge cases", () => {
                 { utilBps: 9_500, rateBps: 500 },
                 { utilBps: 10_000, rateBps: 1_000 },
             ])
-            .accounts({ pool, authority: authority.publicKey, payer: payer.publicKey })
+            .accounts({ pool: pool2, authority: authority.publicKey, payer: payer.publicKey })
             .signers([payer, authority])
             .rpc();
 
         const result = await irmProgram.methods
             .borrowRate(new BN(10_500))
-            .accounts({ pool })
+            .accounts({ pool: pool2 })
             .simulate();
 
         const log = result.raw.find((l) => l.includes("irm::borrow_rate"));

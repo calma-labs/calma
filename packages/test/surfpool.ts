@@ -201,7 +201,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       programId: calma.programId,
     });
     await calma.methods
-      .create(75, 90)
+      .create(75, 90_000)
       .accounts({
         pool: pool.publicKey, collateralMint, lendMint,
         authority: authority.publicKey, payer: payer.publicKey,
@@ -216,7 +216,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
     // Seed the pool's lend vault so there is liquidity to borrow.
     await calma.methods
       .depositLent(new BN(LEND_LIQUIDITY))
-      .accounts({ pool: pool.publicKey, lendMint, authority: authority.publicKey, userLendTokenAccount: userLendAta })
+      .accounts({ pool: pool.publicKey, lendMint, authority: authority.publicKey, userLendTokenAccount: userLendAta, rateProgram: irm.programId, irmState: irmConfigPda })
       .signers([authority])
       .rpc();
 

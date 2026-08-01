@@ -7,6 +7,8 @@ async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypai
     await setup.program.methods
         .depositCollateral(new anchor.BN(amount))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             collateralMint: setup.collateralMint,
             authority: authority.publicKey,

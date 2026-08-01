@@ -42,6 +42,8 @@ export function useDeposit() {
             const tx = await program.methods
                 .depositCollateral(amount)
                 .accounts({
+                    guardProgram: null,
+                    guardState: null,
                     pool,
                     collateralMint,
                     authority,

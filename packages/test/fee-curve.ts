@@ -51,7 +51,7 @@ describe("irm set_fee_points", () => {
                 { utilBps: 5_000, rateBps: 400 },
                 { utilBps: 10_000, rateBps: 1_500 },
             ])
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
+            .accounts({ pool, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
@@ -69,7 +69,7 @@ describe("irm set_fee_points", () => {
                 { utilBps: 0, rateBps: 250 },
                 { utilBps: 10_000, rateBps: 250 },
             ])
-            .accounts({ irmState: irmConfig, authority: authority.publicKey })
+            .accounts({ pool, authority: authority.publicKey })
             .signers([authority])
             .rpc();
 
@@ -81,7 +81,7 @@ describe("irm set_fee_points", () => {
         try {
             await program.methods
                 .setFeePoints([{ utilBps: 0, rateBps: 500 }])
-                .accounts({ irmState: irmConfig, authority: authority.publicKey })
+                .accounts({ pool, authority: authority.publicKey })
                 .signers([authority])
                 .rpc();
             expect.fail("expected transaction to fail");
@@ -97,7 +97,7 @@ describe("irm set_fee_points", () => {
                     { utilBps: 100, rateBps: 0 },
                     { utilBps: 10_000, rateBps: 500 },
                 ])
-                .accounts({ irmState: irmConfig, authority: authority.publicKey })
+                .accounts({ pool, authority: authority.publicKey })
                 .signers([authority])
                 .rpc();
             expect.fail("expected transaction to fail");
@@ -114,7 +114,7 @@ describe("irm set_fee_points", () => {
                     { utilBps: 5_000, rateBps: 400 },
                     { utilBps: 5_000, rateBps: 800 },
                 ])
-                .accounts({ irmState: irmConfig, authority: authority.publicKey })
+                .accounts({ pool, authority: authority.publicKey })
                 .signers([authority])
                 .rpc();
             expect.fail("expected transaction to fail");
@@ -134,7 +134,7 @@ describe("irm set_fee_points", () => {
                     { utilBps: 0, rateBps: 0 },
                     { utilBps: 10_000, rateBps: 999 },
                 ])
-                .accounts({ irmState: irmConfig, authority: imposter.publicKey })
+                .accounts({ pool, authority: imposter.publicKey })
                 .signers([imposter])
                 .rpc();
             expect.fail("expected transaction to fail");

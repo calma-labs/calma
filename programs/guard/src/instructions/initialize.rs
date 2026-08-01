@@ -1,6 +1,21 @@
 use crate::state::GuardState;
 use anchor_lang::prelude::*;
 
+/// Creates a whitelist owned by `authority`.
+///
+/// The PDA is seeded on `["guard", authority]`, so one authority owns exactly
+/// one list and different authorities maintain different subsets — a market
+/// gated on institutional LPs and one gated on a testing cohort are separate
+/// accounts with separate owners.
+///
+/// This is only safe because consumers **pin the state account, not the
+/// program**. Creation is permissionless, so anyone can stand up a list naming
+/// themselves and add themselves to it; a consumer that merely checked the
+/// caller passed *a* guard account owned by *this* program would gate nothing.
+/// `calma` records the exact `guard_state` in `Pool` at market creation and
+/// compares every later check against that stored address — see
+/// `state::Pool::guard_state`. A consumer that cannot pin an address must not
+/// use this program.
 #[derive(Accounts)]
 pub struct Create<'info> {
     #[account(

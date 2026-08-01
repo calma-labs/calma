@@ -61,24 +61,16 @@ impl<'info> FlashRepay<'info> {
 }
 
 pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> {
-    require!(amount > 0, ErrorCode::InvalidAmount);
-
     // ── 1. Verify a matching flash_borrow preceded this instruction ───────────
     //
-    // We scan every instruction that comes *before* the current one in the
-    // transaction. We require at least one that:
-    //   a) targets this program
-    //   b) has the flash_borrow discriminator
-    //   c) references the same pool (first account)
-    //
-    // We also extract the borrowed amount from the flash_borrow instruction data
-    // (bytes [8..16]) to verify that `amount >= borrowed + fee`.
+    // Chain-shaped check (instruction sysvar), retained as defence in depth: it
+    // pins the repay to a borrow against *this* pool earlier in *this*
+    // transaction. The amount/pairing rules live in `Core::flash_repay`.
     let sysvar_info = ctx.accounts.sysvar_instructions.to_account_info();
     let current_index = load_current_index_checked(&sysvar_info)? as usize;
-
     let pool_key = ctx.accounts.pool.key();
 
-    let mut borrowed_amount: Option<u64> = None;
+    let mut saw_borrow = false;
     for idx in 0..current_index {
         let ix = match load_instruction_at_checked(idx, &sysvar_info) {
             Ok(ix) => ix,
@@ -88,50 +80,39 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
         if ix.program_id == crate::ID
             && ix.data.len() >= 16
             && ix.data[..8] == FLASH_BORROW_DISCRIMINATOR
-        {
-            let pool_matches = ix
+            && ix
                 .accounts
                 .first()
                 .map(|a| a.pubkey == pool_key)
-                .unwrap_or(false);
-
-            if pool_matches {
-                borrowed_amount = Some(u64::from_le_bytes(ix.data[8..16].try_into().unwrap()));
-                break;
-            }
+                .unwrap_or(false)
+        {
+            saw_borrow = true;
+            break;
         }
     }
+    require!(saw_borrow, ErrorCode::FlashBorrowMissing);
 
-    let borrowed = borrowed_amount.ok_or(ErrorCode::FlashBorrowMissing)?;
-    let fee = math::flash_fee(borrowed).ok_or(ErrorCode::MathOverflow)?;
-    let min_repay = borrowed.checked_add(fee).ok_or(ErrorCode::MathOverflow)?;
-    require!(amount >= min_repay, ErrorCode::FlashLoanFeeNotCovered);
-
-    // ── 2. Verify repayer has sufficient balance ──────────────────────────────
-    require!(
-        ctx.accounts.user_source.amount >= amount,
-        ErrorCode::InsufficientFunds
-    );
-
-    // ── 3. Transfer repayment from user to lend vault ─────────────────────────
-    ctx.accounts.transfer_repayment_to_vault(amount)?;
-
-    // ── 4. Update pool accounting ─────────────────────────────────────────────
-    //
-    // The full repay amount (principal + fee) is credited back to the pool.
-    // The net effect vs the flash_borrow is +fee for depositors.
-    {
+    // ── 2. Close the loan via Core, which performs the token transfer ─────────
+    let user_balance = ctx.accounts.user_source.amount;
+    let (principal, fee) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        pool.market.total_supply_assets = pool
-            .market
-            .total_supply_assets
-            .checked_add(amount)
-            .ok_or(ErrorCode::MathOverflow)?;
-    }
+        let mut core = math::Core::new(pool.market);
+        let result = core
+            .flash_repay(amount, |amt| {
+                require!(user_balance >= amt, ErrorCode::InsufficientFunds);
+                ctx.accounts.transfer_repayment_to_vault(amt)
+            })
+            .map_err(|e| match e {
+                math::MathError::Transfer(e) => e,
+                e => ErrorCode::from(e).into(),
+            })?;
+        pool.market = core.market;
+        result
+    };
 
     msg!(
-        "FlashRepay: borrowed={} fee={} repaid={}",
-        borrowed,
+        "FlashRepay: principal={} fee={} repaid={}",
+        principal,
         fee,
         amount,
     );

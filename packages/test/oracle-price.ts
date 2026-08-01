@@ -16,6 +16,8 @@ async function depositCollateral(setup: TestSetup, amount: number) {
     await setup.program.methods
         .depositCollateral(new anchor.BN(amount))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             collateralMint: setup.collateralMint,
             authority: setup.authority.publicKey,
@@ -29,6 +31,8 @@ async function borrow(setup: TestSetup, amount: number) {
     await setup.program.methods
         .borrow(new anchor.BN(amount))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             lendMint: setup.lendMint,
             authority: setup.authority.publicKey,

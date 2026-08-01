@@ -5,20 +5,26 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct MockSwap<'info> {
-    /// The authority over both mints — must sign to burn/mint.
-    pub mint_authority: Signer<'info>,
+    /// CHECK: Signer-only PDA — no data stored; holds mint authority over both mints
+    /// and signs the mint_to CPI.
+    #[account(
+        seeds = [b"mint_authority"],
+        bump,
+    )]
+    pub mint_authority: UncheckedAccount<'info>,
 
     /// The owner of the token accounts — must sign to authorize burning from their account.
     pub token_owner: Signer<'info>,
 
-    /// The mint to burn from. Caller must be its mint authority.
+    /// The mint to burn from. Must be under the faucet's authority — burning needs no
+    /// authority at all, but the constraint keeps the swap confined to test mints.
     #[account(
         mut,
         constraint = mint_in.mint_authority == COption::Some(mint_authority.key()) @ ErrorCode::Unauthorized,
     )]
     pub mint_in: Account<'info, Mint>,
 
-    /// The mint to issue tokens from. Caller must be its mint authority.
+    /// The mint to issue tokens from. Must be under the faucet's authority.
     #[account(
         mut,
         constraint = mint_out.mint_authority == COption::Some(mint_authority.key()) @ ErrorCode::Unauthorized,
@@ -45,7 +51,8 @@ pub struct MockSwap<'info> {
 }
 
 /// Mock 1:1 swap: burn `amount` of `mint_in` from the caller, mint `amount` of `mint_out`
-/// to the caller. The caller must be the mint authority of both mints.
+/// to the caller. Both mints must be under the faucet's `mint_authority` PDA, which
+/// signs the mint side — so no caller holds a key that can issue these tokens.
 ///
 /// This instruction exists solely for testing and local-validator faucet scenarios.
 /// It must never be deployed to mainnet.
@@ -64,15 +71,18 @@ impl<'info> MockSwap<'info> {
         )
     }
 
-    pub fn mint_token_out(&self, amount: u64) -> Result<()> {
+    pub fn mint_token_out(&self, amount: u64, authority_bump: u8) -> Result<()> {
+        let seeds = &[b"mint_authority" as &[u8], &[authority_bump]];
+        let signer = &[&seeds[..]];
         anchor_spl::token::mint_to(
-            CpiContext::new(
+            CpiContext::new_with_signer(
                 *self.token_program.to_account_info().key,
                 anchor_spl::token::MintTo {
                     mint: self.mint_out.to_account_info(),
                     to: self.user_token_out.to_account_info(),
                     authority: self.mint_authority.to_account_info(),
                 },
+                signer,
             ),
             amount,
         )
@@ -86,7 +96,8 @@ pub fn mock_swap_handler(ctx: Context<MockSwap>, amount: u64) -> Result<()> {
     ctx.accounts.burn_token_in(amount)?;
 
     // Mint `amount` of mint_out to the caller's account.
-    ctx.accounts.mint_token_out(amount)?;
+    ctx.accounts
+        .mint_token_out(amount, ctx.bumps.mint_authority)?;
 
     msg!(
         "MockSwap: burned {} of {}, minted {} of {}",

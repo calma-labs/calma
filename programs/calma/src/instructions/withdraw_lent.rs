@@ -59,6 +59,14 @@ pub struct WithdrawLent<'info> {
     )]
     pub lend_vault: Account<'info, TokenAccount>,
 
+    /// CHECK: validated as pool.rate_program
+    #[account(constraint = rate_program.key() == pool.load()?.rate_program @ crate::error::ErrorCode::MissingRateProgram)]
+    pub rate_program: UncheckedAccount<'info>,
+
+    /// CHECK: validated as pool.irm_state
+    #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
+    pub irm_state: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
@@ -105,7 +113,7 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     );
 
     // Validate lend_mint matches what is stored in the pool.
-    {
+    let utilization = {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.lend_mint.key() == pool.lend_mint,
@@ -115,18 +123,34 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             pool.market.total_supply_shares > 0,
             crate::error::ErrorCode::InvalidAmount
         );
-    }
+        require!(
+            pool.market.flash_loan_outstanding == 0,
+            crate::error::ErrorCode::FlashLoanInProgress
+        );
+        pool.calculate_utilization()
+    };
 
-    // ── 1. Burn LP tokens from user (always) ─────────────────────────────────
+    // ── 1. Accrue interest so the exit is priced at the current share price ───
+    let irm = crate::hooks::irm::IrmState::new(
+        ctx.accounts.rate_program.to_account_info(),
+        utilization,
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+    )?;
+
+    // ── 2. Burn LP tokens from user (always) ─────────────────────────────────
     ctx.accounts.burn_lp(shares)?;
 
-    // ── 2. Compute token amount and update market ─────────────────────────────
+    // ── 3. Compute token amount and update market ─────────────────────────────
     let vault_balance = ctx.accounts.lend_vault.amount;
     let state_bump = ctx.bumps.state;
     let (immediate, lend_for_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
         let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
-        let mut core = math::Core::new(pool.market);
+        let mut core = math::Core::new(pool.market)
+            .with_irm(irm)
+            .accrue_interest()
+            .ok_or(crate::error::ErrorCode::InterestAccrualOverflow)?;
         let lend_for_shares = core
             .calc_lend_for_shares(shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;

@@ -2,7 +2,6 @@
   "name": "@calma/test",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "dependencies": {
     "@calma/wasm-lib": "*",
     "@anchor-lang/core": "1.0.2",

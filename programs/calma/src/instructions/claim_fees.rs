@@ -70,6 +70,10 @@ pub fn claim_fees_handler(ctx: Context<ClaimFees>) -> Result<()> {
             pool.authority == ctx.accounts.authority.key(),
             crate::error::ErrorCode::Unauthorized
         );
+        require!(
+            pool.market.flash_loan_outstanding == 0,
+            crate::error::ErrorCode::FlashLoanInProgress
+        );
         let shares = pool.market.accrued_fee_shares;
         require!(shares > 0, crate::error::ErrorCode::NoFeesToClaim);
         // total_supply_shares already includes these; only the counter resets.

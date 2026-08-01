@@ -8,9 +8,7 @@
 //! Pointer arguments are `i32` because WASM32 linear-memory addresses are
 //! unsigned 32-bit values, conventionally represented as `i32` in WASM ABI.
 
-use crate::state::{
-    PoolAccount, RateHedgeMatchAccount, RateHedgeOfferAccount, UserPositionAccount,
-};
+use crate::state::{PoolAccount, UserPositionAccount};
 use bytemuck::bytes_of;
 
 macro_rules! export_parse {
@@ -34,6 +32,4 @@ macro_rules! export_parse {
 }
 
 export_parse!(wasm_parse_user_position, UserPositionAccount);
-export_parse!(wasm_parse_rate_hedge_offer, RateHedgeOfferAccount);
-export_parse!(wasm_parse_rate_hedge_match, RateHedgeMatchAccount);
 export_parse!(wasm_parse_pool, PoolAccount);

@@ -1,7 +1,7 @@
 import * as anchor from "@anchor-lang/core";
 import { BN } from "@anchor-lang/core";
 import { expect } from "chai";
-import { setupTest, participateInPool, TestSetup } from "./utils";
+import { setupTest, participateInPool, transferMintsToFaucet, TestSetup } from "./utils";
 import { Keypair, PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 
@@ -44,7 +44,9 @@ async function openMultiply(
     await Promise.all([
       program.methods
         .depositCollateral(amountRaw)
-        .accounts({ pool, collateralMint, authority: authority.publicKey, userTokenAccount: userCollateralAta })
+        .accounts({
+            guardProgram: null,
+            guardState: null, pool, collateralMint, authority: authority.publicKey, userTokenAccount: userCollateralAta })
         .signers([authority])
         .instruction(),
       program.methods
@@ -56,10 +58,10 @@ async function openMultiply(
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
         .instruction(),
-      program.methods
+      setup.faucetProgram.methods
         .mockSwap(extraRaw)
+        // mintAuthority is a const-seed PDA — Anchor derives it.
         .accounts({
-          mintAuthority: authority.publicKey,
           tokenOwner: authority.publicKey,
           mintIn: lendMint,
           mintOut: collateralMint,
@@ -70,12 +72,16 @@ async function openMultiply(
         .instruction(),
       program.methods
         .depositCollateral(extraRaw)
-        .accounts({ pool, collateralMint, authority: authority.publicKey, userTokenAccount: userCollateralAta })
+        .accounts({
+            guardProgram: null,
+            guardState: null, pool, collateralMint, authority: authority.publicKey, userTokenAccount: userCollateralAta })
         .signers([authority])
         .instruction(),
       program.methods
         .borrow(flashRepayAmt)
         .accounts({
+          guardProgram: null,
+          guardState: null,
           pool,
           lendMint,
           authority: authority.publicKey,
@@ -131,6 +137,9 @@ describe("multiply (leverage)", () => {
 
       // Add liquidity to the pool
       await participateInPool(setup, 500_000_000); // 500 tokens liquidity
+
+      // mock_swap mints via the faucet PDA, so both mints must be faucet-owned.
+      await transferMintsToFaucet(setup);
     });
 
     it("opens a 30x leveraged position", async () => {
@@ -214,6 +223,7 @@ describe("multiply (leverage)", () => {
       // setupTest already mints 1000 tokens to authority
       const setup75 = await setupTest(75);
       await participateInPool(setup75, 500_000_000);
+      await transferMintsToFaucet(setup75);
 
       const { authority, program } = setup75;
       const initialCollateral = new BN(1_000_000); // 1 token

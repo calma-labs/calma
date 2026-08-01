@@ -11,6 +11,8 @@ async function depositCollateral(setup: TestSetup, authority: anchor.web3.Keypai
     await setup.program.methods
         .depositCollateral(new anchor.BN(amount))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             collateralMint: setup.collateralMint,
             authority: authority.publicKey,
@@ -24,6 +26,8 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
     await setup.program.methods
         .borrow(new anchor.BN(amount))
         .accounts({
+            guardProgram: null,
+            guardState: null,
             pool: setup.pool,
             lendMint: setup.lendMint,
             authority: authority.publicKey,
