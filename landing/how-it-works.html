@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0A0E17">
-<title>Calma — Lending optimised for tradfi, available to everyone</title>
-<meta name="description" content="Institutional-grade lending protocol. Powered by Solana. Built by lenders. Join the closed beta.">
-<meta property="og:title" content="Calma — Lending optimised for tradfi">
-<meta property="og:description" content="Powered by Solana. Built by lenders. Institutional-grade lending protocol.">
+<title>Calma — How it works</title>
+<meta name="description" content="The mechanics behind Calma: the live rate engine, capital-efficiency design, and the two mechanisms that keep lending liquid.">
+<meta property="og:title" content="Calma — How it works">
+<meta property="og:description" content="The mechanics behind Calma: the live rate engine, capital-efficiency design, and the mechanisms that keep lending liquid.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://calma.loans/">
+<meta property="og:url" content="https://calma.loans/how-it-works.html">
 <meta property="og:image" content="https://calma.loans/media/frames/frame_001.jpg">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Calma — Lending optimised for tradfi">
-<meta name="twitter:description" content="Powered by Solana. Built by lenders. Institutional-grade lending protocol.">
+<meta name="twitter:title" content="Calma — How it works">
+<meta name="twitter:description" content="The mechanics behind Calma: the live rate engine, capital-efficiency design, and the mechanisms that keep lending liquid.">
 <meta name="twitter:image" content="https://calma.loans/media/frames/frame_001.jpg">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -163,15 +163,15 @@
 <!-- ============ HEADER ============ -->
 <header id="nav" class="fixed top-0 inset-x-0 z-50 transition-colors">
   <div class="max-w-page mx-auto px-6 py-4 flex items-center justify-between">
-    <a href="#top" class="flex items-center gap-2.5">
+    <a href="index.html" class="flex items-center gap-2.5">
       <svg class="logo-mark w-7 h-7" aria-hidden="true"><use href="#calma-mark"/></svg>
       <span class="nav-wordmark text-fg text-lg font-semibold tracking-tighter">Calma</span>
     </a>
     <nav class="hidden md:flex items-center gap-8 text-sm text-soft">
-      <a href="how-it-works.html#why" class="hover:text-fg transition-colors">Why Calma</a>
-      <a href="#institutions" class="hover:text-fg transition-colors">Institutions</a>
-      <a href="how-it-works.html" class="hover:text-fg transition-colors">How it works</a>
-      <a href="#products" class="hover:text-fg transition-colors">Products</a>
+      <a href="#why" class="hover:text-fg transition-colors">Why Calma</a>
+      <a href="index.html#institutions" class="hover:text-fg transition-colors">Institutions</a>
+      <a href="#how" class="hover:text-fg transition-colors">How it works</a>
+      <a href="index.html#products" class="hover:text-fg transition-colors">Products</a>
     </nav>
     <div class="flex items-center gap-3">
       <button type="button" data-waitlist class="hidden sm:inline-flex items-center gap-2 bg-accent hover:bg-accent2 text-base px-4 py-2 rounded-md text-sm font-medium transition-colors">
@@ -191,19 +191,19 @@
     <!-- menu items: large font, rules between, arrow on the right -->
     <nav class="flex-1 overflow-y-auto px-6">
       <div class="divide-y divide-rule">
-        <a href="how-it-works.html#why" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
+        <a href="#why" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
           Why Calma
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted"><path d="M9 6l6 6-6 6"/></svg>
         </a>
-        <a href="#institutions" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
+        <a href="index.html#institutions" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
           Institutions
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted"><path d="M9 6l6 6-6 6"/></svg>
         </a>
-        <a href="how-it-works.html" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
+        <a href="#how" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
           How it works
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted"><path d="M9 6l6 6-6 6"/></svg>
         </a>
-        <a href="#products" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
+        <a href="index.html#products" class="flex items-center justify-between py-5 text-2xl font-medium text-fg">
           Products
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-muted"><path d="M9 6l6 6-6 6"/></svg>
         </a>
@@ -233,73 +233,215 @@
 
 <main id="top">
 
-<!-- ============ HERO (V2 — parallax video pin, bottom-left text, blend-mode auto invert) ============ -->
-<section id="heroWrap" class="relative h-screen">
-  <div id="heroPin" class="relative h-screen w-full overflow-hidden bg-base">
-    <!-- Static hero background: first frame only. Scroll animation disabled per client request. -->
-    <img src="media/frames/frame_001.jpg" alt="" class="absolute inset-0 w-full h-full object-cover" aria-hidden="true">
-
-    <!-- Hero content: centered.
-         Strategy: each element decides its own blending.
-         - Pill + CTAs: solid white background, dark text — always readable on any video frame.
-         - Headline + subhead: mix-blend-mode: difference — auto-inverts vs video luminance. -->
-    <div id="heroContent" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 pointer-events-none">
-      <!-- headline — black text, visible on the light opening frames -->
-      <h1 class="text-4xl sm:text-5xl xl:text-[64px] font-semibold leading-[1.05] tracking-tightest max-w-4xl text-black pointer-events-auto">
-        <span class="sm:whitespace-nowrap">Lending where no dollar</span><br class="hidden sm:block">
-        sits idle.
+<!-- ============ PAGE INTRO ============ -->
+<section class="relative pt-32 pb-16 md:pt-40 md:pb-20 overflow-hidden">
+  <div class="absolute inset-0 grid-bg pointer-events-none"></div>
+  <div class="max-w-page mx-auto px-6 relative z-10">
+    <div class="max-w-3xl">
+      <a href="index.html" class="inline-flex items-center gap-2 text-xs text-muted font-mono uppercase tracking-wider mb-5 hover:text-fg transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 19l-7-7 7-7"/></svg>
+        Back to home
+      </a>
+      <h1 class="text-4xl sm:text-5xl xl:text-[64px] font-semibold leading-[1.05] tracking-tightest">
+        The mechanics behind Calma.
       </h1>
-      <!-- subhead — black -->
-      <p class="mt-6 text-lg md:text-xl max-w-2xl text-black/80 pointer-events-auto">
-        Institutional-grade lending built for capital efficiency. Powered by Solana.
+      <p class="mt-6 text-lg md:text-xl text-soft max-w-2xl">
+        A look under the hood: the capital-efficiency design, the two mechanisms behind it, and the live rate engine.
       </p>
-      <!-- CTAs — primary opens the waitlist modal, secondary jumps to institutions -->
-      <div class="mt-10 flex flex-col sm:flex-row gap-3 justify-center pointer-events-auto">
-        <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-black text-white px-6 py-3 rounded-md font-medium transition-opacity hover:opacity-90">
-          Join waitlist
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-        </button>
-        <a href="#beta" class="inline-flex items-center justify-center gap-2 border-2 border-black text-black px-6 py-3 rounded-md font-medium transition-colors hover:bg-black hover:text-white">
-          For Institutions
-        </a>
-      </div>
     </div>
   </div>
 </section>
 
-<!-- ============ SECTION 5 — PRODUCTS ============ -->
-<section id="products" class="py-24 border-t border-rule">
+<!-- ============ SECTION 1 — WHY CALMA (BENTO) ============ -->
+<section id="why" class="py-24 border-t border-rule">
   <div class="max-w-page mx-auto px-6">
     <div class="max-w-3xl">
-      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Products</div>
-      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Tailor-Make Products For Tomorrow's Finance.</h2>
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>Why Calma</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Capital efficiency, by construction.</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl">
+        Calma is a Solana lending protocol where the rate curve and price feeds are fully customizable. Its withdraw queue lets a pool run close to fully lent without stranding lenders, so utilization stays high and lend/borrow spreads stay tight: less idle capital, more yield for lenders, and cheaper borrowing.
+      </p>
     </div>
 
-    <div class="mt-16 grid md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5" data-gsap-stagger>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Lending &amp; Borrowing</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Use your assets to work for you, or borrow against them for the best rates.</p>
+    <!-- Bento grid -->
+    <div class="mt-16 grid grid-cols-12 auto-rows-[minmax(180px,auto)] gap-4 md:gap-5" data-gsap-stagger>
+
+      <!-- ============== Tile 01 — BIG: Utilization meter ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 md:row-span-2 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="flex items-center justify-between">
+          <div class="text-xs text-muted font-mono uppercase tracking-wider">01 · Capital efficiency</div>
+          <div class="text-[10px] text-muted font-mono uppercase tracking-wider">target</div>
+        </div>
+        <h3 class="mt-4 text-fg font-semibold text-2xl tracking-tight">Optimized capital utilization.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">Every dollar works harder. Calma's withdraw queue lets a pool run close to fully lent, so capital keeps earning instead of sitting idle as a withdrawal buffer.</p>
+
+        <!-- animation: utilization bars -->
+        <div class="bento-anim mt-7 flex-1 flex flex-col gap-4 justify-end">
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Calma target</span>
+              <span class="text-fg font-mono tabular text-sm">98%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#0A0E17">
+                  <animate attributeName="width" values="0;196;196" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="text-[10px] text-muted font-mono uppercase tracking-wider">RWA lending today</span>
+              <span class="text-soft font-mono tabular text-sm">3%</span>
+            </div>
+            <div class="h-10 w-full rounded-md border border-rule bg-base relative overflow-hidden">
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="absolute inset-0 w-full h-full">
+                <rect x="0" y="0" height="40" fill="#D6DCEA">
+                  <animate attributeName="width" values="0;6;6" keyTimes="0;0.35;1" dur="5s" repeatCount="indefinite"/>
+                </rect>
+              </svg>
+            </div>
+          </div>
+          <div class="text-[11px] text-muted font-mono leading-relaxed pt-1">
+            Sustained high utilization means better economics for everyone: less idle capital, more yield, cheaper borrowing.
+          </div>
+        </div>
       </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Looping</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">RWA and LST loops on the best markets.</p>
+
+      <!-- ============== Tile 02 — Better rates, both sides ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">02 · Both sides win</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Better rates for lenders <em class="not-italic text-soft">and</em> borrowers.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">Higher utilization means better economics on both sides of the trade.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 240 120" class="w-full max-w-xs">
+            <line x1="20" y1="60" x2="220" y2="60" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 3"/>
+            <g class="spread-top">
+              <line x1="40" y1="30" x2="200" y2="30" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="30" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="30" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="22" font-family="JetBrains Mono" font-size="9" fill="#6B7299">BORROW</text>
+            <text x="200" y="22" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">5.0%</text>
+
+            <g class="spread-bot">
+              <line x1="40" y1="90" x2="200" y2="90" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="40" cy="90" r="3.5" fill="#0A0E17"/>
+              <circle cx="200" cy="90" r="3.5" fill="#0A0E17"/>
+            </g>
+            <text x="40" y="108" font-family="JetBrains Mono" font-size="9" fill="#6B7299">LEND</text>
+            <text x="200" y="108" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">4.2%</text>
+
+            <text x="120" y="64" font-family="JetBrains Mono" font-size="8" fill="#6B7299" text-anchor="middle">SPREAD 0.8%</text>
+          </svg>
+        </div>
       </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Vaults</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Set up your strategy on Calma markets.</p>
+
+      <!-- ============== Tile 03 — Fixed rates / predictability ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">03 · Predictability</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Fixed rates, by design.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">When a market chooses fixed pricing, a time-scheduled rate model pins borrow and lend rates for the term of a position, independent of utilization. Predictable cost, predictable yield, no rate surprises.</p>
+
+        <div class="bento-anim mt-5 flex items-center justify-center flex-1">
+          <svg viewBox="0 0 260 100" class="w-full max-w-xs">
+            <line x1="10" y1="50" x2="250" y2="50" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <path fill="none" stroke="#0A0E17" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <animate attributeName="d"
+                values="
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 35 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 50 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 50 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50;
+                  M 10 50 Q 30 20 50 50 T 90 50 T 130 50 T 170 50 T 210 50 T 250 50"
+                dur="6s" repeatCount="indefinite"
+                calcMode="spline"
+                keyTimes="0; 0.25; 0.5; 0.8; 1"
+                keySplines="0.45 0 0.55 1; 0.45 0 0.55 1; 0 0 1 1; 0.45 0 0.55 1"/>
+            </path>
+            <text x="10" y="95" font-family="JetBrains Mono" font-size="9" fill="#6B7299">VOLATILE</text>
+            <text x="250" y="95" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="end">FIXED</text>
+          </svg>
+        </div>
       </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Fixed Rates</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">From variable volatility to institutional predictability.</p>
+
+      <!-- ============== Tile 04 — Liquid by architecture (queue) ============== -->
+      <div class="fade-up col-span-12 md:col-span-7 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">04 · Always liquid</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">Liquid by architecture, not accident.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed max-w-md">An ordered withdraw queue keeps exits predictable, even under stress: withdrawals clear in sequence as loans repay, so there is no scramble for the door.</p>
+
+        <div class="bento-anim mt-6 flex-1 flex items-center">
+          <svg viewBox="0 0 320 70" class="w-full">
+            <line x1="20" y1="30" x2="240" y2="30" stroke="#D6DCEA" stroke-width="1" stroke-dasharray="2 4"/>
+            <g transform="translate(248, 12)">
+              <rect x="0" y="0" width="3" height="36" fill="#0A0E17"/>
+              <rect x="14" y="0" width="3" height="36" fill="#0A0E17"/>
+              <text x="-2" y="52" font-family="JetBrains Mono" font-size="8" fill="#6B7299">GATE</text>
+            </g>
+            <text x="290" y="34" font-family="JetBrains Mono" font-size="9" fill="#0A0E17" text-anchor="middle">EXIT</text>
+            <text x="20" y="14" font-family="JetBrains Mono" font-size="8" fill="#6B7299">QUEUE</text>
+            <g>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-0.8s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-1.6s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-2.4s" repeatCount="indefinite"/>
+              </circle>
+              <circle cx="20" cy="30" r="6" fill="#0A0E17">
+                <animate attributeName="cx" values="20;248;248" keyTimes="0;0.85;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.08;0.82;1" dur="4s" begin="-3.2s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+          </svg>
+        </div>
+        <div class="mt-4 text-[11px] text-muted font-mono">
+          First in, first out. <span class="text-fg">Exits clear as loans repay.</span>
+        </div>
       </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">Funds</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Use spot and leverage positions.</p>
+
+      <!-- ============== Tile 05 — RWA opportunity gap ============== -->
+      <div class="fade-up col-span-12 md:col-span-5 rounded-2xl border border-rule bg-ink p-7 flex flex-col">
+        <div class="text-xs text-muted font-mono uppercase tracking-wider">05 · Market gap</div>
+        <h3 class="mt-4 text-fg font-semibold text-xl tracking-tight">The RWA opportunity gap.</h3>
+        <p class="mt-2 text-soft text-sm leading-relaxed">RWA grew +44%. Utilization <em class="not-italic text-fg">dropped</em> 16%. Ecosystem needs polished products for RWA utilization.</p>
+
+        <div class="bento-anim mt-5 flex-1 flex flex-col justify-end">
+          <div class="flex items-end gap-4">
+            <div class="flex-1 flex flex-col items-center">
+              <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$30.97B</div>
+              <div class="w-full h-24 bg-base border border-rule rounded overflow-hidden flex items-end">
+                <div class="rwa-bar w-full bg-fg" style="height: 92%; animation-delay: 0.1s"></div>
+              </div>
+              <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Mcap<br>+44.4%</div>
+            </div>
+            <div class="flex-1 flex flex-col items-center">
+              <div class="text-[10px] text-muted font-mono uppercase mb-2 tabular">$956M</div>
+              <div class="w-full h-24 bg-base border border-rule rounded overflow-hidden flex items-end">
+                <div class="rwa-bar w-full bg-fg" style="height: 6%; animation-delay: 0.25s"></div>
+              </div>
+              <div class="text-[10px] text-muted font-mono uppercase mt-2 text-center leading-tight">Lent<br>+20.9%</div>
+            </div>
+          </div>
+          <div class="mt-5 pt-4 border-t border-rule flex items-baseline justify-between">
+            <span class="text-[10px] text-muted font-mono uppercase tracking-wider">Utilization</span>
+            <span class="font-mono tabular"><span class="text-fg text-base font-semibold">3.09%</span> <span class="text-[10px] text-soft">−16.3%</span></span>
+          </div>
+        </div>
       </div>
-      <div class="fade-up rounded-xl border border-rule bg-ink p-7">
-        <div class="text-fg font-semibold text-lg tracking-tight">LP Tokens</div>
-        <p class="mt-2 text-soft text-sm leading-relaxed">Get LP tokens from your allocation to use as collateral.</p>
-      </div>
+
     </div>
 
     <div class="mt-12 flex justify-center fade-up">
@@ -311,157 +453,144 @@
   </div>
 </section>
 
-<!-- ============ SECTION 2 — FOR INSTITUTIONS (moved to end of page) ============ -->
-<section id="institutions" class="py-24 border-t border-rule">
+
+<!-- ============ SECTION 4 — HOW IT WORKS ============ -->
+<section id="how" class="py-24 border-t border-rule">
   <div class="max-w-page mx-auto px-6">
     <div class="max-w-3xl">
-      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>For institutions</div>
-      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Build financial products on top of the best infrastructure.</h2>
-      <p class="mt-5 text-soft text-lg fade-up">
-        TradFi-grade lending for institutions, issuers, and protocol builders. We handle the infrastructure. You build the products.
-      </p>
+      <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>How it works</div>
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">2 mechanisms, 1 goal:<br>maximum capital efficiency.</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl">Together they push utilization toward its safe maximum without sacrificing liquidity or stable pricing.</p>
     </div>
 
-    <div class="mt-16 grid lg:grid-cols-3 gap-6" data-gsap-stagger>
+    <div class="mt-16 grid lg:grid-cols-2 gap-8" data-gsap-stagger>
+      <!-- Mechanism 1 -->
       <div class="rounded-xl border border-rule bg-ink p-8">
-        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/></svg>
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M1</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Withdraw Queue</h3>
         </div>
-        <h3 class="text-fg font-semibold text-xl">Distribution platform for RWA</h3>
-        <p class="mt-3 text-soft leading-relaxed">Tokenized real-world assets deserve the deepest liquidity and the best economics. Every product built on Calma gets better rates.</p>
-      </div>
-      <div class="rounded-xl border border-rule bg-ink p-8">
-        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        </div>
-        <h3 class="text-fg font-semibold text-xl">Hedge risk with the best rates</h3>
-        <p class="mt-3 text-soft leading-relaxed">Borrow at the lowest costs to hedge your positions. Lend idle capital for better returns than staking. Dynamic rates always on the efficient frontier.</p>
-      </div>
-      <div class="rounded-xl border border-rule bg-ink p-8">
-        <div class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center mb-5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A0E17" stroke-width="2"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>
-        </div>
-        <h3 class="text-fg font-semibold text-xl">Run your onchain vault</h3>
-        <p class="mt-3 text-soft leading-relaxed">Access best-performing markets via Calma's infrastructure. Build strategies by managing spot and leverage positions.</p>
-      </div>
-    </div>
-
-    <!-- Institutional waitlist form -->
-    <div id="beta" class="mt-20 scroll-mt-28 grid lg:grid-cols-2 gap-10 items-start fade-up">
-      <div>
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">Institutional program</div>
-        <h3 class="text-2xl md:text-3xl font-semibold tracking-tighter">Tell us what you'd build with Calma.</h3>
-        <p class="mt-4 text-soft">We're onboarding hedge funds, treasuries, RWA issuers, and integrators ahead of mainnet. Tell us where you want better economics — we'll get back to you.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">Pools that promise instant exits must hold an idle liquidity buffer to cover withdrawals. That reserve never earns, which caps how high utilization can safely run.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Calma orders withdrawals in a queue that clears as loans repay. No standby buffer needed, so the pool can run closer to fully lent without a liquidity crunch.</p>
       </div>
 
-      <form id="instForm" class="rounded-xl border border-rule bg-ink p-8 space-y-5">
-        <div>
-          <label class="block text-sm text-soft mb-2">Email <span class="text-accent">*</span></label>
-          <input type="email" name="email" required placeholder="you@firm.com"
-                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
+      <!-- Mechanism 2 -->
+      <div class="rounded-xl border border-rule bg-ink p-8">
+        <div class="flex items-baseline gap-3 mb-5">
+          <span class="text-accent font-mono text-sm">M2</span>
+          <h3 class="text-fg font-semibold text-2xl tracking-tighter">Modular Rate Program</h3>
         </div>
-        <div>
-          <label class="block text-sm text-soft mb-2">Organization <span class="text-accent">*</span></label>
-          <input type="text" name="org" required placeholder="Firm / DAO / Protocol"
-                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
-        </div>
-        <div>
-          <label class="block text-sm text-soft mb-2">Telegram</label>
-          <input type="text" name="telegram" placeholder="@name"
-                 class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
-        </div>
-        <div>
-          <label class="block text-sm text-soft mb-2">Interest</label>
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
-              <input type="checkbox" name="interest" value="rwa" class="accent-accent"> RWA distribution
-            </label>
-            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
-              <input type="checkbox" name="interest" value="hedging" class="accent-accent"> Hedging
-            </label>
-            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
-              <input type="checkbox" name="interest" value="vault" class="accent-accent"> Vault curator
-            </label>
-            <label class="flex items-center gap-2 p-2.5 border border-rule rounded-md hover:border-accent/50 transition-colors cursor-pointer">
-              <input id="intOther" type="checkbox" name="interest" value="other" class="accent-accent"> Other
-            </label>
-          </div>
-          <input id="intOtherText" type="text" name="interest_other" placeholder="Tell us what you're interested in"
-                 class="hidden mt-2 w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors">
-        </div>
-        <div>
-          <label class="block text-sm text-soft mb-2">Message <span class="text-accent">*</span></label>
-          <textarea name="msg" rows="3" required placeholder="What are you trying to build / hedge / deploy?"
-                    class="w-full bg-base border border-rule focus:border-accent focus:ring-1 focus:ring-accent/40 outline-none rounded-md px-3 py-2.5 text-sm text-fg placeholder:text-muted transition-colors resize-none"></textarea>
-        </div>
-        <button type="submit"
-                class="w-full bg-accent hover:bg-accent2 text-base py-3 rounded-md font-medium transition-colors">
-          Join institutional program
-        </button>
-        <p id="instStatus" class="text-xs text-center text-muted"></p>
-      </form>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">The problem</div>
+        <p class="text-soft mb-5">In most protocols the rate model is hard-wired into the lending contract: one curve, unchangeable without redeploying, and blind to anything but instantaneous utilization.</p>
+        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3">How Calma fixes it</div>
+        <p class="text-soft mb-5">Calma's rate model is a separate program each market plugs into. By default it reprices against live utilization, steering supply and demand back to the efficient target so more of the pool stays lent; markets that need certainty can swap in a fixed, time-scheduled model instead.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- ============ SECTION 6 — FAQ (hidden for now — to be rebuilt later) ============ -->
-<section id="faq" class="hidden py-24 border-t border-rule">
-  <div class="max-w-page mx-auto px-6">
-    <div class="grid lg:grid-cols-12 gap-12">
-      <div class="lg:col-span-4">
-        <div class="text-xs text-muted font-mono uppercase tracking-wider mb-3 fade-up" data-section-eyebrow>FAQ</div>
-        <h2 class="text-3xl md:text-4xl font-semibold tracking-tighter fade-up">Questions, answered.</h2>
-        <p class="mt-4 text-soft fade-up">Not finding what you need? <a href="mailto:info.calmaprotocol@gmail.com" class="text-accent hover:underline">Email us</a>.</p>
+<!-- ============ SECTION — LIVE RATE ENGINE (curve demo, ported from v1 hero) ============ -->
+<section id="rate-engine" class="relative py-24 border-t border-rule overflow-hidden">
+  <div class="absolute inset-0 grid-bg pointer-events-none"></div>
+  <div class="max-w-page mx-auto px-6 relative z-10">
+    <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+      <div class="lg:col-span-7">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-rule text-xs text-soft font-mono uppercase tracking-wider mb-6 fade-up">
+          <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"></span>
+          Live rate engine
+        </div>
+        <h2 class="text-3xl md:text-5xl font-semibold leading-[1.05] tracking-tightest fade-up">
+          Rates that move <span class="text-accent">in real time</span>.
+        </h2>
+        <p class="mt-6 text-lg md:text-xl text-soft max-w-2xl fade-up">
+          Utilization is just one input. Because the rate engine is modular, it can price on time, oracle feeds, or anything else you plug in, not just how much of the pool is borrowed. Time-averaged utilization resists manipulation, schedules enable fixed-term rates, and oracles let pricing track conditions beyond the pool.
+        </p>
+        <div class="mt-10 flex flex-col sm:flex-row gap-3 fade-up">
+          <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-6 py-3 rounded-md font-medium transition-colors">
+            Join waitlist
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+        </div>
       </div>
 
-      <div class="lg:col-span-8 divide-y divide-rule border-y border-rule" data-gsap-rows>
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">When is mainnet?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">Summer 2026 or later. Traction-driven, not timeline-driven. Mainnet launches when product is stable and audited, testnet shows real demand and meaningful TVL, and the community is ready. Rushing to mainnet with weak traction = doomed protocol.</p>
-        </details>
+      <!-- Right: animated utilization curve panel (same engine as v1 hero) -->
+      <div class="lg:col-span-5 fade-up">
+        <div class="relative rounded-xl border border-rule bg-ink backdrop-blur p-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div class="text-xs text-muted font-mono uppercase tracking-wider">Dynamic Utilization Curve</div>
+              <div class="text-fg font-medium mt-1">Utilization · time · oracles</div>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-muted font-mono">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent"></span>
+              SIMULATED
+            </div>
+          </div>
+          <svg id="heroCurve" viewBox="0 0 360 220" class="w-full h-auto">
+            <g class="curve-grid">
+              <line x1="40" y1="40"  x2="340" y2="40"/>
+              <line x1="40" y1="90"  x2="340" y2="90"/>
+              <line x1="40" y1="140" x2="340" y2="140"/>
+              <line x1="40" y1="190" x2="340" y2="190"/>
+            </g>
+            <g class="curve-axis">
+              <text x="40"  y="208">0%</text>
+              <text x="179" y="208" text-anchor="middle">50%</text>
+              <text x="318" y="208" text-anchor="middle">100%</text>
+              <text x="32"  y="194" text-anchor="end">low</text>
+              <text x="32"  y="44"  text-anchor="end">high</text>
+            </g>
+            <path id="curvePath" class="curve-line" d="M40,185 L318,120"/>
+            <path id="curvePathDashed" class="curve-line-dashed" d="M318,120 L340,44"/>
+            <g id="curveDotGroup">
+              <circle r="14" fill="#0A0E17" opacity="0.15">
+                <animate attributeName="r" values="10;18;10" dur="2s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.25;0.05;0.25" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              <circle id="curveDot" r="5" fill="#fff" stroke="#0A0E17" stroke-width="2"/>
+            </g>
+            <g id="curveLabel" transform="translate(0,0)">
+              <rect x="-58" y="-46" width="116" height="34" rx="6" fill="#0A0E17" stroke="#2B344D"/>
+              <text x="0" y="-30" text-anchor="middle" fill="#6B7299" font-family="JetBrains Mono" font-size="9">UTILIZATION</text>
+              <text id="curveLabelVal" x="0" y="-17" text-anchor="middle" fill="#E6EBF5" font-family="JetBrains Mono" font-size="12" font-weight="500">0%</text>
+            </g>
+          </svg>
+          <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Avg util.</div>
+              <div class="text-fg font-mono tabular text-sm mt-0.5">98%</div>
+            </div>
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Lend APY</div>
+              <div class="text-accent font-mono tabular text-sm mt-0.5">4.2%</div>
+            </div>
+            <div class="rounded-md bg-base border border-rule py-2">
+              <div class="text-[10px] text-muted font-mono uppercase">Spread</div>
+              <div class="text-fg font-mono tabular text-sm mt-0.5">0.8%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">Is Calma safe?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">Testnet is for testing — only use money you can afford to lose. Professional security audits will run before mainnet. All findings will be public. If critical issues arise, we fix them before launch — no matter the timeline.</p>
-        </details>
-
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">How does the referral program work?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">Unique referral link in your profile. To access closed beta: invite 5+ people OR hit <span class="font-mono tabular">$1M</span> in lending/borrowing volume. Whichever comes first unlocks your beta access. All tracked on-chain.</p>
-        </details>
-
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">What if I lose my seed phrase?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">This is testnet. Points are non-custodial (stored on-chain), but if you lose access to your wallet, we cannot recover them. Use a wallet you're comfortable with.</p>
-        </details>
-
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">Will there be a token?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">We're exploring tokenomics, but nothing is decided. Once mainnet launches, governance will determine token mechanics, supply, and how it relates to your testnet points. No guarantees on 1:1 conversion or anything else.</p>
-        </details>
-
-        <details class="py-6 group">
-          <summary class="flex items-start justify-between gap-4">
-            <span class="text-fg font-medium text-lg pr-4">How can I get involved beyond testnet?</span>
-            <svg class="faq-chev w-5 h-5 text-soft flex-shrink-0 mt-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </summary>
-          <p class="mt-4 text-soft leading-relaxed">Join our <a href="https://t.me/calmalend" target="_blank" rel="noopener" class="text-accent hover:underline">Telegram</a> and follow us on <a href="https://x.com/calma_finance" target="_blank" rel="noopener" class="text-accent hover:underline">X</a> for updates. Reach out at <a href="mailto:info.calmaprotocol@gmail.com" class="text-accent hover:underline">info.calmaprotocol@gmail.com</a> if you're an institution, integrator, or researcher.</p>
-        </details>
+<!-- ============ CLOSING CTA ============ -->
+<section class="py-24 border-t border-rule">
+  <div class="max-w-page mx-auto px-6">
+    <div class="rounded-2xl border border-rule bg-ink p-10 md:p-14 text-center">
+      <h2 class="text-3xl md:text-5xl font-semibold tracking-tightest fade-up">Ready to put capital to work?</h2>
+      <p class="mt-5 text-soft text-lg fade-up max-w-2xl mx-auto">Join the waitlist for early access, or head back to explore Calma's products.</p>
+      <div class="mt-10 flex flex-col sm:flex-row gap-3 justify-center fade-up">
+        <button type="button" data-waitlist class="inline-flex items-center justify-center gap-2 bg-accent hover:bg-accent2 text-base px-7 py-3.5 rounded-md font-medium transition-colors">
+          Join waitlist
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+        <a href="index.html#products" class="inline-flex items-center justify-center gap-2 border border-rule hover:border-accent text-fg px-7 py-3.5 rounded-md font-medium transition-colors">
+          Explore products
+        </a>
       </div>
     </div>
   </div>
@@ -495,7 +624,7 @@
       <div class="md:col-span-2">
         <div class="text-fg font-medium mb-4 text-sm">Product</div>
         <ul class="space-y-2 text-sm text-soft">
-          <li><a href="how-it-works.html" class="hover:text-fg transition-colors">How it works</a></li>
+          <li><a href="#how" class="hover:text-fg transition-colors">How it works</a></li>
           <li><span class="text-muted cursor-default select-none">Docs (soon)</span></li>
         </ul>
       </div>

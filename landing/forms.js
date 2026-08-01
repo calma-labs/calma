@@ -1,7 +1,11 @@
 const CF_URL = 'https://europe-west1-calma-498512.cloudfunctions.net/contactForm';
 
 // ===== Institutional form =====
-document.getElementById('instForm').addEventListener('submit', async (e) => {
+// Guarded: the institutional form only exists on the landing page, not on
+// how-it-works.html. Without this check the null deref would halt the rest of
+// this script (waitlist + privacy modals) on pages that omit the form.
+const instForm = document.getElementById('instForm');
+if (instForm) instForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const status = document.getElementById('instStatus');
   status.textContent = 'Submitting…';
