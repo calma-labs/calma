@@ -1,4 +1,4 @@
-use crate::hooks::oracle::OracleState;
+use crate::hooks::oracle::read_feed;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
@@ -62,12 +62,10 @@ pub struct Borrow<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
-    /// CHECK: feed program — invoked via CPI to read the oracle price.
-    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ crate::error::ErrorCode::InvalidAmount)]
-    pub feed_program: UncheckedAccount<'info>,
-
-    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
-    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidAmount)]
+    /// CHECK: price account, read directly — no CPI. Address is pinned here and
+    /// its owner is checked against `pool.feed_program` in the handler; see
+    /// `hooks::oracle::read_feed`.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidFeedState)]
     pub feed_state: UncheckedAccount<'info>,
 
     /// CHECK: required iff `pool.guard_state` is set; validated in the handler.
@@ -105,12 +103,14 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     //
     // Amount and liquidity rules (including excluding assets reserved for the
     // withdrawal queue) are enforced inside `Core::borrow`.
-    let (utilization, max_feed_age, pool_guard_state) = {
+    let (utilization, feed_state_key, feed_program_key, pool_guard_state, pool_guard_program) = {
         let pool = ctx.accounts.pool.load()?;
         (
             pool.calculate_utilization(),
-            pool.max_feed_age_ms,
+            pool.feed_state,
+            pool.feed_program,
             pool.guard_state,
+            pool.guard_program,
         )
     };
 
@@ -119,17 +119,14 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     // Checked before the oracle/IRM CPIs so a rejected caller costs the minimum.
     crate::hooks::guard::enforce_pool_guard(
         pool_guard_state,
+        pool_guard_program,
         &ctx.accounts.guard_program,
         &ctx.accounts.guard_state,
         ctx.accounts.authority.key(),
     )?;
 
     let vault_balance = ctx.accounts.lend_vault.amount;
-    let oracle = OracleState::new(
-        ctx.accounts.feed_program.to_account_info(),
-        ctx.accounts.feed_state.to_account_info(),
-        max_feed_age,
-    )?;
+    let oracle = read_feed(&ctx.accounts.feed_state, feed_state_key, feed_program_key)?;
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
         utilization,

@@ -1,3 +1,4 @@
+import { default_price_ttl_ms, default_pyth_max_age_ms } from '@calma/wasm-lib'
 import type { PriceFeedMetadata } from '@pythnetwork/hermes-client'
 import { PublicKey } from '@solana/web3.js'
 
@@ -31,7 +32,7 @@ export const USDC_USD_FEED_ID =
  * Placeholder mint used for both sides when the Feed page has to `create` a
  * scratch feed under the connected wallet. Wrapped SOL exists on every cluster,
  * so `create` (which requires `Account<Mint>` inputs) always succeeds. The feed
- * mints only affect the decimal-adjusted ratio returned by `get_state` — the
+ * mints only affect the decimal-adjusted ratio derived from the feed header — the
  * raw Pyth prices this page pushes are independent of them — so a scratch
  * inspection feed doesn't need real pool mints.
  */
@@ -39,8 +40,18 @@ export const PLACEHOLDER_MINT = new PublicKey(
     'So11111111111111111111111111111111111111112',
 )
 
-/** Freshness window (milliseconds) stored in `rules.max_age_ms` at feed create time. */
-export const MAX_PYTH_AGE_MS = 60_000
+/**
+ * Feed defaults are defined in Rust and read from there — see
+ * `interface::DEFAULT_PRICE_TTL_MS` and `feed_state::DEFAULT_PYTH_MAX_AGE_MS`.
+ * Re-exported here so call sites keep importing feed config from one place.
+ *
+ * `MAX_PYTH_AGE_MS` is the *ingestion* gate (how old an upstream Pyth price may
+ * be to be written); `DEFAULT_PRICE_TTL_MS` is the *consumption* gate (how long
+ * a written price stays usable) and is necessarily looser. Their `0` conventions
+ * are opposites — see `interface::price_stale_at`.
+ */
+export const MAX_PYTH_AGE_MS = default_pyth_max_age_ms()
+export const DEFAULT_PRICE_TTL_MS = default_price_ttl_ms()
 
 /**
  * Derive a Pyth catalog search query from a whitelisted token symbol.

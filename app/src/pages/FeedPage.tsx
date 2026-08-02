@@ -1,3 +1,4 @@
+import { price_scale } from '@calma/wasm-lib'
 import { ActionButton } from "@/components/common/ActionButton";
 import { TokenSelect } from "@/components/ui/token-select";
 import { usePullPythFeed } from "@/hooks/program/usePullPythFeed";
@@ -567,7 +568,7 @@ function FeedLivePrices({
 // ─── feed finder (by mint pair) ─────────────────────────────────────────────────
 
 /** Prices on a feed are stored scaled by 1e6 (see `PRICE_SCALE`). */
-const PRICE_SCALE = 1_000_000n;
+const PRICE_SCALE = price_scale();
 
 function shorten(addr: string): string {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
@@ -576,8 +577,8 @@ function shorten(addr: string): string {
 /** collateral / lend, formatted as a plain ratio. */
 function formatRatio(collateral: bigint, lend: bigint): string {
   if (lend === 0n) return "—";
-  const scaled = (collateral * 1_000_000n) / lend; // 6 fractional digits
-  return (Number(scaled) / 1_000_000).toLocaleString("en-US", {
+  const scaled = (collateral * PRICE_SCALE) / lend; // 6 fractional digits
+  return (Number(scaled) / Number(PRICE_SCALE)).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 6,
   });
@@ -591,7 +592,7 @@ function formatScaled(v: bigint): string {
 }
 
 /** Prices are stored scaled by PRICE_SCALE (1e6) on-chain. */
-const PRICE_SCALE_N = 1_000_000n;
+const PRICE_SCALE_N = price_scale();
 
 interface RulesInputStrings {
   maxConfBps: string;

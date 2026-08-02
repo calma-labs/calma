@@ -28,4 +28,8 @@ pub enum ErrorCode {
     InvalidPushAccount,
     #[msg("Pyth price is older than rules.max_age_ms")]
     StalePushPrice,
+    #[msg("price_ttl_ms must be greater than zero — zero rejects every consumer")]
+    InvalidPriceTtl,
+    #[msg("Signer is not this feed's authority")]
+    Unauthorized,
 }

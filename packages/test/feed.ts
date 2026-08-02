@@ -41,6 +41,7 @@ describe("feed", () => {
                 { manual: {} },
                 Array(32).fill(0),
                 Array(32).fill(0),
+                90_000,
                 { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
             )
             .accounts({
@@ -55,8 +56,8 @@ describe("feed", () => {
 
         const account = await program.account.feed.fetch(feedPda);
         expect(account.config.authority.toString()).to.equal(authority.publicKey.toString());
-        expect(account.state.collateralPrice.toNumber()).to.equal(0);
-        expect(account.state.lendPrice.toNumber()).to.equal(0);
+        expect(account.header.collateralPrice.toNumber()).to.equal(0);
+        expect(account.header.lendPrice.toNumber()).to.equal(0);
     });
 
     it("set_value updates both prices in the feed account", async () => {
@@ -72,8 +73,8 @@ describe("feed", () => {
             .rpc();
 
         const account = await program.account.feed.fetch(feedPda);
-        expect(account.state.collateralPrice.toNumber()).to.equal(newValue);
-        expect(account.state.lendPrice.toNumber()).to.equal(newValue);
+        expect(account.header.collateralPrice.toNumber()).to.equal(newValue);
+        expect(account.header.lendPrice.toNumber()).to.equal(newValue);
     });
 
     it("set_value can update the value multiple times", async () => {
@@ -84,8 +85,8 @@ describe("feed", () => {
             .rpc();
 
         let account = await program.account.feed.fetch(feedPda);
-        expect(account.state.collateralPrice.toNumber()).to.equal(100);
-        expect(account.state.lendPrice.toNumber()).to.equal(200);
+        expect(account.header.collateralPrice.toNumber()).to.equal(100);
+        expect(account.header.lendPrice.toNumber()).to.equal(200);
 
         await program.methods
             .setValue(new BN(9999), new BN(8888))
@@ -94,8 +95,8 @@ describe("feed", () => {
             .rpc();
 
         account = await program.account.feed.fetch(feedPda);
-        expect(account.state.collateralPrice.toNumber()).to.equal(9999);
-        expect(account.state.lendPrice.toNumber()).to.equal(8888);
+        expect(account.header.collateralPrice.toNumber()).to.equal(9999);
+        expect(account.header.lendPrice.toNumber()).to.equal(8888);
     });
 
     it("set_value rejects a non-authority signer", async () => {

@@ -22,9 +22,22 @@ pub mod feed {
         source: PriceSource,
         collateral_feed_id: [u8; 32],
         lend_feed_id: [u8; 32],
+        price_ttl_ms: u32,
         rules: FeedRules,
     ) -> Result<()> {
-        create::create_handler(ctx, id, source, collateral_feed_id, lend_feed_id, rules)
+        create::create_handler(
+            ctx,
+            id,
+            source,
+            collateral_feed_id,
+            lend_feed_id,
+            price_ttl_ms,
+            rules,
+        )
+    }
+
+    pub fn set_price_ttl(ctx: Context<SetPriceTtl>, price_ttl_ms: u32) -> Result<()> {
+        set_price_ttl::set_price_ttl_handler(ctx, price_ttl_ms)
     }
 
     pub fn set_value(
@@ -43,11 +56,4 @@ pub mod feed {
         set_from_pyth_push::set_from_pyth_push_handler(ctx)
     }
 
-    pub fn get_value(ctx: Context<GetValue>) -> Result<u64> {
-        get_value::get_value_handler(ctx)
-    }
-
-    pub fn get_state(ctx: Context<GetValue>) -> Result<FeedSnapshot> {
-        get_value::get_state_handler(ctx)
-    }
 }

@@ -2,7 +2,7 @@ import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type FeedRulesInput, noRules } from '../../config/feedRules'
-import { feedIdToBytes, MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
+import { DEFAULT_PRICE_TTL_MS, feedIdToBytes, MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
 import { connection, feedPda, feedProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
@@ -22,6 +22,11 @@ export interface CreateFeedParams {
      * `FeedRules::default()`.
      */
     rules?: FeedRulesInput
+    /**
+     * How long (ms) a written price stays usable for borrow / withdraw. Owned by
+     * the feed, so every market pricing against it inherits this budget.
+     */
+    priceTtlMs?: number
 }
 
 /**
@@ -41,6 +46,7 @@ export function useCreateFeed() {
             collateralFeedId,
             lendFeedId,
             rules,
+            priceTtlMs = DEFAULT_PRICE_TTL_MS,
         }: CreateFeedParams): Promise<string> => {
             if (!connected || !wallet?.signTransaction) throw new Error('Wallet not connected')
 
@@ -56,6 +62,7 @@ export function useCreateFeed() {
                     { pyth: {} },
                     feedIdToBytes(collateralFeedId),
                     feedIdToBytes(lendFeedId),
+                    priceTtlMs,
                     effectiveRules,
                 )
                 .accounts({

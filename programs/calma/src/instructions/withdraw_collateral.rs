@@ -1,4 +1,4 @@
-use crate::hooks::oracle::OracleState;
+use crate::hooks::oracle::read_feed;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
@@ -57,12 +57,10 @@ pub struct WithdrawCollateral<'info> {
     #[account(constraint = irm_state.key() == pool.load()?.irm_state @ crate::error::ErrorCode::MissingRateState)]
     pub irm_state: UncheckedAccount<'info>,
 
-    /// CHECK: feed program — invoked via CPI to read the oracle price.
-    #[account(constraint = feed_program.key() == pool.load()?.feed_program @ crate::error::ErrorCode::InvalidAmount)]
-    pub feed_program: UncheckedAccount<'info>,
-
-    /// CHECK: feed state — price is fetched via CPI; key validated against pool.feed_state.
-    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidAmount)]
+    /// CHECK: price account, read directly — no CPI. Address is pinned here and
+    /// its owner is checked against `pool.feed_program` in the handler; see
+    /// `hooks::oracle::read_feed`.
+    #[account(constraint = feed_state.key() == pool.load()?.feed_state @ crate::error::ErrorCode::InvalidFeedState)]
     pub feed_state: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
@@ -102,15 +100,15 @@ pub fn withdraw_collateral_handler<'a>(
     }
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
-    let (utilization, max_feed_age) = {
+    let (utilization, feed_state_key, feed_program_key) = {
         let pool = ctx.accounts.pool.load()?;
-        (pool.calculate_utilization(), pool.max_feed_age_ms)
+        (
+            pool.calculate_utilization(),
+            pool.feed_state,
+            pool.feed_program,
+        )
     };
-    let oracle = OracleState::new(
-        ctx.accounts.feed_program.to_account_info(),
-        ctx.accounts.feed_state.to_account_info(),
-        max_feed_age,
-    )?;
+    let oracle = read_feed(&ctx.accounts.feed_state, feed_state_key, feed_program_key)?;
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
         utilization,

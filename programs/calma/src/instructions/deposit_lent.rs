@@ -116,7 +116,7 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
 
     // Validate lend_mint matches what is stored in the pool, and refuse to price
     // shares while a flash loan is mid-flight (the vault is temporarily short).
-    let (utilization, pool_guard_state) = {
+    let (utilization, pool_guard_state, pool_guard_program) = {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.lend_mint.key() == pool.lend_mint,
@@ -126,7 +126,11 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
             pool.market.flash_loan_outstanding == 0,
             crate::error::ErrorCode::FlashLoanInProgress
         );
-        (pool.calculate_utilization(), pool.guard_state)
+        (
+            pool.calculate_utilization(),
+            pool.guard_state,
+            pool.guard_program,
+        )
     };
 
     // Whitelist gate — entry only. `withdraw_lent` and `process_queue_entry`
@@ -134,6 +138,7 @@ pub fn deposit_lent_handler(ctx: Context<DepositLent>, amount: u64) -> Result<()
     // able to redeem, and the queue must stay drainable for everyone behind them.
     crate::hooks::guard::enforce_pool_guard(
         pool_guard_state,
+        pool_guard_program,
         &ctx.accounts.guard_program,
         &ctx.accounts.guard_state,
         ctx.accounts.authority.key(),

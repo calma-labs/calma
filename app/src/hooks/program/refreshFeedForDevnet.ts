@@ -168,12 +168,12 @@ export async function refreshFeedForDevnet(
     const feedAcct = FeedAccount.from_bytes(feedInfo.data)
     if (!feedAcct || feedAcct.source !== 1) return // 1 = PriceSource::Pyth (pull)
 
-    // Skip when the on-chain snapshot is still fresh enough for the pool's
-    // own `StaleOracle` gate — the caller's action will pass regardless of
-    // whether Hermes currently has a fresh update. This mirrors the UI's
-    // `useFeedFreshness`: refresh freshness ≠ snapshot freshness.
+    // Skip when the written price is still inside the feed's own `price_ttl_ms`
+    // — the caller's action will pass regardless of whether Hermes currently has
+    // a fresh update. This mirrors the UI's `useFeedFreshness`: refresh
+    // freshness ≠ written-price freshness.
     const nowSecs = BigInt(Math.floor(Date.now() / 1000))
-    if (!decodedPool.is_feed_snapshot_stale(BigInt(feedAcct.last_updated_ts), nowSecs)) {
+    if (!feedAcct.is_price_stale(nowSecs)) {
         return
     }
 

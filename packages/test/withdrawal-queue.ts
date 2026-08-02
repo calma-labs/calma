@@ -53,7 +53,6 @@ async function borrow(setup: TestSetup, lender: Lender, amount: number) {
             authority: lender.authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            feedProgram: setup.feedProgram.programId,
             feedState: setup.feedPda,
         })
         .signers([lender.authority])

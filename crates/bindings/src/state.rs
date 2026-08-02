@@ -131,31 +131,13 @@ impl PoolAccount {
         self.0.lp_mint_bump
     }
 
-    /// Configured maximum age (seconds) the oracle feed may lag the current
-    /// clock before borrows / withdrawals reject the price as stale.
-    #[wasm_bindgen(getter)]
-    pub fn max_feed_age_ms(&self) -> u32 {
-        self.0.max_feed_age_ms
-    }
-
-    /// Delegates to `state::Pool::is_feed_snapshot_stale`. Given the feed's
-    /// on-chain `last_updated_ts` and the expected clock at borrow-tx landing,
-    /// returns `true` iff `borrow` / `withdraw_collateral`
-    /// would reject the price as `StaleOracle`. Distinct from
-    /// `FeedAccount::is_pyth_price_stale`, which only asks whether a *fresh
-    /// Hermes update* could be posted; the on-chain snapshot may still be
-    /// valid on its own.
-    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
-        self.0.is_feed_snapshot_stale(feed_last_updated_ts, clock_ts)
-    }
-
     /// IRM state (IRM config) pubkey as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn irm_state(&self) -> Vec<u8> {
         bytemuck::bytes_of(&self.0.irm_state).to_vec()
     }
 
-    /// IRM state (IRM config) pubkey as raw 32 bytes.
+    /// Price account this market reads, as raw 32 bytes.
     #[wasm_bindgen(getter)]
     pub fn feed_state(&self) -> Vec<u8> {
         bytemuck::bytes_of(&self.0.feed_state).to_vec()
@@ -174,6 +156,38 @@ impl PoolAccount {
     /// `true` when entering this market requires being on its whitelist.
     pub fn is_guarded(&self) -> bool {
         self.0.guard_state != anchor_lang::prelude::Pubkey::default()
+    }
+
+    // ── which programs this market trusts ────────────────────────────────────
+    //
+    // None of these are protocol constants. `calma` links no provider, so each
+    // market names its own oracle, rate model and whitelist at creation and is
+    // pinned to them for life. That makes the three pubkeys below the trust
+    // decision a depositor is actually taking on — and the reason they are
+    // exposed at all: a market whose price or rate comes from a program nobody
+    // recognises is a fact the UI should be able to surface, not one buried in
+    // an account nobody decodes.
+
+    /// Program that owns [`Self::feed_state`] and is trusted to price this
+    /// market. Any program writing an `interface::PriceFeedHeader` may serve.
+    #[wasm_bindgen(getter)]
+    pub fn feed_program(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.feed_program).to_vec()
+    }
+
+    /// Program CPI'd for this market's borrow rate. Any program implementing
+    /// `borrow_rate` / `check_authority` may serve.
+    #[wasm_bindgen(getter)]
+    pub fn rate_program(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.rate_program).to_vec()
+    }
+
+    /// Program asked to vouch for [`Self::guard_state`], or all zeroes on an
+    /// open market. Pinned alongside the whitelist: substituting either is
+    /// refused, so this names who actually decides admission.
+    #[wasm_bindgen(getter)]
+    pub fn guard_program(&self) -> Vec<u8> {
+        bytemuck::bytes_of(&self.0.guard_program).to_vec()
     }
 
     /// Total lend tokens committed to pending withdrawals in the on-chain queue.
@@ -393,17 +407,36 @@ impl FeedAccount {
 
     #[wasm_bindgen(getter)]
     pub fn collateral_price(&self) -> u64 {
-        self.0.state.collateral_price
+        self.0.header.collateral_price
     }
 
     #[wasm_bindgen(getter)]
     pub fn lend_price(&self) -> u64 {
-        self.0.state.lend_price
+        self.0.header.lend_price
     }
 
     #[wasm_bindgen(getter)]
     pub fn last_updated_ts(&self) -> i64 {
-        self.0.state.last_updated_ts
+        self.0.header.last_updated_ts
+    }
+
+    /// How long (milliseconds) this feed's price stays consumable. Owned by the
+    /// feed, not by the markets pricing against it — see
+    /// `interface::PriceFeedHeader::price_ttl_ms`.
+    #[wasm_bindgen(getter)]
+    pub fn price_ttl_ms(&self) -> u32 {
+        self.0.header.price_ttl_ms
+    }
+
+    /// Delegates to `interface::PriceFeedHeader::is_stale_at`. Given the clock
+    /// expected when the tx lands, returns `true` iff `borrow` /
+    /// `withdraw_collateral` would reject the price as `StaleOracle`.
+    ///
+    /// Distinct from [`Self::is_pyth_price_stale`], which asks whether a *fresh
+    /// Hermes update* could be posted — the written price may still be within
+    /// its own TTL when that one says yes.
+    pub fn is_price_stale(&self, clock_ts: i64) -> bool {
+        self.0.header.is_stale_at(clock_ts)
     }
 
     /// Raw `PriceSource` discriminant:
@@ -433,12 +466,12 @@ impl FeedAccount {
 
     #[wasm_bindgen(getter)]
     pub fn collateral_decimals(&self) -> u8 {
-        self.0.data.collateral_decimals
+        self.0.header.collateral_decimals
     }
 
     #[wasm_bindgen(getter)]
     pub fn lend_decimals(&self) -> u8 {
-        self.0.data.lend_decimals
+        self.0.header.lend_decimals
     }
 
     /// Authority pubkey as raw 32 bytes.
@@ -450,13 +483,13 @@ impl FeedAccount {
     /// Collateral mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
     #[wasm_bindgen(getter)]
     pub fn collateral_mint(&self) -> Vec<u8> {
-        self.0.collateral_mint.to_bytes().to_vec()
+        self.0.header.collateral_mint.to_bytes().to_vec()
     }
 
     /// Lend mint pubkey as raw 32 bytes (the mint this feed was bound to at create time).
     #[wasm_bindgen(getter)]
     pub fn lend_mint(&self) -> Vec<u8> {
-        self.0.lend_mint.to_bytes().to_vec()
+        self.0.header.lend_mint.to_bytes().to_vec()
     }
 
     /// Collateral Pyth feed ID as raw 32 bytes.
@@ -512,44 +545,19 @@ impl FeedAccount {
 
 // ── Core adapters ───────────────────────────────────────────────────────────
 //
-// Client-side equivalents of the program's `hooks::oracle::OracleState` and
+// Client-side equivalents of the program's `hooks::oracle::read_feed` and
 // `hooks::irm::IrmState`. They expose the *real* on-chain inputs — the price
 // read straight from the feed account, and the borrow rate evaluated from the
 // IRM model at the pool's current utilization — so replaying a `Core` operation
 // reproduces the on-chain result exactly. `current_ts` is sourced from
 // `BrowserClock`, mirroring `Clock::get()` on-chain.
 
+/// Delegates to the `interface::PriceFeedHeader` impl, which is the same code
+/// the program runs — the ratio formula used to be transcribed here, which is
+/// exactly the kind of second surface that can drift from consensus.
 impl math::Oracle for FeedAccount {
     fn price(&self) -> u64 {
-        if self.0.state.lend_price == 0 {
-            return 0;
-        }
-        let coll_price = self.0.state.collateral_price as u128;
-        let lend_price = self.0.state.lend_price as u128;
-        let coll_dec_pow = match 10u128.checked_pow(self.0.data.collateral_decimals as u32) {
-            Some(v) => v,
-            None => return 0,
-        };
-        let lend_dec_pow = match 10u128.checked_pow(self.0.data.lend_decimals as u32) {
-            Some(v) => v,
-            None => return 0,
-        };
-        let numerator = match coll_price
-            .checked_mul(lend_dec_pow)
-            .and_then(|v| v.checked_mul(math::PRICE_SCALE))
-        {
-            Some(v) => v,
-            None => return 0,
-        };
-        let denominator = match lend_price.checked_mul(coll_dec_pow) {
-            Some(v) if v > 0 => v,
-            _ => return 0,
-        };
-        let ratio_u128 = match numerator.checked_div(denominator) {
-            Some(v) => v,
-            None => return 0,
-        };
-        u64::try_from(ratio_u128).unwrap_or(0)
+        math::Oracle::price(&self.0.header)
     }
 }
 
@@ -920,9 +928,11 @@ impl PoolWithIrm {
         self.pool.lp_mint_bump()
     }
 
+    /// The staleness budget that actually gates this market's borrows, taken
+    /// from the feed it prices against rather than from the pool.
     #[wasm_bindgen(getter)]
-    pub fn max_feed_age_ms(&self) -> u32 {
-        self.pool.max_feed_age_ms()
+    pub fn price_ttl_ms(&self) -> u32 {
+        self.feed.price_ttl_ms()
     }
 
     pub fn pending_withdrawals(&self) -> u64 {
@@ -988,7 +998,7 @@ pub struct FeedFreshnessResult {
     /// True when borrow/withdraw would revert `StaleOracle` and a Hermes refresh
     /// cannot fix it (source isn't pull-Pyth, or Hermes prices are themselves too old).
     pub will_fail: bool,
-    /// True when the on-chain snapshot exceeds `pool.max_feed_age_ms`.
+    /// True when the written price exceeds the feed's own `price_ttl_ms`.
     pub snapshot_stale: bool,
     /// Seconds since the on-chain snapshot was last written.
     pub snapshot_age_secs: i64,
@@ -1000,9 +1010,11 @@ pub struct FeedFreshnessResult {
     pub hermes_coll_age_secs: i64,
     /// Age (seconds) of the lend Hermes price. 0 when unavailable.
     pub hermes_lend_age_secs: i64,
-    /// Pool-level max feed age in seconds (for display).
-    pub pool_max_age_secs: u32,
-    /// Feed-level Pyth max age in seconds, derived from `rules.max_age_ms` (for display).
+    /// The feed's consumption budget in seconds, from `price_ttl_ms` — the gate
+    /// `snapshot_stale` reports against (for display).
+    pub price_ttl_secs: u32,
+    /// The feed's Pyth *ingestion* budget in seconds, from `rules.max_age_ms`.
+    /// A different gate with a different job; see `interface::price_stale_at`.
     pub feed_max_age_secs: u32,
 }
 
@@ -1010,8 +1022,9 @@ pub struct FeedFreshnessResult {
 impl FeedFreshnessResult {
     /// Evaluate the full feed freshness state.
     ///
-    /// * `pool` – parsed pool account
-    /// * `feed` – parsed feed account
+    /// * `feed` – parsed feed account. The budget comes from the feed itself, so
+    ///   the pool is no longer an input — every market pricing against a given
+    ///   feed shares its freshness verdict.
     /// * `coll_hermes_ts` – Hermes `publish_time` for the collateral side (Unix seconds);
     ///   pass `0` when unavailable or when the feed is not pull-Pyth.
     /// * `lend_hermes_ts` – same for the lend side.
@@ -1023,15 +1036,14 @@ impl FeedFreshnessResult {
     /// once with `0, 0` to obtain the snapshot result, and only fetch Hermes (and
     /// call `check` again with real timestamps) when `snapshot_stale` is true.
     pub fn check(
-        pool: &PoolAccount,
         feed: &FeedAccount,
         coll_hermes_ts: i64,
         lend_hermes_ts: i64,
         now: i64,
     ) -> FeedFreshnessResult {
-        let snapshot_age_secs = now.saturating_sub(feed.0.state.last_updated_ts);
-        let snapshot_stale = pool.0.is_feed_snapshot_stale(feed.0.state.last_updated_ts, now);
-        let pool_max_age_secs = pool.0.max_feed_age_ms;
+        let snapshot_age_secs = now.saturating_sub(feed.0.header.last_updated_ts);
+        let snapshot_stale = feed.0.header.is_stale_at(now);
+        let price_ttl_secs = feed.0.header.price_ttl_ms / 1000;
         let feed_max_age_secs = feed.0.rules.max_age_ms / 1000;
 
         if !snapshot_stale {
@@ -1043,7 +1055,7 @@ impl FeedFreshnessResult {
                 hermes_lend_stale: false,
                 hermes_coll_age_secs: 0,
                 hermes_lend_age_secs: 0,
-                pool_max_age_secs,
+                price_ttl_secs,
                 feed_max_age_secs,
             };
         }
@@ -1058,7 +1070,7 @@ impl FeedFreshnessResult {
                 hermes_lend_stale: false,
                 hermes_coll_age_secs: 0,
                 hermes_lend_age_secs: 0,
-                pool_max_age_secs,
+                price_ttl_secs,
                 feed_max_age_secs,
             };
         }
@@ -1087,7 +1099,7 @@ impl FeedFreshnessResult {
             hermes_lend_stale,
             hermes_coll_age_secs,
             hermes_lend_age_secs,
-            pool_max_age_secs,
+            price_ttl_secs,
             feed_max_age_secs,
         }
     }
@@ -1276,10 +1288,37 @@ mod tests {
     /// `FeedAccount::from_bytes` deserializes via Anchor's `try_deserialize`,
     /// which validates the account discriminator — so it must be the real one,
     /// not a filler. A zeroed body is a valid `Manual` feed (source = 0).
+    /// Wire bytes for a zero-priced feed.
+    ///
+    /// Serialized from a real `Feed` rather than a hand-counted byte length —
+    /// the previous fixture hardcoded a body size and went silently out of date
+    /// the moment the layout moved.
     fn feed_wire() -> Vec<u8> {
-        use anchor_lang::Discriminator;
-        let mut v = vec![0u8; DISCRIMINATOR + 225];
-        v[..DISCRIMINATOR].copy_from_slice(&Feed::DISCRIMINATOR);
+        use anchor_lang::{Discriminator, AnchorSerialize};
+        let feed = Feed {
+            header: feed_state::PriceFeedHeader {
+                collateral_mint: anchor_lang::prelude::Pubkey::default(),
+                lend_mint: anchor_lang::prelude::Pubkey::default(),
+                collateral_price: 0,
+                lend_price: 0,
+                collateral_decimals: 0,
+                lend_decimals: 0,
+                last_updated_ts: 0,
+                price_ttl_ms: 0,
+            },
+            id: 0,
+            config: feed_state::FeedConfig {
+                authority: anchor_lang::prelude::Pubkey::default(),
+                source: feed_state::PriceSource::Manual,
+                bump: 0,
+                _pad: [0; 6],
+                collateral_feed_id: [0; 32],
+                lend_feed_id: [0; 32],
+            },
+            rules: feed_state::FeedRules::default(),
+        };
+        let mut v = Feed::DISCRIMINATOR.to_vec();
+        feed.serialize(&mut v).unwrap();
         v
     }
 

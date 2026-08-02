@@ -28,7 +28,6 @@ async function withdrawCollateral(setup: TestSetup, authority: anchor.web3.Keypa
             userTokenAccount,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            feedProgram: setup.feedProgram.programId,
             feedState: setup.feedPda,
         })
         .signers([authority])

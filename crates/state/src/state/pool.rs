@@ -115,26 +115,28 @@ pub struct Pool {
     pub rate_program: Pubkey,
     /// IRM state account (PDA) passed to the rate program CPI.
     pub irm_state: Pubkey,
-    /// Feed program ID used for price oracle queries.
+    /// Program that owns this market's price account.
+    ///
+    /// Any program can serve as an oracle, so this is not a compile-time
+    /// constant — it is the market's recorded choice, and `interface`'s reader
+    /// checks the price account's owner against it on every read. Together with
+    /// `feed_state` it is the whole oracle trust model, so it is the field a
+    /// depositor should inspect before entering the market.
     pub feed_program: Pubkey,
-    /// Feed state account (PDA) passed to the feed program.
+    /// The exact price account this market prices against. Must be owned by
+    /// `feed_program` and lead with an `interface::PriceFeedHeader`.
     pub feed_state: Pubkey,
     pub lp_mint_bump: u8,
     _pad: [u8; 7], // explicit padding — no implicit/uninitialised bytes
     /// Queue of pending lend-token withdrawals (LP burned at `leave` time).
     pub withdrawal_queue: WithdrawalQueue,
-    /// Maximum age (**milliseconds**) the oracle's `last_updated_ts` may be
-    /// behind the current clock before borrow / withdraw_collateral reject the
-    /// price as stale. Set at pool creation; chosen per market based on the
-    /// underlying feed's update cadence.
-    ///
-    /// Milliseconds to match `FeedRules::max_age_ms`, so a market's staleness
-    /// budget and its feed's are expressed in the same unit and neither is
-    /// truncated. The underlying timestamps are Unix seconds, so the measured
-    /// age still moves in whole seconds — the unit buys threshold precision, not
-    /// clock precision. `u32` ms spans ~49 days.
-    pub max_feed_age_ms: u32,
-    _pad1: [u8; 4], // align the fields below (u64/Pubkey runs want 8-byte alignment)
+    /// Was `max_feed_age_ms`, the market's own staleness budget for the oracle.
+    /// The budget is now the oracle's to set — see
+    /// `interface::PriceFeedHeader::price_ttl_ms` — because the feed knows its
+    /// own update cadence and a market cannot sensibly guess it. Left as padding
+    /// rather than removed so `Pool`'s layout, and every live account's rent,
+    /// stay untouched.
+    _pad1: [u8; 8],
     /// Whitelist this market is gated on, or [`Pubkey::default`] for an open
     /// market. Bound at pool creation and never mutable afterwards.
     ///
@@ -150,6 +152,19 @@ pub struct Pool {
     /// Consumed from `_reserved` rather than appended, so `Pool`'s total size is
     /// unchanged and no live account needs migrating.
     pub guard_state: Pubkey,
+    /// Program asked to vouch for `guard_state`, or [`Pubkey::default`] for an
+    /// open market. Bound at creation alongside it and never mutable after.
+    ///
+    /// Pinning the *program* as well as the state is what makes the gate real.
+    /// The state address alone would let a caller pass their own program next to
+    /// the correct whitelist account and have it answer `Ok` without reading it —
+    /// `calma` hands the account over and believes the reply, so it cannot tell
+    /// an implementation from an impostor.
+    ///
+    /// Recorded per market rather than compared against one canonical program
+    /// id, matching `feed_program` and `rate_program`: no external program is
+    /// privileged at compile time, and every market states which ones it trusts.
+    pub guard_program: Pubkey,
     /// Growth room, in 8-byte slots, for fields added after launch.
     ///
     /// Sized deliberately large: liquidation is still to come and will need
@@ -163,8 +178,9 @@ pub struct Pool {
     /// `Pool` is already ~49 KB (dominated by the 1024-entry withdrawal queue),
     /// so the remaining slots are well under 1% of the account.
     ///
-    /// 32 slots at launch; `guard_state` took 4, leaving 28.
-    _reserved: [u64; 28],
+    /// 32 slots at launch; `guard_state` and `guard_program` took 4 each,
+    /// leaving 24.
+    _reserved: [u64; 24],
 }
 
 impl Pool {
@@ -174,89 +190,5 @@ impl Pool {
             self.market.total_borrow_assets,
             self.market.assets_in_queue,
         )
-    }
-
-    /// `true` iff a feed snapshot with `feed_last_updated_ts` would trip
-    /// this pool's `StaleOracle` gate when read at wall-clock `clock_ts`.
-    /// Single source of truth for the borrow / withdraw freshness
-    /// check in `programs/calma/src/hooks/oracle.rs`; the wasm bindings expose
-    /// this so the UI can predict `StaleOracle` and skip / prompt a refresh
-    /// before submitting the tx.
-    pub fn is_feed_snapshot_stale(&self, feed_last_updated_ts: i64, clock_ts: i64) -> bool {
-        Self::snapshot_stale_at(feed_last_updated_ts, clock_ts, self.max_feed_age_ms)
-    }
-
-    /// Same predicate as [`Self::is_feed_snapshot_stale`] but with `max_age_ms`
-    /// passed explicitly — the `create` instruction runs the check *before*
-    /// a `Pool` exists to bind the config to.
-    ///
-    /// Compared in milliseconds so the configured budget is applied exactly as
-    /// written, with no seconds truncation. `i128` keeps the ×1000 total even at
-    /// extreme timestamps.
-    ///
-    /// # `max_age_ms == 0` means "reject", not "disabled"
-    ///
-    /// This is the **opposite** of `feed::rules::check_max_age`, where `0` is the
-    /// disabled sentinel shared by every `FeedRules` gate so a
-    /// zero-init rules struct reproduces the pre-rules behavior. The two
-    /// predicates read almost identically and take an identically named
-    /// `max_age_ms`, so the divergence is stated here rather than left to be
-    /// inferred: on the feed-ingestion side `0` opts out of a validation, while
-    /// here it is a pool config that has to gate every borrow, and the only safe
-    /// reading of a missing budget on a *gate* is to fail closed.
-    ///
-    /// `create` already requires `max_feed_age_ms > 0`, so a live pool cannot
-    /// carry `0` — this branch exists so that if that guard is ever relaxed, or
-    /// a caller passes `0` directly, the result is a refused borrow rather than
-    /// an oracle check that silently stopped running. Without it, `0` behaved as
-    /// a one-second budget by accident (only a same-second price passed), which
-    /// is neither convention and reads as intentional to nobody.
-    pub fn snapshot_stale_at(feed_last_updated_ts: i64, clock_ts: i64, max_age_ms: u32) -> bool {
-        if max_age_ms == 0 {
-            return true;
-        }
-        let elapsed_ms = (clock_ts as i128 - feed_last_updated_ts as i128) * 1_000;
-        elapsed_ms > max_age_ms as i128
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Pool;
-
-    const NOW: i64 = 1_700_000_000;
-
-    #[test]
-    fn zero_budget_fails_closed() {
-        // Every case is stale, including the same-second price that used to slip
-        // through and the future-dated one that passes under any real budget.
-        assert!(Pool::snapshot_stale_at(NOW, NOW, 0));
-        assert!(Pool::snapshot_stale_at(NOW - 1, NOW, 0));
-        assert!(Pool::snapshot_stale_at(NOW + 5, NOW, 0));
-    }
-
-    #[test]
-    fn budget_is_applied_in_milliseconds() {
-        // 90s elapsed against a 90_000 ms budget: exactly at the limit, fresh.
-        assert!(!Pool::snapshot_stale_at(NOW - 90, NOW, 90_000));
-        // One second past it.
-        assert!(Pool::snapshot_stale_at(NOW - 91, NOW, 90_000));
-        // Sub-second budgets are not truncated to zero: 1_500 ms admits a
-        // one-second-old price and refuses a two-second-old one.
-        assert!(!Pool::snapshot_stale_at(NOW - 1, NOW, 1_500));
-        assert!(Pool::snapshot_stale_at(NOW - 2, NOW, 1_500));
-    }
-
-    #[test]
-    fn a_price_published_ahead_of_the_clock_is_fresh() {
-        // Publishers can run slightly early; that is not staleness.
-        assert!(!Pool::snapshot_stale_at(NOW + 5, NOW, 1_000));
-    }
-
-    #[test]
-    fn extreme_timestamps_stay_total() {
-        // The ×1000 is done in i128 so neither bound can overflow or wrap.
-        assert!(Pool::snapshot_stale_at(i64::MIN, i64::MAX, u32::MAX));
-        assert!(!Pool::snapshot_stale_at(i64::MAX, i64::MIN, u32::MAX));
     }
 }

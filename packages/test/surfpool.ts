@@ -150,6 +150,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
         { pythPush: {} },
         Array.from(collateralPush.toBytes()),
         Array.from(lendPush.toBytes()),
+        3_600_000,
         { ...NO_RULES, maxAgeMs: 3_600_000 }, // large max-age so any clock skew won't block
       )
       .accounts({ feed: feedPda, authority: authority.publicKey, collateralMint, lendMint, payer: payer.publicKey })
@@ -157,7 +158,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       .rpc();
 
     // Push mainnet prices into the feed. Must happen before pool creation
-    // because the pool's create handler reads the oracle via CPI.
+    // because the pool's create handler reads the price account directly.
     await feed.methods
       .setFromPythPush()
       .accountsPartial({ feed: feedPda, collateralPriceUpdate: collateralPush, lendPriceUpdate: lendPush })
@@ -165,8 +166,8 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
 
     const feedInfo = await connection.getAccountInfo(feedPda);
     const feedState = feed.coder.accounts.decode("feed", feedInfo!.data);
-    expect(feedState.state.collateralPrice.toNumber(), "SOL price should be > 0").to.be.greaterThan(0);
-    expect(feedState.state.lendPrice.toNumber(), "USDC price should be > 0").to.be.greaterThan(0);
+    expect(feedState.header.collateralPrice.toNumber(), "SOL price should be > 0").to.be.greaterThan(0);
+    expect(feedState.header.lendPrice.toNumber(), "USDC price should be > 0").to.be.greaterThan(0);
 
     // Derive pool PDAs.
     pool = Keypair.generate();
@@ -201,11 +202,11 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
       programId: calma.programId,
     });
     await calma.methods
-      .create(75, 90_000)
+      .create(75)
       .accounts({
         pool: pool.publicKey, collateralMint, lendMint,
         authority: authority.publicKey, payer: payer.publicKey,
-        feedProgram: feed.programId, feedState: feedPda,
+        feedState: feedPda,
         rateProgram: irm.programId,  irmState: irmConfigPda,
         guardProgram: null, guardState: null,
       })
@@ -240,7 +241,7 @@ describe("surfpool borrow against mainnet Pyth (sponsored push)", () => {
         pool: pool.publicKey, lendMint,
         authority: authority.publicKey,
         rateProgram: irm.programId, irmState: irmConfigPda,
-        feedProgram: feed.programId, feedState: feedPda,
+        feedState: feedPda,
       })
       .signers([authority])
       .rpc();

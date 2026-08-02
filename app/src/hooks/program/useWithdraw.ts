@@ -2,7 +2,7 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
+import { connection, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
@@ -45,9 +45,8 @@ export function useWithdraw() {
                     userTokenAccount,
                     rateProgram: IRM_PROGRAM_ID,
                     irmState: irmStatePda(pool),
-                    feedProgram: FEED_PROGRAM_ID,
                     feedState,
-                } as any)
+                })
                 .transaction()
 
             tx.feePayer = authority

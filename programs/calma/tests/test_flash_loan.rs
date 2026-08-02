@@ -145,6 +145,7 @@ fn setup(seed_lend_amount: u64) -> Setup {
             source: feed::state::PriceSource::Manual,
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
+            price_ttl_ms: 90_000,
             rules: feed::state::FeedRules::default(),
         }
         .data(),
@@ -221,7 +222,6 @@ fn setup(seed_lend_amount: u64) -> Setup {
         program_id,
         &calma::instruction::Create {
             ltv_percent: 75,
-            max_feed_age_ms: 90_000u32,
         }
         .data(),
         calma::accounts::Create {
@@ -234,7 +234,6 @@ fn setup(seed_lend_amount: u64) -> Setup {
             lend_mint: lend_mint_kp.pubkey(),
             authority: authority.pubkey(),
             payer: payer.pubkey(),
-            feed_program: feed_id,
             feed_state: feed_pda,
             rate_program: irm_id,
             irm_state: irm_config,

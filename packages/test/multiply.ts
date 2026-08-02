@@ -87,7 +87,6 @@ async function openMultiply(
           authority: authority.publicKey,
           rateProgram: setup.irmProgramId,
           irmState: setup.irmConfig,
-          feedProgram: setup.feedProgram.programId,
           feedState: setup.feedPda,
         })
         .signers([authority])

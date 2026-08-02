@@ -108,6 +108,7 @@ fn test_flow() {
             source: feed::state::PriceSource::Manual,
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
+            price_ttl_ms: 90_000,
             rules: feed::state::FeedRules::default(),
         }
         .data(),
@@ -183,7 +184,6 @@ fn test_flow() {
             calma_id,
             &calma::instruction::Create {
                 ltv_percent: 75,
-                max_feed_age_ms: 90_000u32,
             }
             .data(),
             calma::accounts::Create {
@@ -196,7 +196,6 @@ fn test_flow() {
                 lend_mint,
                 authority: payer.pubkey(),
                 payer: payer.pubkey(),
-                feed_program: feed_id,
                 feed_state: feed_pda,
                 rate_program: irm_id,
                 irm_state: irm_config,
@@ -330,7 +329,6 @@ fn test_flow() {
                 user_position,
                 rate_program: irm_id,
                 irm_state: irm_config,
-                feed_program: feed_id,
                 feed_state: feed_pda,
                 token_program: spl_token::id(),
                 associated_token_program: atp_id,
@@ -396,7 +394,6 @@ fn test_flow() {
                 user_position,
                 rate_program: irm_id,
                 irm_state: irm_config,
-                feed_program: feed_id,
                 feed_state: feed_pda,
                 token_program: spl_token::id(),
                 system_program: anchor_lang::solana_program::system_program::id(),

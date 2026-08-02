@@ -143,7 +143,6 @@ fn create_pool_ix(
         program_id,
         &calma::instruction::Create {
             ltv_percent: 75,
-            max_feed_age_ms: 90_000u32,
         }
         .data(),
         calma::accounts::Create {
@@ -156,7 +155,6 @@ fn create_pool_ix(
             lend_mint,
             authority,
             payer,
-            feed_program: feed_id,
             feed_state: feed_pda,
             rate_program: irm_id,
             irm_state: irm_config,
@@ -215,6 +213,7 @@ fn prepare_pool(
             source: feed::state::PriceSource::Manual,
             collateral_feed_id: [0u8; 32],
             lend_feed_id: [0u8; 32],
+            price_ttl_ms: 90_000,
             rules: feed::state::FeedRules::default(),
         }
         .data(),
@@ -511,12 +510,19 @@ fn test_pool_records_its_guard() {
         lend_kp.pubkey(),
         Some((guard::id(), guard_pda)),
     );
-    assert_eq!(read_pool(&svm, &gated).guard_state, guard_pda);
+    let gated_pool = read_pool(&svm, &gated);
+    assert_eq!(gated_pool.guard_state, guard_pda);
+    // The *program* is recorded too. `calma` links no guard implementation, so
+    // there is no canonical id to compare against later — the market's choice is
+    // the pin, exactly as with `feed_program` and `rate_program`.
+    assert_eq!(gated_pool.guard_program, guard::id());
 
     // A second market on fresh mints, ungated.
     let (open_col, open_lend) = fresh_mints(&mut svm, &payer);
     let (open, _) = create_pool(&mut svm, &payer, &authority, open_col, open_lend, None);
-    assert_eq!(read_pool(&svm, &open).guard_state, Pubkey::default());
+    let open_pool = read_pool(&svm, &open);
+    assert_eq!(open_pool.guard_state, Pubkey::default());
+    assert_eq!(open_pool.guard_program, Pubkey::default());
 }
 
 /// A gated market refuses a deposit that omits the guard accounts. This is the
@@ -592,6 +598,51 @@ fn test_gated_pool_rejects_substituted_guard() {
     assert!(
         !try_send_ixs(&mut svm, &[ix], &payer, &[&payer, &attacker]),
         "gated market must reject a guard other than the one it pinned"
+    );
+}
+
+/// The guard *program* is pinned as tightly as the guard state.
+///
+/// Substituting the program is the stronger attack of the two: pass the market's
+/// real whitelist account alongside a program of your own, return `Ok` from it
+/// without reading the account, and the gate is gone. `calma` hands the account
+/// over and believes the reply — it cannot tell an implementation from an
+/// impostor — so the only defence is refusing to call anything but the program
+/// the market recorded.
+#[test]
+fn test_gated_pool_rejects_substituted_guard_program() {
+    let (mut svm, payer, col_kp, lend_kp) = setup_svm();
+    let authority = Keypair::new();
+    let guard_pda = create_guard(&mut svm, &payer, &payer);
+    guard_add(&mut svm, &guard_pda, &payer, authority.pubkey());
+
+    let (pool, setup) = create_pool(
+        &mut svm,
+        &payer,
+        &authority,
+        col_kp.pubkey(),
+        lend_kp.pubkey(),
+        Some((guard::id(), guard_pda)),
+    );
+
+    let attacker = Keypair::new();
+    svm.airdrop(&attacker.pubkey(), 10_000_000_000).unwrap();
+    let user_account = fund_collateral(&mut svm, &payer, col_kp.pubkey(), &attacker);
+
+    // The market's own whitelist account — which the attacker is *not* on — but
+    // routed to a different program. Rejected before any CPI is made, so it does
+    // not matter what that program would have answered.
+    let ix = deposit_collateral_ix(
+        pool,
+        col_kp.pubkey(),
+        attacker.pubkey(),
+        user_account,
+        setup.collateral_vault,
+        Some((faucet::id(), guard_pda)),
+    );
+    assert!(
+        !try_send_ixs(&mut svm, &[ix], &payer, &[&payer, &attacker]),
+        "gated market must reject a guard program other than the one it pinned"
     );
 }
 

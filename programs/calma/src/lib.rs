@@ -18,12 +18,8 @@ declare_id!("c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8");
 pub mod calma {
     use super::*;
 
-    pub fn create(
-        ctx: Context<Create>,
-        ltv_percent: u8,
-        max_feed_age_ms: u32,
-    ) -> Result<()> {
-        create_handler(ctx, ltv_percent, max_feed_age_ms)
+    pub fn create(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
+        create_handler(ctx, ltv_percent)
     }
 
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, amount: u64) -> Result<()> {

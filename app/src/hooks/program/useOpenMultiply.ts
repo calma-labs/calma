@@ -2,7 +2,8 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram, faucetProgram } from '../../lib/program'
+import { connection, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram, faucetProgram } from '../../lib/program'
+import { resolveGuardAccounts } from './guardAccounts'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
@@ -72,6 +73,7 @@ export function useOpenMultiply() {
             // extra = amount × (leverage − 1); use integer ×1000 to stay in BN arithmetic
             const leverageMilli = Math.round(leverage * 1_000)
             const extraRaw = amountRaw.muln(leverageMilli - 1_000).divn(1_000)
+            const guard = await resolveGuardAccounts(connection, pool)
             const flashFee = computeFlashFee(extraRaw)
             const flashRepayAmt = extraRaw.add(flashFee)
 
@@ -80,8 +82,7 @@ export function useOpenMultiply() {
                     readonlyProgram.methods
                         .depositCollateral(amountRaw)
                         .accounts({
-                            guardProgram: null,
-                            guardState: null, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
+                            ...guard, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
                         .instruction(),
                     readonlyProgram.methods
                         .flashBorrow(extraRaw)
@@ -106,14 +107,12 @@ export function useOpenMultiply() {
                     readonlyProgram.methods
                         .depositCollateral(extraRaw)
                         .accounts({
-                            guardProgram: null,
-                            guardState: null, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
+                            ...guard, pool, collateralMint, authority, userTokenAccount: userCollateralAta })
                         .instruction(),
                     // Borrow enough lend tokens to cover the flash repay
                     readonlyProgram.methods
                         .borrow(flashRepayAmt)
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        .accounts({ pool, lendMint, authority, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool), feedProgram: FEED_PROGRAM_ID, feedState } as any)
+                        .accounts({ ...guard, pool, lendMint, authority, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool), feedState })
                         .instruction(),
                     readonlyProgram.methods
                         .flashRepay(flashRepayAmt)

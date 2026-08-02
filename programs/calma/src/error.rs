@@ -5,6 +5,8 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum CalmaError {
-    #[msg("Oracle feed snapshot is older than the maximum allowed age")]
+    #[msg("Oracle price is older than the feed's own price_ttl_ms")]
     StaleOracle,
+    #[msg("Oracle reports a zero lend price, so no ratio can be derived")]
+    ZeroPrice,
 }

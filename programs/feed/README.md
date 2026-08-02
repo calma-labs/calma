@@ -15,17 +15,36 @@ price **source** at create time, with one setter instruction per source.
   `last_updated_ts = min(collateral.publish_time, lend.publish_time)`. Both feed
   IDs must be non-zero, and `max_pyth_age_secs > 0`, at create time.
 
-`get_state` (and its thin `get_value` wrapper) returns the decimal-adjusted
-`ratio = collateral_price · 10^lend_decimals · PRICE_SCALE /
+## The account *is* the interface
+
+There are no read instructions. `calma` does not CPI this program at all — it
+reads the `interface::PriceFeedHeader` that `Feed` carries as its first field,
+straight out of the account, and trusts it because the account's owner matches
+the program the market recorded at creation. Any program writing that same
+header prefix can serve as an oracle; this one is just the reference
+implementation, with its Pyth ids and ingestion rules kept *below* the header
+where consumers ignore them.
+
+The decimal-adjusted `ratio = collateral_price · 10^lend_decimals · PRICE_SCALE /
 (lend_price · 10^collateral_decimals)` — the single `u64` that
-`math::Oracle::price()` consumes.
+`math::Oracle::price()` consumes — is computed by
+`PriceFeedHeader::price_ratio()` in `crates/interface`, the one place it exists.
+
+## `price_ttl_ms`: the feed owns its own staleness budget
+
+Set at `create` and adjustable by the feed authority via `set_price_ttl`, this
+is how long a written price may still be *acted on*. It is deliberately not the
+same thing as `rules.max_age_ms`, which bounds how old an upstream Pyth price may
+be to be *written* in the first place — and their `0` conventions are opposites:
+`0` disables the ingestion rule, but rejects every consumer. Neither may be
+confused for the other; see `interface::price_stale_at`.
 
 ## Ordering constraint: price the feed before creating a pool
 
-`calma::create` CPIs into `feed::get_state`, which requires `lend_price > 0`
-(`compute_snapshot` rejects a zeroed feed with `ZeroPrice`). A freshly created
-`Feed` has all prices at 0. **The feed must be populated before a pool is
-created against it:**
+`calma::create` reads the feed's header and requires `lend_price > 0` (a zero
+lend price yields no ratio at all, so accepting it would read as "the collateral
+is worthless" rather than as an error). A freshly created `Feed` has all prices
+at 0. **The feed must be populated before a pool is created against it:**
 
 1. `feed::create` (Manual or Pyth)
 2. `feed::set_value` (Manual) **or** `feed::set_from_pyth` (Pyth) — sets the

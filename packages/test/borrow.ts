@@ -33,7 +33,6 @@ async function borrow(setup: TestSetup, authority: anchor.web3.Keypair, amount: 
             authority: authority.publicKey,
             rateProgram: setup.irmProgramId,
             irmState: setup.irmConfig,
-            feedProgram: setup.feedProgram.programId,
             feedState: setup.feedPda,
         })
         .signers([authority])
@@ -450,7 +449,6 @@ describe("borrow", () => {
                         userTokenAccount: setup.userCollateralTokenAccount,
                         rateProgram: setup.irmProgramId,
                         irmState: setup.irmConfig,
-                        feedProgram: setup.feedProgram.programId,
                         feedState: setup.feedPda,
                     })
                     .signers([setup.authority])

@@ -2,11 +2,12 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
+import { connection, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
 import { useAnchorProgram } from '../useAnchorProgram'
+import { resolveGuardAccounts } from './guardAccounts'
 import { refreshFeedForDevnet } from './refreshFeedForDevnet'
 
 export interface BorrowParams {
@@ -33,19 +34,21 @@ export function useBorrow() {
             const authority = new PublicKey(wallet.account.publicKey)
 
             await refreshFeedForDevnet(connection, pool)
+            const guard = await resolveGuardAccounts(connection, pool)
 
             const tx = await program.methods
                 .borrow(amount)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 .accounts({
                     pool,
                     lendMint,
                     authority,
                     rateProgram: IRM_PROGRAM_ID,
                     irmState: irmStatePda(pool),
-                    feedProgram: FEED_PROGRAM_ID,
                     feedState,
-                } as any)
+                    // Required whenever the market is gated; `null` only when it
+                    // is not. See `resolveGuardAccounts`.
+                    ...guard,
+                })
                 .transaction()
 
             tx.feePayer = authority

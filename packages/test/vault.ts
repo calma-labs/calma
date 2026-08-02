@@ -87,6 +87,7 @@ describe("pool creation (create)", () => {
                         { manual: {} },
                         Array(32).fill(0),
                         Array(32).fill(0),
+                        90_000,
                         { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
                     )
                     .accounts({ feed: feedPda, authority: feedAuthority, collateralMint, lendMint, payer: payer.publicKey })
@@ -111,14 +112,13 @@ describe("pool creation (create)", () => {
             });
 
             await program.methods
-                .create(75, 90_000)
+                .create(75)
                 .accounts({
                     pool: poolKeypair.publicKey,
                     collateralMint,
                     lendMint,
                     authority: authority.publicKey,
                     payer: payer.publicKey,
-                    feedProgram: feedProgram.programId,
                     feedState: feedPda,
                     rateProgram: irmProgram.programId,
                     irmState: irmConfigPda,
@@ -168,14 +168,13 @@ describe("pool creation (create)", () => {
         it("fails when pool is already initialised (zero constraint violated)", async () => {
             try {
                 await program.methods
-                    .create(75, 90_000)
+                    .create(75)
                     .accounts({
                         pool: poolKeypair.publicKey,
                         collateralMint,
                         lendMint,
                         authority: authority.publicKey,
                         payer: payer.publicKey,
-                        feedProgram: feedProgram.programId,
                         feedState: feedPda,
                         rateProgram: irmProgram.programId,
                         irmState: irmConfigPda,

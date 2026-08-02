@@ -2,10 +2,11 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { program as readonlyProgram, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
+import { connection, program as readonlyProgram, IRM_PROGRAM_ID, irmStatePda } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
+import { resolveGuardAccounts } from './guardAccounts'
 
 export interface ParticipateParams {
     pool: PublicKey
@@ -30,12 +31,12 @@ export function useParticipate() {
             if (!connected || !wallet) throw new Error('Wallet not connected')
 
             const authority = new PublicKey(wallet.account.publicKey)
+            const guard = await resolveGuardAccounts(connection, pool)
 
             const tx = await readonlyProgram.methods
                 .depositLent(amount)
                 .accounts({
-                    guardProgram: null,
-                    guardState: null,
+                    ...guard,
                     pool,
                     lendMint,
                     authority,

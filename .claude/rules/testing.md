@@ -66,7 +66,7 @@ One `describe` block per scenario, each with its own `before(async () => { ... }
 
 - Mints **1,000,000,000 base units** (1B) of each token to `authority` — this is the per-user ceiling unless you call `mintTo` again.
 - Oracle price: **1:1** (`collateralPrice = lendPrice = 1_000_000`).
-- LTV: **75%**, `max_feed_age_secs = 90`.
+- LTV: **75%**. Staleness budget lives on the feed, not the pool: `price_ttl_ms = 90_000` (see `setFeedTtl` to retune it mid-test).
 - IRM: linear 0–500 bps at 0–100% utilization.
 
 For amounts above 1B base units, use `mintTo` before depositing:
@@ -92,11 +92,13 @@ await mintTo(setup.connection, setup.payer, setup.collateralMint,
 
 ### Instruction account sets (copy exactly — wrong accounts cause cryptic errors)
 
-**`borrow`** — includes oracle accounts:
+**`borrow`** — includes the price account, but **no** `feedProgram`: the oracle
+is read directly, and its owning program is pinned on `Pool::feed_program` at
+create time rather than passed per call.
 ```typescript
 { pool, lendMint, authority: authority.publicKey,
   rateProgram: irmProgramId, irmState: irmConfig,
-  feedProgram: feedProgram.programId, feedState: feedPda }
+  feedState: feedPda }
 ```
 
 **`repay`** — does NOT read the oracle; omit feed accounts:

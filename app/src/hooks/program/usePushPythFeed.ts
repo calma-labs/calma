@@ -2,7 +2,7 @@ import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { noRules } from '../../config/feedRules'
-import { MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
+import { DEFAULT_PRICE_TTL_MS, MAX_PYTH_AGE_MS } from '../../config/pythFeeds'
 import { connection, feedPda, feedProgram } from '../../lib/program'
 import { signV1WithSession } from '../../lib/transactions'
 
@@ -111,6 +111,7 @@ export function usePushPythFeed() {
                         { pythPush: {} },
                         collBytes,
                         lendBytes,
+                        DEFAULT_PRICE_TTL_MS,
                         { ...noRules(), maxAgeMs: MAX_PYTH_AGE_MS },
                     )
                     .accounts({

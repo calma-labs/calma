@@ -4,7 +4,23 @@ use anchor_lang::prelude::*;
 // #[account] macro can resolve `ID` in the crate root.
 declare_id!("orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4");
 
-pub const PRICE_SCALE: u128 = 1_000_000;
+pub use interface::{price_stale_at, PriceFeedHeader, DEFAULT_PRICE_TTL_MS, PRICE_SCALE};
+
+/// Suggested [`FeedRules::max_age_ms`] for a Pyth-backed feed: 60 seconds.
+///
+/// The *ingestion* budget — how old an upstream price may be to be written —
+/// and necessarily tighter than [`DEFAULT_PRICE_TTL_MS`], the consumption
+/// budget. A price has to stay usable for a while after it is accepted, or every
+/// borrow would need its own fresh Pyth update.
+pub const DEFAULT_PYTH_MAX_AGE_MS: u32 = 60_000;
+
+/// Byte offsets of the two mints within a `Feed` account, discriminator
+/// included — what an RPC `memcmp` filter needs to find every feed for a pair.
+///
+/// Derived from the layout rather than written down twice: the header is the
+/// account's first field, and the two mints are its first two.
+pub const FEED_COLLATERAL_MINT_OFFSET: u32 = 8;
+pub const FEED_LEND_MINT_OFFSET: u32 = FEED_COLLATERAL_MINT_OFFSET + 32;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[borsh(use_discriminant = true)]
@@ -16,13 +32,6 @@ pub enum PriceSource {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FeedState {
-    pub collateral_price: u64,
-    pub lend_price: u64,
-    pub last_updated_ts: i64,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FeedConfig {
     pub authority: Pubkey,
     pub source: PriceSource,
@@ -30,12 +39,6 @@ pub struct FeedConfig {
     pub _pad: [u8; 6],
     pub collateral_feed_id: [u8; 32],
     pub lend_feed_id: [u8; 32],
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FeedData {
-    pub collateral_decimals: u8,
-    pub lend_decimals: u8,
 }
 
 /// Optional validation gates applied to Pyth updates. `0` is the "disabled"
@@ -57,24 +60,33 @@ pub struct FeedRules {
     pub max_price: u64,
     /// Reject if the Pyth price is older than this many milliseconds. Required
     /// (> 0) for Pyth / PythPush feeds; `0` disables the check (Manual feeds).
+    ///
+    /// An **ingestion** gate — not to be confused with
+    /// `PriceFeedHeader::price_ttl_ms`, which bounds how long a consumer may act
+    /// on a price already written. Their `0` conventions are opposites; see
+    /// `interface::price_stale_at` and the note on `rules::check_max_age`.
     pub max_age_ms: u32,
     pub _reserved: [u8; 4],
 }
 
+/// This program's price account.
+///
+/// The [`PriceFeedHeader`] prefix is the contract `calma` reads, so it must stay
+/// first, immediately after the discriminator. Everything below it is this
+/// implementation's own business — which Pyth ids to pull from, who may write,
+/// which ingestion rules apply. A different oracle program keeps the header and
+/// puts something else entirely underneath.
 #[account]
 #[derive(Copy)]
 pub struct Feed {
-    pub collateral_mint: Pubkey,
-    pub lend_mint: Pubkey,
+    pub header: PriceFeedHeader,
     pub id: u8,
-    pub state: FeedState,
     pub config: FeedConfig,
-    pub data: FeedData,
     pub rules: FeedRules,
 }
 
 impl Feed {
-    /// `true` iff a Pyth price with `publish_time` would fail the freshness
+    /// `true` iff a Pyth price with `publish_time` would fail the *ingestion*
     /// gate when consumed at wall-clock `clock_ts`. `0` in `rules.max_age_ms`
     /// disables the check (returns `false`). Exposed to the browser via the
     /// wasm bindings so the UI can predict `StalePushPrice` before submitting.
@@ -86,10 +98,4 @@ impl Feed {
         let elapsed_ms = clock_ts.saturating_sub(publish_time).saturating_mul(1_000);
         elapsed_ms > max_age_ms as i64
     }
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug)]
-pub struct FeedSnapshot {
-    pub ratio: u64,
-    pub last_updated_ts: i64,
 }

@@ -259,6 +259,7 @@ export async function setupTest(
         { manual: {} },
         Array(32).fill(0),
         Array(32).fill(0),
+        90_000,
         { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
       )
       .accounts({
@@ -272,8 +273,8 @@ export async function setupTest(
       .rpc();
   }
 
-  // Set initial oracle price (collateral == lend == 1.0) so the ratio is 1.0 and
-  // the CPI inside create reads a non-zero value.
+  // Set initial oracle price (collateral == lend == 1.0) so the ratio is 1.0.
+  // Must land before `create`, which reads the feed and refuses a zero price.
   await feedProgram.methods
     .setValue(new BN(1_000_000), new BN(1_000_000))
     .accounts({ authority: feedAuthority, feed: feedPda })
@@ -281,14 +282,13 @@ export async function setupTest(
 
   // Create the lending pool.  Anchor auto-resolves collateralVault, lendVault, lpMint, state.
   await program.methods
-    .create(ltvPercent, 90_000)
+    .create(ltvPercent)
     .accounts({
       pool,
       collateralMint,
       lendMint,
       authority: authority.publicKey,
       payer: payer.publicKey,
-      feedProgram: feedProgram.programId,
       feedState: feedPda,
       rateProgram: irmProgramId,
       irmState: irmConfig,
@@ -361,6 +361,20 @@ export async function setFeedPrice(
 ): Promise<void> {
   await setup.feedProgram.methods
     .setValue(new BN(collateralPrice), new BN(lendPrice))
+    .accounts({ authority: setup.feedAuthority, feed: setup.feedPda })
+    .rpc();
+}
+
+/**
+ * Retunes how long the feed's written price stays consumable.
+ *
+ * The budget lives on the feed, not the pool, so this changes the `StaleOracle`
+ * gate for every market pricing against it. `0` is rejected on-chain — it is the
+ * fail-closed sentinel, not a way to disable the check.
+ */
+export async function setFeedTtl(setup: TestSetup, priceTtlMs: number): Promise<void> {
+  await setup.feedProgram.methods
+    .setPriceTtl(priceTtlMs)
     .accounts({ authority: setup.feedAuthority, feed: setup.feedPda })
     .rpc();
 }

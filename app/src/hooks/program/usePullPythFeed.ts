@@ -7,6 +7,7 @@ import { noRules } from '../../config/feedRules'
 import {
     feedIdToBytes,
     hermesId,
+    DEFAULT_PRICE_TTL_MS,
     MAX_PYTH_AGE_MS,
     USDC_USD_FEED_ID,
     type PythFeed,
@@ -102,7 +103,7 @@ export function usePullPythFeed() {
                 }
             } else {
                 const createIx = await feedProgram.methods
-                    .create(0, { pyth: {} }, collBytes, lendBytes, { ...noRules(), maxAgeMs: MAX_PYTH_AGE_MS })
+                    .create(0, { pyth: {} }, collBytes, lendBytes, DEFAULT_PRICE_TTL_MS, { ...noRules(), maxAgeMs: MAX_PYTH_AGE_MS })
                     .accounts({
                         feed: feedAccount,
                         authority: payer,

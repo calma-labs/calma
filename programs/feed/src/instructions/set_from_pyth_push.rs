@@ -15,8 +15,8 @@ pub struct SetFromPythPush<'info> {
         mut,
         seeds = [
             b"feed",
-            feed.collateral_mint.as_ref(),
-            feed.lend_mint.as_ref(),
+            feed.header.collateral_mint.as_ref(),
+            feed.header.lend_mint.as_ref(),
             &[feed.id],
         ],
         bump = feed.config.bump,
@@ -64,21 +64,21 @@ pub fn set_from_pyth_push_handler(ctx: Context<SetFromPythPush>) -> Result<()> {
     check_ema_divergence(lend.price, lend.ema_price, rules.ema_divergence_bps)?;
     check_deviation(
         coll_norm,
-        feed.state.collateral_price,
-        feed.state.last_updated_ts,
+        feed.header.collateral_price,
+        feed.header.last_updated_ts,
         clock.unix_timestamp,
         rules.max_deviation_bps_per_hour,
     )?;
     check_deviation(
         lend_norm,
-        feed.state.lend_price,
-        feed.state.last_updated_ts,
+        feed.header.lend_price,
+        feed.header.last_updated_ts,
         clock.unix_timestamp,
         rules.max_deviation_bps_per_hour,
     )?;
 
-    feed.state.collateral_price = coll_norm;
-    feed.state.lend_price = lend_norm;
-    feed.state.last_updated_ts = coll.publish_time.min(lend.publish_time);
+    feed.header.collateral_price = coll_norm;
+    feed.header.lend_price = lend_norm;
+    feed.header.last_updated_ts = coll.publish_time.min(lend.publish_time);
     Ok(())
 }

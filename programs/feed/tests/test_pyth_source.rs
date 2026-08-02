@@ -203,6 +203,7 @@ fn create_ix_with_rules(
             source,
             collateral_feed_id: coll_feed_id,
             lend_feed_id,
+            price_ttl_ms: 90_000,
             rules,
         }
         .data(),
@@ -284,10 +285,10 @@ fn manual_create_and_set_value_happy_path() {
     // Both mints in fresh_svm are decimals=6 → feed inherits them.
     let feed_account = ctx.svm.get_account(&feed_pda(&ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
-    assert_eq!(feed.data.collateral_decimals, 6);
-    assert_eq!(feed.data.lend_decimals, 6);
-    assert_eq!(feed.collateral_mint, ctx.collateral_mint);
-    assert_eq!(feed.lend_mint, ctx.lend_mint);
+    assert_eq!(feed.header.collateral_decimals, 6);
+    assert_eq!(feed.header.lend_decimals, 6);
+    assert_eq!(feed.header.collateral_mint, ctx.collateral_mint);
+    assert_eq!(feed.header.lend_mint, ctx.lend_mint);
 }
 
 #[test]
@@ -420,10 +421,10 @@ fn pyth_set_from_pyth_happy_path() {
 
     let feed_account = ctx.svm.get_account(&feed_pda(&ctx.collateral_mint, &ctx.lend_mint)).unwrap();
     let feed = Feed::try_deserialize(&mut feed_account.data.as_slice()).unwrap();
-    assert_eq!(feed.state.collateral_price, 123_450_000);
-    assert_eq!(feed.state.lend_price, 1_000_000);
+    assert_eq!(feed.header.collateral_price, 123_450_000);
+    assert_eq!(feed.header.lend_price, 1_000_000);
     // last_updated_ts == min(publish_time)
-    assert_eq!(feed.state.last_updated_ts, now - 10);
+    assert_eq!(feed.header.last_updated_ts, now - 10);
 }
 
 /// Common setup for rule tests: pin the clock, create a Pyth-source feed with

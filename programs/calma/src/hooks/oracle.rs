@@ -1,40 +1,41 @@
 use anchor_lang::prelude::*;
+use interface::PriceFeedHeader;
 
-pub struct OracleState {
-    pub current_ts: i64,
-    pub price: u64,
-}
+/// Read and validate this market's price account.
+///
+/// There is no CPI here. `calma` used to call `feed::get_state`, which pinned
+/// the protocol to one oracle program at compile time — `Account<'info, Feed>`
+/// takes its owner check from the defining crate's ID. Markets now record which
+/// program and which account they price against, and the price is read straight
+/// out of that account's [`PriceFeedHeader`] prefix. Any program can serve as an
+/// oracle so long as it writes that prefix.
+///
+/// Both pinned values come from `Pool`, never from the caller: `pool_feed_state`
+/// fixes *which* account and `pool_feed_program` fixes *who may have written
+/// it*. See `interface::read_price_feed` for why neither alone suffices.
+///
+/// The returned header is itself the `math::Oracle`, so it goes straight into
+/// `Core::with_oracle`.
+pub fn read_feed(
+    feed_state: &UncheckedAccount,
+    pool_feed_state: Pubkey,
+    pool_feed_program: Pubkey,
+) -> Result<PriceFeedHeader> {
+    let header = interface::read_price_feed(
+        &feed_state.to_account_info(),
+        pool_feed_state,
+        pool_feed_program,
+    )?;
 
-impl math::Oracle for OracleState {
-    fn price(&self) -> u64 {
-        self.price
-    }
-}
+    // A zero lend price yields no ratio at all, so `price()` would report 0 —
+    // indistinguishable from "the collateral is worthless" and silently
+    // collapsing every position's borrow capacity to nothing. Refuse instead, so
+    // an unwritten or broken feed reads as an error rather than as a valuation.
+    require!(header.lend_price > 0, crate::error::CalmaError::ZeroPrice);
+    require!(
+        !header.is_stale_at(Clock::get()?.unix_timestamp),
+        crate::error::CalmaError::StaleOracle
+    );
 
-impl OracleState {
-    /// CPI into the feed program to read the current price.
-    ///
-    /// `max_age_ms` is the staleness window configured on the pool; comes from
-    /// `Pool::max_feed_age_ms` at borrow/withdraw time, or from the create
-    /// instruction's parameter when first initialising a pool.
-    pub fn new<'info>(
-        feed_program: AccountInfo<'info>,
-        feed_state: AccountInfo<'info>,
-        max_age_ms: u32,
-    ) -> Result<Self> {
-        let current_ts = Clock::get()?.unix_timestamp;
-        let snap = feed::cpi::get_state(CpiContext::new(
-            feed_program.key(),
-            feed::cpi::accounts::GetValue { feed: feed_state },
-        ))?
-        .get();
-        require!(
-            !state::Pool::snapshot_stale_at(snap.last_updated_ts, current_ts, max_age_ms),
-            crate::error::CalmaError::StaleOracle
-        );
-        Ok(Self {
-            current_ts,
-            price: snap.ratio,
-        })
-    }
+    Ok(header)
 }

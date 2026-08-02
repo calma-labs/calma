@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 math = { path = "../math" }
 state = { path = "../state" }
+interface = { path = "../interface" }
 irm-state = { path = "../irm-state" }
 feed-state = { path = "../feed-state" }
 anchor-lang = { version = "1.0.2", default-features = false }

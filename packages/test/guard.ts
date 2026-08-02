@@ -172,6 +172,7 @@ describe("calma create with guard", () => {
           { manual: {} },
           Array(32).fill(0),
           Array(32).fill(0),
+          90_000,
           { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
         )
         .accounts({ feed: feedPda, authority: payer.publicKey, collateralMint, lendMint, payer: payer.publicKey })
@@ -219,14 +220,13 @@ describe("calma create with guard", () => {
     });
 
     await calmaProgram.methods
-      .create(75, 90_000)
+      .create(75)
       .accounts({
         pool,
         collateralMint,
         lendMint,
         authority: poolAuthority.publicKey,
         payer: payer.publicKey,
-        feedProgram: feedProgram.programId,
         feedState: feedPda,
         rateProgram: irmProgram.programId,
         irmState: irmConfig,
@@ -367,20 +367,51 @@ describe("calma create with guard", () => {
     }
   });
 
-  it("rejects an impostor guard program", async () => {
+  // `create` used to require `guard_program == guard::ID`. It cannot any more:
+  // `calma` links no guard implementation, so there is no canonical id to
+  // compare against — the market's choice is recorded on `Pool` and becomes the
+  // pin for every later gate, exactly as with `feed_program` and `rate_program`.
+  //
+  // What that moves, and what it does not:
+  //   * a creator can now bind their own market to a guard program of their
+  //     choosing, including one that rubber-stamps. So could they always, by
+  //     choosing a whitelist they control; the difference is that the program is
+  //     now recorded and inspectable rather than assumed.
+  //   * nobody else can substitute a program afterwards, which is the property
+  //     that actually protects depositors.
+  it("records the guard program the market chose", async () => {
     const poolAuthority = Keypair.generate();
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
     );
 
-    try {
-      await createPool(poolAuthority, {
-        program: Keypair.generate().publicKey,
-        state: guardPda,
-      });
-      expect.fail("expected pool creation with a foreign guard program to fail");
-    } catch (e: any) {
-      expect(e.message).to.include("InvalidProgramId");
-    }
+    // `create` checks the creator against the list they chose, so they have to
+    // be on it before the market can be stood up.
+    await guardProgram.methods
+      .add(poolAuthority.publicKey)
+      .accounts({ guardState: guardPda, authority: guardAuthority.publicKey } as any)
+      .signers([guardAuthority])
+      .rpc();
+
+    const pool = await createPool(poolAuthority, {
+      program: guardProgram.programId,
+      state: guardPda,
+    });
+
+    const account = await calmaProgram.account.pool.fetch(pool);
+    expect(account.guardProgram.toString()).to.equal(guardProgram.programId.toString());
+    expect(account.guardState.toString()).to.equal(guardPda.toString());
+  });
+
+  it("leaves guard_program zeroed on an ungated market", async () => {
+    const poolAuthority = Keypair.generate();
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(poolAuthority.publicKey, LAMPORTS_PER_SOL)
+    );
+
+    const pool = await createPool(poolAuthority, null);
+
+    const account = await calmaProgram.account.pool.fetch(pool);
+    expect(account.guardProgram.toString()).to.equal(PublicKey.default.toString());
   });
 });

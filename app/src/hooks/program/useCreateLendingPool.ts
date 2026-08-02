@@ -1,15 +1,17 @@
+import { pool_space } from '@calma/wasm-lib'
 import { useWalletConnection } from '@solana/react-hooks'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, feedPda, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmProgram, program as readonlyProgram } from '../../lib/program'
+import { connection, feedPda, IRM_PROGRAM_ID, irmProgram, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
 
-/** Space needed for a Pool account (8-byte discriminator + zero-copy struct).
- * Must stay in sync with the on-chain `POOL_SPACE` constant exported by calma.
- * Source of truth: `target/idl/calma.json` → constants[name=POOL_SPACE].value */
-const POOL_SPACE = 49_528
+/** Space needed for a Pool account (8-byte discriminator + zero-copy struct),
+ * read from the Rust struct rather than copied. "Must stay in sync" is not a
+ * mechanism: the copy this replaced sat 248 bytes below the real size, which
+ * under-allocates the account and makes `create` fail. */
+const POOL_SPACE = pool_space()
 
 export interface IrmRatePointInput {
     /** Utilization in basis points (0..=10_000). First point must be 0. */
@@ -22,8 +24,6 @@ export interface CreatePoolParams {
     collateralMint: PublicKey
     lendMint: PublicKey
     ltvPercent?: number
-    /** Max age (seconds) a Pyth price may have when borrowing/withdrawing. */
-    maxFeedAgeMs?: number
     /** 2..=4 rate curve points. Defaults to the on-chain `DEFAULT_POINTS` if omitted. */
     ratePoints?: IrmRatePointInput[]
 }
@@ -48,7 +48,6 @@ async function createPool(
     const poolKeypair = Keypair.generate()
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
-    const maxFeedAgeMs = params.maxFeedAgeMs ?? 90_000
 
     const [irmState] = PublicKey.findProgramAddressSync(
         [Buffer.from('irm_config'), poolKeypair.publicKey.toBuffer()],
@@ -72,17 +71,19 @@ async function createPool(
         .instruction()
 
     const createIx = await readonlyProgram.methods
-        .create(ltvPercent, maxFeedAgeMs)
+        .create(ltvPercent)
         .accounts({
             pool: poolKeypair.publicKey,
             collateralMint: params.collateralMint,
             lendMint: params.lendMint,
             authority: payer,
             payer,
-            feedProgram: FEED_PROGRAM_ID,
             feedState,
             rateProgram: IRM_PROGRAM_ID,
             irmState,
+            // Genuinely a choice here, unlike on the entry instructions: `null`
+            // creates an ungated market. Supplying a pair would bind the market
+            // to that whitelist for life. The UI only creates open markets.
             guardProgram: null,
             guardState: null,
         })

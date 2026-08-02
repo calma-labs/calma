@@ -18,6 +18,10 @@ pub mod irm {
         borrow_rate::handler(ctx, utilization_bps)
     }
 
+    pub fn check_authority(ctx: Context<CheckAuthority>, authority: Pubkey) -> Result<()> {
+        check_authority::handler(ctx, authority)
+    }
+
     pub fn initialize(ctx: Context<Initialize>, points: Vec<RatePointArgs>) -> Result<()> {
         initialize::handler(ctx, points)
     }

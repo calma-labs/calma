@@ -1,4 +1,4 @@
-use crate::{hooks::oracle::OracleState, state::Pool};
+use crate::state::Pool;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
@@ -78,21 +78,22 @@ pub struct Create<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: Feed program — key stored in the pool.
-    pub feed_program: UncheckedAccount<'info>,
+    /// CHECK: the price account this market binds itself to, for life. Cannot be
+    /// typed — `Account<'info, T>` resolves its owner check from the defining
+    /// crate's program ID, which is exactly the single-oracle coupling this
+    /// design removes. The handler reads it through `interface::read_price_feed`
+    /// instead, and records its owner below as `pool.feed_program`.
+    pub feed_state: UncheckedAccount<'info>,
 
-    /// The feed this pool prices against. Typed so Anchor enforces owner and
-    /// discriminator, and so the handler can check the feed actually covers this
-    /// pool's token pair.
-    pub feed_state: Account<'info, feed::Feed>,
-
-    /// CHECK: IRM program — invoked via CPI to fetch the initial borrow rate.
+    /// CHECK: IRM program — invoked via CPI to fetch the initial borrow rate and
+    /// to verify the curve's authority. Recorded as `pool.rate_program`.
     pub rate_program: UncheckedAccount<'info>,
 
-    /// The rate curve this market prices against. Typed so Anchor enforces owner
-    /// and discriminator, and so the handler can check who controls it — the
-    /// address alone says nothing about that.
-    pub irm_state: AccountLoader<'info, irm::IrmState>,
+    /// CHECK: the rate curve this market prices against. Untyped for the same
+    /// reason as `feed_state`; the handler pins it to the canonical
+    /// `["irm_config", pool]` PDA under `rate_program` and asks that program to
+    /// vouch for its authority over CPI.
+    pub irm_state: UncheckedAccount<'info>,
 
     /// CHECK: optional guard program — when supplied alongside `guard_state`,
     /// CPI'd to verify the creator is whitelisted. Markets are permissionless to
@@ -111,50 +112,51 @@ pub struct Create<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn create_handler(
-    ctx: Context<Create>,
-    ltv_percent: u8,
-    max_feed_age_ms: u32,
-) -> Result<()> {
-    require!(
-        max_feed_age_ms > 0,
-        crate::error::ErrorCode::InvalidMaxFeedAge
-    );
+pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     require!(
         math::is_valid_ltv_percent(ltv_percent),
         crate::error::ErrorCode::InvalidLtv
     );
 
-    // ── Pin the pool's dependencies to the canonical programs ─────────────────
+    // ── Bind the market to its oracle and rate model, for life ────────────────
     //
-    // `feed_program` and `rate_program` are stored verbatim and trusted by every
-    // later borrow / LTV check, so accepting arbitrary program IDs here would let
-    // anyone stand up a pool backed by a price oracle and rate model they
-    // control, then drain whoever deposited into it.
-    require!(
-        ctx.accounts.feed_program.key() == feed::ID,
-        crate::error::ErrorCode::InvalidProgramId
-    );
-    require!(
-        ctx.accounts.rate_program.key() == irm::ID,
-        crate::error::ErrorCode::InvalidProgramId
-    );
+    // Both are pluggable: any program that writes an `interface::PriceFeedHeader`
+    // can price a market, and any program implementing the IRM ABI can rate one.
+    // So there is no canonical program ID to compare against here — the market's
+    // *choice* is what gets recorded, and every later borrow / LTV check is
+    // pinned to it.
+    //
+    // That makes `feed_program` and `guard_state` the two fields a depositor has
+    // to inspect before entering a market: they name who is trusted to price it
+    // and who is allowed into it. Neither can change afterwards.
+    //
+    // `pool.feed_program` is taken from the account's actual owner rather than
+    // from a separate caller-supplied argument, so the recorded value cannot
+    // disagree with the account it describes.
+    let feed_program_key = *ctx.accounts.feed_state.owner;
+    let feed_header = crate::hooks::oracle::read_feed(
+        &ctx.accounts.feed_state,
+        ctx.accounts.feed_state.key(),
+        feed_program_key,
+    )?;
 
     // The feed must price *this* pool's pair. Without this a pool could be
     // created against a perfectly legitimate feed for unrelated tokens, and
     // every LTV check would then run on a price that has nothing to do with the
     // collateral being posted.
     require!(
-        ctx.accounts.feed_state.collateral_mint == ctx.accounts.collateral_mint.key()
-            && ctx.accounts.feed_state.lend_mint == ctx.accounts.lend_mint.key(),
+        feed_header.collateral_mint == ctx.accounts.collateral_mint.key()
+            && feed_header.lend_mint == ctx.accounts.lend_mint.key(),
         crate::error::ErrorCode::FeedMintMismatch
     );
 
-    // The IRM state must be the canonical PDA for *this* pool, so a pool cannot
-    // be pointed at another pool's (or an attacker's) rate curve.
+    // The IRM state must be the canonical PDA for *this* pool under the chosen
+    // rate program, so a pool cannot be pointed at another pool's (or an
+    // attacker's) rate curve. The seed convention is part of the IRM ABI — the
+    // reference implementation enforces the same derivation on its own side.
     let (expected_irm_state, _) = Pubkey::find_program_address(
         &[b"irm_config", ctx.accounts.pool.key().as_ref()],
-        &irm::ID,
+        &ctx.accounts.rate_program.key(),
     );
     require!(
         ctx.accounts.irm_state.key() == expected_irm_state,
@@ -175,10 +177,15 @@ pub fn create_handler(
     // accrues to `total_supply_assets` as well as to borrowers, so a hostile
     // curve inflates the LP share price against debt that cannot be serviced,
     // and there is no liquidation path to close the resulting positions.
-    require!(
-        ctx.accounts.irm_state.load()?.authority == ctx.accounts.authority.key(),
-        crate::error::ErrorCode::InvalidIrmAuthority
-    );
+    //
+    // Asked over CPI rather than read off the account: with pluggable IRMs,
+    // `calma` does not know the layout of whatever program this market chose.
+    crate::hooks::irm::check_irm_authority(
+        ctx.accounts.rate_program.to_account_info(),
+        ctx.accounts.irm_state.to_account_info(),
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.authority.key(),
+    )?;
 
     // ── Bind the market's whitelist (opt-in, then permanent) ──────────────────
     //
@@ -190,31 +197,28 @@ pub fn create_handler(
     //
     // The creator is checked against the list they chose, so a market cannot be
     // stood up on a whitelist its own creator is not a member of.
-    let guard_state_key = match (&ctx.accounts.guard_program, &ctx.accounts.guard_state) {
-        (Some(guard_program), Some(guard_state)) => {
-            require!(
-                guard_program.key() == guard::ID,
-                crate::error::ErrorCode::InvalidProgramId
-            );
-            crate::hooks::guard::check_whitelist(
-                guard_program.to_account_info(),
-                guard_state.to_account_info(),
-                ctx.accounts.authority.key(),
-            )?;
-            guard_state.key()
-        }
-        // Half a pair is a malformed request, not an open market — refuse rather
-        // than silently creating an ungated market the caller did not ask for.
-        (None, None) => Pubkey::default(),
-        _ => return Err(crate::error::ErrorCode::GuardRequired.into()),
-    };
-
-    // ── CPI to feed::get_state to confirm the feed is reachable + fresh. ─────
-    let _oracle = OracleState::new(
-        ctx.accounts.feed_program.to_account_info(),
-        ctx.accounts.feed_state.to_account_info(),
-        max_feed_age_ms,
-    )?;
+    //
+    // Both the program and the state are recorded. There is no canonical guard
+    // program to compare against — a guard is any program exposing
+    // `check(Pubkey)`, as with the oracle and the rate model — so the market's
+    // choice *is* the pin, and every later gate compares against these stored
+    // values rather than against what a caller passes.
+    let (guard_state_key, guard_program_key) =
+        match (&ctx.accounts.guard_program, &ctx.accounts.guard_state) {
+            (Some(guard_program), Some(guard_state)) => {
+                crate::hooks::guard::check_whitelist(
+                    guard_program.to_account_info(),
+                    guard_state.to_account_info(),
+                    ctx.accounts.authority.key(),
+                )?;
+                (guard_state.key(), guard_program.key())
+            }
+            // Half a pair is a malformed request, not an open market — refuse
+            // rather than silently creating an ungated market the caller did not
+            // ask for.
+            (None, None) => (Pubkey::default(), Pubkey::default()),
+            _ => return Err(crate::error::ErrorCode::GuardRequired.into()),
+        };
 
     // ── Fetch initial IRM rate before load_init ───────────────────────────────
     // In Anchor 1.0, load_init() does NOT write the discriminator — that happens
@@ -251,11 +255,11 @@ pub fn create_handler(
     pool.market.ltv_percent = ltv_percent;
     pool.rate_program = ctx.accounts.rate_program.key();
     pool.irm_state = ctx.accounts.irm_state.key();
-    pool.feed_program = ctx.accounts.feed_program.key();
+    pool.feed_program = feed_program_key;
     pool.feed_state = ctx.accounts.feed_state.key();
     pool.lp_mint_bump = ctx.bumps.lp_mint;
-    pool.max_feed_age_ms = max_feed_age_ms;
     pool.guard_state = guard_state_key;
+    pool.guard_program = guard_program_key;
     pool.market.flash_loan_outstanding = 0;
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 

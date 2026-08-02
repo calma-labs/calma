@@ -1,3 +1,4 @@
+import { price_scale } from '@calma/wasm-lib'
 import * as anchor from "@coral-xyz/anchor";
 import { useCreateFeed } from "@/hooks/program/useCreateFeed";
 import { useSetFeedFromPyth } from "@/hooks/program/useSetFeedFromPyth";
@@ -46,12 +47,12 @@ function shorten(addr: string): string {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
 
-const PRICE_SCALE = 1_000_000n;
+const PRICE_SCALE = price_scale();
 
 function formatRatio(collateral: bigint, lend: bigint): string {
   if (lend === 0n) return "—";
-  const scaled = (collateral * 1_000_000n) / lend;
-  return (Number(scaled) / 1_000_000).toLocaleString("en-US", {
+  const scaled = (collateral * PRICE_SCALE) / lend;
+  return (Number(scaled) / Number(PRICE_SCALE)).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 6,
   });
@@ -346,7 +347,7 @@ function PythFeedUpdater({
 
 // ─── manual feed updater ──────────────────────────────────────────────────────
 
-const PRICE_SCALE_N = 1_000_000n;
+const PRICE_SCALE_N = price_scale();
 
 function usdToScaledBn(field: string): anchor.BN | null {
   const s = field.trim();

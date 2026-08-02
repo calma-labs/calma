@@ -20,12 +20,28 @@ custom-heap = []
 custom-panic = []
 
 
+# ── The program links no other program ───────────────────────────────────────
+#
+# Nothing below may be another *program* crate. A market reaches every external
+# program it uses — oracle, rate model, whitelist — through a pubkey recorded on
+# its own `Pool` account, chosen at creation and pinned for life. Linking one
+# implementation would privilege it at compile time and quietly contradict that:
+# the protocol would ship knowing one provider's types while claiming all are
+# equal.
+#
+# That is why `hooks/irm.rs` and `hooks/guard.rs` hardcode Anchor discriminators
+# and assemble their CPIs by hand rather than using generated `::cpi::` helpers.
+#
+# Shared *library* crates under `crates/` are fine and expected. So is a
+# [dev-dependency] on a reference program, with `quote` the deliberate exception
+# — see the note on it below.
+#
+# The full policy, the CPI pattern to copy, and how to verify no edge crept back
+# in: `.claude/rules/program-dependencies.md`.
 [dependencies]
 math = { path = "../../crates/math" }
 state = { path = "../../crates/state" }
-feed = { path = "../feed", features = ["cpi"] }
-guard = { path = "../guard", features = ["cpi"] }
-irm = { path = "../irm", features = ["cpi"] }
+interface = { path = "../../crates/interface" }
 anchor-lang = { version = "1.0.2", features = ["init-if-needed"] }
 anchor-spl = "1.0.2"
 bytemuck = "1"
@@ -35,15 +51,28 @@ solana-sdk-ids = "3.1.0"
 [dev-dependencies]
 bytemuck = "1"
 litesvm = "0.10.0"
+solana-account = "3.2.0"
+solana-clock = "3"
 solana-message = "3.0.1"
 solana-transaction = "3.0.2"
 solana-signer = "3.0.0"
 solana-keypair = "3.0.1"
 spl-token = { version = "7", features = ["no-entrypoint"] }
+# Asserts the discriminators hardcoded in `hooks/` reproduce Anchor's
+# `sha256("global:<name>")[..8]` derivation.
 sha2 = "0.10"
 guard = { path = "../guard", features = ["no-entrypoint"] }
 irm = { path = "../irm", features = ["no-entrypoint"] }
 faucet = { path = "../faucet", features = ["no-entrypoint"] }
+# The reference oracle, used to stand up a priced feed in the LiteSVM fixtures.
+# The program itself no longer depends on it — that is the point.
+feed = { path = "../feed", features = ["no-entrypoint"] }
+#
+# `quote` is deliberately absent even here. It is the *alternative* provider, and
+# `tests/test_alternative_provider.rs` exists to show a market can be stood up on
+# a program `calma` has never seen — which it cannot honestly show while linking
+# it. That file builds every `quote` instruction from the program id and Anchor's
+# discriminator derivation, exactly as an unaffiliated integrator would.
 
 
 [lints.rust]

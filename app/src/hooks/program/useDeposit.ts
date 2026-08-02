@@ -2,7 +2,9 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { connection } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
+import { resolveGuardAccounts } from './guardAccounts'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
 import { useAnchorProgram } from '../useAnchorProgram'
@@ -30,6 +32,7 @@ export function useDeposit() {
             if (!connected || !wallet || !program) throw new Error('Wallet not connected')
 
             const authority = new PublicKey(wallet.account.publicKey)
+            const guard = await resolveGuardAccounts(connection, pool)
 
             console.log('Creating deposit transaction with params:', {
                 pool: pool.toBase58(),
@@ -42,8 +45,7 @@ export function useDeposit() {
             const tx = await program.methods
                 .depositCollateral(amount)
                 .accounts({
-                    guardProgram: null,
-                    guardState: null,
+                    ...guard,
                     pool,
                     collateralMint,
                     authority,

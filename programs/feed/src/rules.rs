@@ -109,14 +109,14 @@ pub fn check_deviation(
 /// `max_age_ms == 0` disables the check (returns `Ok`), matching every other
 /// rule in this module.
 ///
-/// **Not the same convention as `state::Pool::snapshot_stale_at`**, which takes
-/// an identically named `max_age_ms` and treats `0` as *reject everything*. The
-/// difference is deliberate and the two are not interchangeable: this gate is an
-/// opt-in validation on ingestion, so `0` means "don't run it"; that one is the
-/// borrow gate, so `0` means "no budget, refuse". Disabling this one is safe
-/// precisely because the pool-side gate still applies — `set_from_pyth` stamps
+/// **Not the same convention as `interface::price_stale_at`**, which takes a
+/// similarly named budget and treats `0` as *reject everything*. The difference
+/// is deliberate and the two are not interchangeable: this gate is an opt-in
+/// validation on *ingestion*, so `0` means "don't run it"; that one gates
+/// *consumption*, so `0` means "no budget, refuse". Disabling this one is safe
+/// precisely because the consumption gate still applies — `set_from_pyth` stamps
 /// `last_updated_ts` from the Pyth publish time, so an old price ingested here
-/// still reads as old there.
+/// still reads as old to every consumer.
 ///
 /// The comparison is done entirely in milliseconds so a configured age is never
 /// truncated on its way to the gate. Note the *measurement* is still bounded by

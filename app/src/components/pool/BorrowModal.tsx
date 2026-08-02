@@ -53,7 +53,9 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   // liquidity, minus current debt.
   const limitRaw = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0n;
-    const borrowPower = poolData.max_borrowable(userPosition);
+    // `undefined` when the capacity computation overflows — no borrow power,
+    // same as the `debt_amount` fallback below.
+    const borrowPower = poolData.max_borrowable(userPosition) ?? 0n;
     const debt = poolData.debt_amount(userPosition) ?? 0n;
     const liquidity = poolData.available_liquidity();
     const remaining = borrowPower > debt ? borrowPower - debt : 0n;
@@ -67,7 +69,7 @@ export function BorrowModal({ pool, poolData, onClose }: BorrowModalProps) {
   const limit = token_amount_to_f64(limitRaw, lendDecimals ?? 6);
   const userBorrowPower = useMemo(() => {
     if (!userPosition || lendDecimals == null) return 0;
-    return token_amount_to_f64(poolData.max_borrowable(userPosition), lendDecimals);
+    return token_amount_to_f64(poolData.max_borrowable(userPosition) ?? 0n, lendDecimals);
   }, [userPosition, lendDecimals, poolData]);
 
   // Project borrow APY after this borrow based on post-borrow utilization.

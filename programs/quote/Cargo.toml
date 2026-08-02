@@ -1,0 +1,35 @@
+[package]
+# The *package* is `quote-provider` only because `quote` (the proc-macro crate)
+# is already in this workspace's dependency graph, which would make
+# `cargo test -p quote` ambiguous. The program itself is `quote` everywhere it is
+# visible: the crate name below, `target/deploy/quote.so`, the Anchor.toml entry,
+# and `quote::id()` at every call site.
+name = "quote-provider"
+version = "0.1.0"
+description = "Combined price + rate provider: implements calma's oracle and IRM interfaces in one program, from one account."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "quote"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "1.0.2"
+anchor-spl = "1.0.2"
+interface = { path = "../../crates/interface" }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(target_os, values("solana"))',
+] }

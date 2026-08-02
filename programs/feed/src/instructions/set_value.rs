@@ -8,8 +8,8 @@ pub struct SetValue<'info> {
         mut,
         seeds = [
             b"feed",
-            feed.collateral_mint.as_ref(),
-            feed.lend_mint.as_ref(),
+            feed.header.collateral_mint.as_ref(),
+            feed.header.lend_mint.as_ref(),
             &[feed.id],
         ],
         bump = feed.config.bump,
@@ -35,8 +35,8 @@ pub fn set_value_handler(
         ErrorCode::ZeroPrice
     );
 
-    feed.state.collateral_price = collateral_price;
-    feed.state.lend_price = lend_price;
-    feed.state.last_updated_ts = Clock::get()?.unix_timestamp;
+    feed.header.collateral_price = collateral_price;
+    feed.header.lend_price = lend_price;
+    feed.header.last_updated_ts = Clock::get()?.unix_timestamp;
     Ok(())
 }

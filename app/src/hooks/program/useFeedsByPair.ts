@@ -1,3 +1,4 @@
+import { feed_collateral_mint_offset, feed_lend_mint_offset } from '@calma/wasm-lib'
 import type { GetProgramAccountsFilter } from '@solana/web3.js'
 import { PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
@@ -6,26 +7,15 @@ import { queryKeys } from '../../lib/queryKeys'
 
 /**
  * Byte offsets of the mint fields inside a `Feed` account, measured from the
- * start of the account data (i.e. including the 8-byte Anchor discriminator).
+ * start of the account data (discriminator included), for an RPC `memcmp`.
  *
- * Layout (see `crates/feed-state/src/lib.rs`):
- *   0    discriminator            [8]
- *   8    collateral_mint          [32]  ← memcmp target
- *   40   lend_mint                [32]  ← memcmp target
- *   72   id                       [1]
- *   73   state                    [24]  (collateral_price u64, lend_price u64, last_updated_ts i64)
- *   97   config.authority         [32]
- *   129  config.source            [1]
- *   130  config.bump              [1]
- *   131  config._pad              [6]
- *   137  config.collateral_feed_id[32]
- *   169  config.lend_feed_id      [32]
- *   201  data.collateral_decimals [1]
- *   202  data.lend_decimals       [1]
- *   203  rules                    [30]
+ * Read from Rust so they cannot fall behind the layout. The hand-written table
+ * that used to live here still described the pre-`PriceFeedHeader` struct — the
+ * numbers happened to survive the restructure, which is exactly why nobody
+ * noticed the comment had stopped being true.
  */
-const COLLATERAL_MINT_OFFSET = 8
-const LEND_MINT_OFFSET = 40
+const COLLATERAL_MINT_OFFSET = feed_collateral_mint_offset()
+const LEND_MINT_OFFSET = feed_lend_mint_offset()
 
 /** A decoded `Feed` account paired with its on-chain address. */
 export interface FeedByPair {

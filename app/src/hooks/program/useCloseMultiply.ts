@@ -2,7 +2,7 @@ import * as anchor from '@anchor-lang/core'
 import { useWalletConnection } from '@solana/react-hooks'
 import { PublicKey, SYSVAR_INSTRUCTIONS_PUBKEY, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, FEED_PROGRAM_ID, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram, faucetProgram } from '../../lib/program'
+import { connection, IRM_PROGRAM_ID, irmStatePda, program as readonlyProgram, faucetProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { handleTransaction } from '../../lib/txHandler'
 import { useWalletBalancesStore } from '../../store/wallet.store'
@@ -89,7 +89,7 @@ export function useCloseMultiply() {
                     readonlyProgram.methods
                         .withdrawCollateral(collateralRaw)
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool), feedProgram: FEED_PROGRAM_ID, feedState } as any)
+                        .accounts({ pool, collateralMint, authority, userTokenAccount: userCollateralAta, rateProgram: IRM_PROGRAM_ID, irmState: irmStatePda(pool), feedState } as any)
                         .instruction(),
                     faucetProgram.methods
                         .mockSwap(collateralRaw)

@@ -68,7 +68,10 @@ pub enum ErrorCode {
     MissingRateState,
     #[msg("Create pool: no matching feed set_value instruction found before this transaction")]
     FeedSetValueMissing,
-    #[msg("max_feed_age_ms must be greater than zero")]
+    /// RESERVED — the pool no longer carries a staleness budget; the oracle owns
+    /// it via `interface::PriceFeedHeader::price_ttl_ms`. Kept as a placeholder
+    /// so the variants below it keep their error numbers.
+    #[msg("RESERVED")]
     InvalidMaxFeedAge,
     #[msg("Interest accrual computation overflowed")]
     InterestAccrualOverflow,
@@ -103,4 +106,7 @@ pub enum ErrorCode {
     GuardRequired,
     #[msg("IRM state is controlled by a different authority than this pool")]
     InvalidIrmAuthority,
+    /// Appended, not inserted — variants are numbered by declaration order.
+    #[msg("Price account is not the one this pool was created against")]
+    InvalidFeedState,
 }

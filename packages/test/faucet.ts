@@ -233,6 +233,7 @@ describe("hardcoded minter faucet", () => {
             { manual: {} },
             Array(32).fill(0),
             Array(32).fill(0),
+            90_000,
             { maxConfBps: 0, maxDeviationBpsPerHour: 0, emaDivergenceBps: 0, minPrice: new BN(0), maxPrice: new BN(0), maxAgeMs: 0, reserved: Array(4).fill(0) }
           )
           .accounts({ feed: feedPda, authority: feedAuthority, collateralMint: testMint, lendMint, payer: payer.publicKey })
@@ -264,14 +265,13 @@ describe("hardcoded minter faucet", () => {
 
       // Create pool with faucet mint as collateral
       await program.methods
-        .create(75, 90_000)
+        .create(75)
         .accounts({
           pool,
           collateralMint: testMint, // Using the faucet-controlled mint
           lendMint,
           authority: authority.publicKey,
           payer: payer.publicKey,
-          feedProgram: feedProgram.programId,
           feedState: feedPda,
           rateProgram: irmProgram.programId,
           irmState: irmConfigPda,

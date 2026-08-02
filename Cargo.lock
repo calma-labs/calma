@@ -716,6 +716,7 @@ dependencies = [
  "anchor-lang",
  "bytemuck",
  "feed-state",
+ "interface",
  "irm-state",
  "js-sys",
  "math",
@@ -956,10 +957,13 @@ dependencies = [
  "faucet",
  "feed",
  "guard",
+ "interface",
  "irm",
  "litesvm",
  "math",
  "sha2 0.10.9",
+ "solana-account 3.4.0",
+ "solana-clock 3.0.1",
  "solana-instructions-sysvar 3.0.0",
  "solana-keypair",
  "solana-message 3.1.0",
@@ -1722,6 +1726,7 @@ name = "feed-state"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "interface",
 ]
 
 [[package]]
@@ -2060,6 +2065,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "interface"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "math",
 ]
 
 [[package]]
@@ -2830,6 +2843,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "quote-provider"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
+ "anchor-spl",
+ "interface",
 ]
 
 [[package]]

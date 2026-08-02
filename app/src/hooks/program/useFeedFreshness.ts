@@ -1,5 +1,5 @@
 import { HermesClient } from '@pythnetwork/hermes-client'
-import { FeedAccount, FeedFreshnessResult, PoolAccount } from '@calma/wasm-lib'
+import { FeedAccount, FeedFreshnessResult, PoolAccount, price_scale } from '@calma/wasm-lib'
 import { PublicKey } from '@solana/web3.js'
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -13,8 +13,8 @@ const hermes = new HermesClient(HERMES_ENDPOINT)
 
 const REFETCH_INTERVAL_MS = 1_000
 
-/** On-chain scale for `feed.state.{collateral,lend}_price` — see PRICE_SCALE in feed-state. */
-const PRICE_SCALE = 1_000_000
+/** On-chain price scale, read from Rust rather than restated. */
+const PRICE_SCALE = Number(price_scale())
 
 export interface OraclePriceSide {
     /** USD price (or `null` if unavailable). */
@@ -26,7 +26,8 @@ export interface OraclePriceSide {
 }
 
 /** Snapshot last written to the feed account by `set_from_pyth`. Both sides
- *  share `feed.last_updated_ts`; the borrow gate uses `pool.max_feed_age_secs`. */
+ *  share `feed.last_updated_ts`; the borrow gate uses the feed's own
+ *  `price_ttl_ms`, so every market pricing against a feed shares its verdict. */
 export interface OnChainPrices {
     collateral: OraclePriceSide
     lend: OraclePriceSide
@@ -129,7 +130,7 @@ function computeFreshness(snapshot: FeedSnapshot, nowSecs: number): FeedFreshnes
 
     const now = BigInt(nowSecs)
     const result = FeedFreshnessResult.check(
-        pool, feed,
+        feed,
         BigInt(snapshot.hermesCollTs),
         BigInt(snapshot.hermesLendTs),
         now,
@@ -138,7 +139,7 @@ function computeFreshness(snapshot: FeedSnapshot, nowSecs: number): FeedFreshnes
     // Read all wasm fields before freeing.
     const willFail = result.will_fail
     const snapshotStale = result.snapshot_stale
-    const poolMaxAgeSecs = result.pool_max_age_secs
+    const priceTtlSecs = result.price_ttl_secs
     const feedMaxAgeSecs = result.feed_max_age_secs
     const hermesCollStale = result.hermes_coll_stale
     const hermesLendStale = result.hermes_lend_stale
@@ -151,7 +152,7 @@ function computeFreshness(snapshot: FeedSnapshot, nowSecs: number): FeedFreshnes
     const onChain: OnChainPrices = {
         collateral: { price: collPrice, publishTs: snapshotTs, stale: snapshotStale },
         lend: { price: lendPrice, publishTs: snapshotTs, stale: snapshotStale },
-        maxAgeSecs: poolMaxAgeSecs,
+        maxAgeSecs: priceTtlSecs,
     }
 
     const hermes: HermesPrices | null = source === 1 /* Pyth */ ? {
@@ -171,14 +172,14 @@ function computeFreshness(snapshot: FeedSnapshot, nowSecs: number): FeedFreshnes
     let reason = ''
     if (willFail) {
         if (source !== 1) {
-            reason = `On-chain snapshot is stale (pool max ${poolMaxAgeSecs}s) and this feed source isn't refreshed by the app.`
+            reason = `Written price is stale (feed TTL ${priceTtlSecs}s) and this feed source isn't refreshed by the app.`
         } else {
             const sides = [
                 hermesCollStale && 'collateral',
                 hermesLendStale && 'lend',
             ].filter(Boolean).join(' and ')
             reason =
-                `On-chain snapshot is stale (pool max ${poolMaxAgeSecs}s) ` +
+                `Written price is stale (feed TTL ${priceTtlSecs}s) ` +
                 `and a refresh would be rejected: ${sides} price too old ` +
                 `(feed max ${feedMaxAgeSecs}s). Waiting for Pyth to publish.`
         }

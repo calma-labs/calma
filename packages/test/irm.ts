@@ -121,7 +121,6 @@ describe("irm initialize", () => {
                 authority: calmaSetup.authority.publicKey,
                 rateProgram: irmProgram.programId,
                 irmState: cpiIrmConfig,
-                feedProgram: calmaSetup.feedProgram.programId,
                 feedState: calmaSetup.feedPda,
             })
             .signers([calmaSetup.authority])
