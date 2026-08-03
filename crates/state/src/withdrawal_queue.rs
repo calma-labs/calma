@@ -2,9 +2,25 @@ use anchor_lang::prelude::*;
 
 pub const WITHDRAWAL_QUEUE_LEN: usize = 1024;
 
+/// Most pending entries one authority may hold at a time.
+///
+/// Slots are the scarce resource: there are 1023 of them, they carry no rent,
+/// and a full queue means no further exit can be queued at all. Without a cap,
+/// one party could hold every slot. Splitting an exit across a handful of
+/// entries is normal, holding hundreds is not, so the limit is set well above
+/// ordinary use and well below the point where one authority crowds out the
+/// rest.
+pub const MAX_ENTRIES_PER_AUTHORITY: usize = 8;
+
 /// A single pending withdrawal request.
-/// `user_position` and destination ATA are derived from `requester` at
-/// execution time so they do not need to be stored here.
+///
+/// Only the requester is recorded, not a destination account. `process_queue_entry`
+/// takes the payout account as an argument and checks that its **owner** equals
+/// `requester` — it does not derive an ATA, and any token account that requester
+/// owns is accepted. That is sound (the tokens reach the right party either way)
+/// but it is a weaker statement than "the destination is the requester's ATA",
+/// which this doc used to claim as the reason for not storing one. Anything
+/// added later that assumes a canonical destination has to store it.
 #[zero_copy]
 pub struct WithdrawalQueueEntry {
     /// The user authority who requested the withdrawal.
@@ -46,7 +62,19 @@ impl WithdrawalQueue {
 
     /// Append `entry` to the back of the queue.
     /// Returns `WithdrawalQueueFull` if the queue has no free slots.
+    ///
+    /// A zero-amount entry is refused. It would pay out nothing when processed,
+    /// yet still consume one of the 1023 slots and — because a non-empty queue
+    /// forces every later `withdraw_lent` onto the queued path — hold the
+    /// immediate-withdrawal path shut for everyone. Slots are the scarce
+    /// resource here, so an entry that cannot move any tokens must not take one.
+    /// The caller-facing guard is in `withdraw_lent_handler`; this is the
+    /// backstop that makes the invariant true for every push site.
     pub fn push(&mut self, entry: WithdrawalQueueEntry) -> Result<()> {
+        require!(
+            entry.amount > 0,
+            crate::error::ErrorCode::ZeroValueWithdrawal
+        );
         require!(
             !self.is_full(),
             crate::error::ErrorCode::WithdrawalQueueFull
@@ -66,6 +94,28 @@ impl WithdrawalQueue {
         let entry = self.entries[self.head as usize];
         self.head = ((self.head as usize + 1) % WITHDRAWAL_QUEUE_LEN) as u16;
         Ok(entry)
+    }
+
+    /// Pending entries belonging to `requester`, counted no further than
+    /// `cap`.
+    ///
+    /// The early exit is what bounds the cost: the caller only needs to know
+    /// whether the limit is already reached, so a party at the cap stops the
+    /// scan after `cap` matches instead of walking the whole queue. The
+    /// unavoidable case is a caller with *no* entries and a near-full queue,
+    /// which walks every occupied slot — an equality test on 32 bytes per
+    /// entry, and the queue is bounded at 1023.
+    pub fn count_for_capped(&self, requester: &Pubkey, cap: usize) -> usize {
+        let mut seen = 0usize;
+        for entry in self.iter() {
+            if entry.requester == *requester {
+                seen += 1;
+                if seen >= cap {
+                    break;
+                }
+            }
+        }
+        seen
     }
 
     /// Number of entries currently in the queue.
@@ -126,13 +176,56 @@ mod tests {
     #[test]
     fn fifo_ordering_preserved() {
         let mut q = make_queue();
-        for i in 0..10u8 {
+        for i in 1..=10u8 {
             q.push(make_entry(i, i as u64 * 100)).unwrap();
         }
-        for i in 0..10u8 {
+        for i in 1..=10u8 {
             let out = q.pop().unwrap();
             assert_eq!(out.amount, i as u64 * 100);
         }
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn count_for_capped_counts_only_the_named_requester() {
+        let mut q = make_queue();
+        for i in 0..5u8 {
+            q.push(make_entry(1, i as u64 + 1)).unwrap(); // requester A
+        }
+        q.push(make_entry(2, 99)).unwrap(); // requester B
+
+        let a = make_entry(1, 0).requester;
+        let b = make_entry(2, 0).requester;
+        let c = make_entry(3, 0).requester;
+        assert_eq!(q.count_for_capped(&a, MAX_ENTRIES_PER_AUTHORITY), 5);
+        assert_eq!(q.count_for_capped(&b, MAX_ENTRIES_PER_AUTHORITY), 1);
+        assert_eq!(q.count_for_capped(&c, MAX_ENTRIES_PER_AUTHORITY), 0);
+    }
+
+    #[test]
+    fn count_for_capped_stops_at_the_cap() {
+        // The early exit is the cost bound: a party already at the limit must
+        // not force a walk of the whole queue to discover it.
+        let mut q = make_queue();
+        for i in 0..50u8 {
+            q.push(make_entry(1, i as u64 + 1)).unwrap();
+        }
+        let a = make_entry(1, 0).requester;
+        assert_eq!(q.count_for_capped(&a, 3), 3);
+        assert_eq!(q.count_for_capped(&a, MAX_ENTRIES_PER_AUTHORITY), MAX_ENTRIES_PER_AUTHORITY);
+    }
+
+    #[test]
+    fn zero_amount_entry_is_refused() {
+        // A zero-amount entry pays out nothing but still burns a queue slot and
+        // keeps the queue non-empty, which forces every later withdrawal onto
+        // the queued path. Refusing it is what keeps slot-spam from being free.
+        let mut q = make_queue();
+        let err = q.push(make_entry(1, 0)).err().expect("expected error");
+        assert_eq!(
+            err,
+            anchor_lang::error!(crate::error::ErrorCode::ZeroValueWithdrawal)
+        );
         assert!(q.is_empty());
     }
 
@@ -153,7 +246,7 @@ mod tests {
         let mut q = make_queue();
         // The queue holds WITHDRAWAL_QUEUE_LEN - 1 items at most (one slot reserved).
         for i in 0..(WITHDRAWAL_QUEUE_LEN - 1) {
-            q.push(make_entry(0, i as u64)).unwrap();
+            q.push(make_entry(0, i as u64 + 1)).unwrap();
         }
         assert!(q.is_full());
 
@@ -173,7 +266,7 @@ mod tests {
         // original end to exercise the modular index wrap.
         let half = WITHDRAWAL_QUEUE_LEN / 2;
         for i in 0..half {
-            q.push(make_entry(0, i as u64)).unwrap();
+            q.push(make_entry(0, i as u64 + 1)).unwrap();
         }
         for _ in 0..half {
             q.pop().unwrap();

@@ -39,11 +39,20 @@ export interface MultiplyPosition {
   multiplier: number;
   netAPY: number;
   positionSize: number;
-  entryPrice: number;
-  currentPrice: number;
+  /** `null` when unknown, for the same reason as `pnl` below. */
+  entryPrice: number | null;
+  currentPrice: number | null;
   liqPrice: number | null;
-  pnl: number;
-  pnlPct: number;
+  /** `null` when PnL cannot be computed — see the note on `UserPosition` below.
+   *
+   * A position's PnL needs the collateral price at the time it was opened, and
+   * `UserPosition` (crates/state) stores only `collateral_deposited` and
+   * `debt_shares`. Nothing on-chain records an entry price and there is no
+   * historical index, so for now this is genuinely unavailable rather than zero.
+   * Rendering it as `$0 (0.00%)` reads as "you are exactly break-even", which is
+   * a claim the data does not support. */
+  pnl: number | null;
+  pnlPct: number | null;
 }
 
 export interface PortfolioHistoryPoint {

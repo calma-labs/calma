@@ -26,7 +26,7 @@ pub struct DepositCollateral<'info> {
     /// The pool's collateral vault (destination)
     #[account(
         mut,
-        seeds = [b"collateral_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::COLLATERAL_VAULT, pool.key().as_ref()],
         bump,
     )]
     pub collateral_vault: Account<'info, TokenAccount>,
@@ -36,7 +36,7 @@ pub struct DepositCollateral<'info> {
         init_if_needed,
         payer = authority,
         space = 8 + std::mem::size_of::<UserPosition>(),
-        seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
+        seeds = [::state::seeds::USER_POSITION, pool.key().as_ref(), authority.key().as_ref()],
         bump,
     )]
     pub user_position: AccountLoader<'info, UserPosition>,

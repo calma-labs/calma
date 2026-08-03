@@ -22,7 +22,7 @@ pub struct Create<'info> {
         init,
         payer = payer,
         space = GuardState::SPACE,
-        seeds = [b"guard", authority.key().as_ref()],
+        seeds = [crate::GUARD_SEED.as_bytes(), authority.key().as_ref()],
         bump
     )]
     pub guard_state: Account<'info, GuardState>,

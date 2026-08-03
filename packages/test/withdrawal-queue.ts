@@ -14,13 +14,17 @@ import {
 /**
  * Withdrawal queue: enqueue on `withdraw_lent`, dequeue on `process_queue_entry`.
  *
- * A lend-side exit is paid immediately when the vault holds enough idle
- * liquidity AND the queue is empty. Otherwise the LP is burned, the claim is
- * recorded at that moment's share price, and the tokens are paid later by
- * `process_queue_entry` once borrowers repay.
+ * A lend-side exit is paid immediately when the vault can cover it *on top of*
+ * every claim already queued — vault balance minus `assets_in_queue`. Otherwise
+ * the LP is burned, the claim is recorded at that moment's share price, and the
+ * tokens are paid later by `process_queue_entry` once borrowers repay.
  *
- * The ordering rule matters: once anything is queued, later exits queue too even
- * if the vault could cover them, so nobody jumps the line.
+ * The ordering rule matters, and it is a rule about liquidity rather than queue
+ * occupancy: queued lenders' assets are reserved, so nobody behind them can
+ * spend those, and nobody jumps the line. But a lender who can be paid out of
+ * genuine surplus is not made to wait behind a queue they are not competing
+ * with — the earlier "queue is non-empty" gate meant one pending entry stalled
+ * every later exit however liquid the pool was.
  */
 
 const COLLATERAL = 400_000_000;
@@ -326,9 +330,11 @@ describe("withdrawal queue", () => {
             ]);
         });
 
-        it("queues a later exit even when the vault could pay it immediately", async () => {
-            // The queue being non-empty is itself enough to enqueue — this is what
-            // stops a latecomer from draining liquidity ahead of those in line.
+        it("queues a later exit whose payout is already reserved for those in line", async () => {
+            // The gate is liquidity, not queue occupancy: the vault holds far
+            // less than `assets_in_queue`, so there is no surplus a latecomer
+            // could be paid from without spending what a/b/c are owed. This is
+            // what stops them draining liquidity ahead of those in line.
             latecomer = await createLender(setup);
             await depositLentAs(setup, latecomer, 10_000_000);
             expect((await vaultBalance(setup)) > BigInt(0)).to.be.true;
@@ -373,6 +379,69 @@ describe("withdrawal queue", () => {
             expect(q.entries[q.head].requester.toBase58()).to.equal(
                 latecomer.authority.publicKey.toBase58()
             );
+        });
+    });
+
+    // ── 3b. Surplus liquidity is payable while a queue exists ────────────────
+
+    describe("immediate payout alongside a non-empty queue", () => {
+        const STUCK = 100_000_000;
+        const BORROWED = 60_000_000; // leaves 40M idle, far short of STUCK
+        const LATE_DEPOSIT = 200_000_000;
+        let setup: TestSetup;
+        let queued: Lender, borrower: Lender, latecomer: Lender;
+
+        before(async () => {
+            setup = await setupTest();
+            [queued, borrower, latecomer] = [
+                await createLender(setup),
+                await createLender(setup),
+                await createLender(setup),
+            ];
+
+            // One lender ends up stuck in the queue behind a borrow: the vault
+            // keeps 40M idle, well under their 100M claim.
+            await depositLentAs(setup, queued, STUCK);
+            await depositCollateral(setup, borrower, COLLATERAL);
+            await borrow(setup, borrower, BORROWED);
+            await withdrawLentAs(setup, queued, new BN(STUCK));
+            expect((await queueState(setup)).depth).to.equal(1);
+        });
+
+        it("pays a later lender immediately out of surplus beyond the queued claims", async () => {
+            // The latecomer's 200M is their own money and is owed to nobody in
+            // the queue, so withdrawing half of it leaves the stuck 100M claim
+            // fully covered. Under the old "queue must be empty" gate this
+            // enqueued regardless — which is how one stuck entry stalled every
+            // later exit however liquid the pool was.
+            await depositLentAs(setup, latecomer, LATE_DEPOSIT);
+
+            const before = await lendBalance(setup, latecomer.authority.publicKey);
+            await withdrawLentAs(setup, latecomer, new BN(LATE_DEPOSIT / 2));
+            const after = await lendBalance(setup, latecomer.authority.publicKey);
+
+            expect(after - before).to.equal(BigInt(LATE_DEPOSIT / 2));
+            expect((await queueState(setup)).depth).to.equal(
+                1,
+                "the latecomer must not have joined the queue"
+            );
+        });
+
+        it("leaves the queued lender's reservation untouched", async () => {
+            const pool = await setup.program.account.pool.fetch(setup.pool);
+            const q = await queueState(setup);
+            expect(q.entries[q.head].requester.toBase58()).to.equal(
+                queued.authority.publicKey.toBase58()
+            );
+            expect(pool.market.assetsInQueue.gte(q.entries[q.head].amount)).to.be.true;
+        });
+
+        it("still queues an exit that would spend the queued reservation", async () => {
+            // The latecomer's remaining 100M now exceeds what is free: the vault
+            // holds ~140M and 100M of it is spoken for. The reservation is what
+            // makes this queue, not the mere presence of a queue.
+            await withdrawLentAs(setup, latecomer, new BN(LATE_DEPOSIT / 2));
+            expect((await queueState(setup)).depth).to.equal(2);
         });
     });
 

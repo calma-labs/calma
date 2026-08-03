@@ -8,7 +8,7 @@ pub struct MockSwap<'info> {
     /// CHECK: Signer-only PDA — no data stored; holds mint authority over both mints
     /// and signs the mint_to CPI.
     #[account(
-        seeds = [b"mint_authority"],
+        seeds = [crate::MINT_AUTHORITY_SEED.as_bytes()],
         bump,
     )]
     pub mint_authority: UncheckedAccount<'info>,
@@ -72,7 +72,7 @@ impl<'info> MockSwap<'info> {
     }
 
     pub fn mint_token_out(&self, amount: u64, authority_bump: u8) -> Result<()> {
-        let seeds = &[b"mint_authority" as &[u8], &[authority_bump]];
+        let seeds = &[crate::MINT_AUTHORITY_SEED.as_bytes(), &[authority_bump]];
         let signer = &[&seeds[..]];
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(

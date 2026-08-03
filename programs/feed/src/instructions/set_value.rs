@@ -7,7 +7,7 @@ pub struct SetValue<'info> {
     #[account(
         mut,
         seeds = [
-            b"feed",
+            ::feed_state::FEED_SEED,
             feed.header.collateral_mint.as_ref(),
             feed.header.lend_mint.as_ref(),
             &[feed.id],

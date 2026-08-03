@@ -2,9 +2,11 @@ import { BackButton } from "@/components/common/BackButton";
 import { IrmCurveChart, type IrmPoint } from "@/components/pool/charts/IrmCurveChart";
 import { FeedPairPanel } from "@/components/pool/FeedPairPanel";
 import {
+  DEFAULT_RATE_POINTS,
   useCreateLendingPool,
   type CreatePoolResult,
 } from "@/hooks/program/useCreateLendingPool";
+import { RatePointsAccount } from "@calma/wasm-lib";
 import { getTokenOptions } from "@/lib/tokenRegistry";
 import { TokenSelect } from "@/components/ui/token-select";
 import { cn } from "@/lib/utils";
@@ -168,12 +170,12 @@ interface FormState {
   kinkPoints: KinkPoint[];
 }
 
-// (0%, 50 bps) → (95%, 450 bps) → (100%, 1000 bps) — matches the on-chain DEFAULT_POINTS.
-const DEFAULT_KINK_POINTS: KinkPoint[] = [
-  { util: "0", rate: "50" },
-  { util: "95", rate: "450" },
-  { util: "100", rate: "1000" },
-];
+// Derived from `irm_state::DEFAULT_RATE_POINTS` via wasm, not transcribed — the
+// form shows utilization as a percentage where the chain stores basis points.
+const DEFAULT_KINK_POINTS: KinkPoint[] = DEFAULT_RATE_POINTS.map((p) => ({
+  util: String(p.utilBps / 100),
+  rate: String(p.rateBps),
+}));
 
 const DEFAULT_FORM: FormState = {
   ltvPercent: "97",
@@ -188,16 +190,30 @@ function toIrmPoint(kp: KinkPoint): IrmPoint {
   };
 }
 
-/** Validate the point list matches on-chain invariants. */
+/** Validate the point list against the on-chain invariants.
+ *
+ * The invariants themselves are not restated here — `RatePointsAccount.from_arrays`
+ * is the same validation the `irm` program runs (`irm_state::validate_rate_points`),
+ * so it returns `undefined` exactly when the chain would reject the curve. The
+ * only work left is rejecting values the typed-array conversion would silently
+ * mangle before wasm ever sees them. */
 function pointsValid(points: KinkPoint[]): boolean {
-  if (points.length < 2 || points.length > 4) return false;
   const bpsPoints = points.map(toIrmPoint);
-  if (!Number.isFinite(bpsPoints[0].utilBps) || bpsPoints[0].utilBps !== 0) return false;
-  for (let i = 1; i < bpsPoints.length; i++) {
-    if (!Number.isFinite(bpsPoints[i].utilBps)) return false;
-    if (bpsPoints[i].utilBps <= bpsPoints[i - 1].utilBps) return false;
-  }
-  return bpsPoints.every((p) => Number.isFinite(p.rateBps) && p.rateBps >= 0);
+  const finite = bpsPoints.every(
+    (p) =>
+      Number.isInteger(p.utilBps) &&
+      p.utilBps >= 0 &&
+      Number.isInteger(p.rateBps) &&
+      p.rateBps >= 0,
+  );
+  if (!finite) return false;
+
+  return (
+    RatePointsAccount.from_arrays(
+      Uint16Array.from(bpsPoints, (p) => p.utilBps),
+      Uint32Array.from(bpsPoints, (p) => p.rateBps),
+    ) !== undefined
+  );
 }
 
 function validate(form: FormState): { ltvPercent?: string; kinkPoints?: string } {

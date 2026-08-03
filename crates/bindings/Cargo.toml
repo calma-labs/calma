@@ -14,8 +14,8 @@ irm-state = { path = "../irm-state" }
 feed-state = { path = "../feed-state" }
 anchor-lang = { version = "1.0.2", default-features = false }
 wasm-bindgen = "0.2"
-js-sys = "0.3"
 bytemuck = "1.14"
+solana-sdk-ids = "3.1.0"
 
 [dev-dependencies]
 wasmtime = "28"

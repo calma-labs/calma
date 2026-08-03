@@ -1,5 +1,5 @@
 [toolchain]
-package_manager = "bun"
+package_manager = "npm"
 
 [features]
 resolution = true
@@ -26,7 +26,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "bun run test"
+test = "npm run test"
 link-keys = "mkdir -p target/deploy && ln -sf ~/.config/solana/calma/orcdW2S1VR5kt8axERS4cJuiywxLPKo3qYYqN3Di5s4.json target/deploy/feed-keypair.json && ln -sf ~/.config/solana/calma/grddH13wp77vjwV2WwzbVXAkgRGQuTHkj1hKcECtHRt.json target/deploy/guard-keypair.json && ln -sf ~/.config/solana/calma/irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk.json target/deploy/irm-keypair.json && ln -sf ~/.config/solana/calma/QUoTDMDSEw1nAFRp27eWrK4AcVsE1Sg9YupYcc22Yhc.json target/deploy/quote-keypair.json && ln -sf ~/.config/solana/calma/c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8.json target/deploy/calma-keypair.json && ln -sf ~/.config/solana/calma/HALzjfshwyYKYjLNL6ectL9oBoM3tLcUCAabZNYrxwWy.json target/deploy/faucet-keypair.json"
 
 [hooks]

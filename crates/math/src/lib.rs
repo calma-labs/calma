@@ -33,8 +33,33 @@ pub enum MathError<E> {
     NoFlashLoan,
     /// The repayment does not cover the outstanding principal plus its fee.
     FlashLoanUnderRepaid,
+    /// The repayment exceeds the outstanding principal plus its fee. Anything
+    /// above that figure would be an unaccounted credit to the supply side; see
+    /// [`Core::flash_repay`](crate::Core::flash_repay).
+    FlashLoanOverRepaid,
     Transfer(E),
 }
+
+/// Smallest deposit that may seed a pool's supply side, in base units.
+///
+/// Defence in depth against share-price manipulation, in the spirit of Uniswap
+/// V2's `MINIMUM_LIQUIDITY`. The first depositor mints shares 1:1, so seeding a
+/// pool with a single base unit leaves one share outstanding and makes the
+/// share price trivially cheap to move: raise it above a later depositor's
+/// whole deposit and their `amount × shares / assets` floors to one share,
+/// handing the seeder a cut of it.
+///
+/// The channel that made that practical — an unbounded surplus credit in
+/// [`Core::flash_repay`](crate::Core::flash_repay) — is closed, so this is no
+/// longer the load-bearing guard. It stays because the guard should not depend
+/// on *no* future instruction ever crediting `total_supply_assets` again:
+/// whatever the channel, moving the price now means moving it against at least
+/// this many shares, which raises the capital required by the same factor.
+///
+/// Chosen in base units rather than whole tokens so it does not assume a decimal
+/// count. At 6 decimals this is 0.001 of a token — far below any real seeding
+/// deposit, and far above the one-unit case the attack needs.
+pub const MIN_SEED_LIQUIDITY: u64 = 1_000;
 
 /// Maximum loan-to-value a market may be configured with, in percent.
 ///
@@ -60,6 +85,49 @@ pub fn is_valid_ltv_percent(ltv_percent: u8) -> bool {
 /// out again would leave the queue unpayable.
 pub fn borrowable_liquidity(vault_balance: u64, assets_in_queue: u64) -> u64 {
     vault_balance.saturating_sub(assets_in_queue)
+}
+
+/// The same figure as [`borrowable_liquidity`], derived from the market's own
+/// accounting instead of the vault's token balance.
+///
+/// For callers that hold a `Pool` but not the vault token account — the client
+/// bindings, above all, which decode account data and never see an SPL balance.
+/// Without this they hand-rolled a formula, and it did not agree with the gate:
+/// it subtracted `assets_in_queue` from `total_supply_assets − total_borrow_assets`,
+/// counting the queue twice and understating what a borrower could actually
+/// draw.
+///
+/// # Why the two agree
+///
+/// The vault holds what lenders put in, plus what is reserved for the queue,
+/// less what has been lent out:
+///
+/// ```text
+/// vault_balance = total_supply_assets + assets_in_queue - total_borrow_assets
+/// ```
+///
+/// Every operation preserves it. `deposit_lent` and `withdraw_lent_immediate`
+/// move the vault and `total_supply_assets` together; `borrow` and `repay` move
+/// the vault against `total_borrow_assets`; `withdraw_lent_queued` moves
+/// `total_supply_assets` into `assets_in_queue` and leaves the vault alone;
+/// `process_queued_withdrawal` releases both. Accrual is the one that looks like
+/// it should break the identity and does not — it adds the same interest to
+/// `total_supply_assets` and `total_borrow_assets`, so their difference, and the
+/// vault, are unchanged.
+///
+/// Substituting gives `vault_balance - assets_in_queue = total_supply_assets -
+/// total_borrow_assets`, which is this function. `liquidity_identity_holds_through_a_full_cycle`
+/// asserts it against a live `Core` rather than leaving it as an argument on paper.
+///
+/// A flash loan in flight is the one moment the identity does not hold — the
+/// tokens are out of the vault with nothing recorded against them — which is
+/// exactly why the operations that price shares refuse to run while
+/// `flash_loan_outstanding` is non-zero.
+pub fn borrowable_liquidity_from_market(
+    total_supply_assets: u64,
+    total_borrow_assets: u64,
+) -> u64 {
+    total_supply_assets.saturating_sub(total_borrow_assets)
 }
 
 /// Share of the pool's assets that is unavailable to borrowers, in bps.

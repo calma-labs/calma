@@ -1,7 +1,7 @@
 use crate::hooks::oracle::read_feed;
 use crate::state::{Pool, UserPosition};
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct WithdrawCollateral<'info> {
@@ -10,7 +10,7 @@ pub struct WithdrawCollateral<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs collateral-vault-transfer CPIs.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -33,7 +33,7 @@ pub struct WithdrawCollateral<'info> {
     /// The pool's collateral vault (source)
     #[account(
         mut,
-        seeds = [b"collateral_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::COLLATERAL_VAULT, pool.key().as_ref()],
         bump,
     )]
     pub collateral_vault: Account<'info, TokenAccount>,
@@ -41,7 +41,7 @@ pub struct WithdrawCollateral<'info> {
     /// PDA that records the user's collateral deposit and borrow position.
     #[account(
         mut,
-        seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
+        seeds = [::state::seeds::USER_POSITION, pool.key().as_ref(), authority.key().as_ref()],
         bump = user_position.load()?.bump,
         constraint = user_position.load()?.authority == authority.key(),
         constraint = user_position.load()?.pool == pool.key()
@@ -69,18 +69,12 @@ pub struct WithdrawCollateral<'info> {
 
 impl<'info> WithdrawCollateral<'info> {
     pub fn transfer_collateral_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-        token::transfer(
-            CpiContext::new_with_signer(
-                self.token_program.to_account_info().key.clone(),
-                Transfer {
-                    from: self.collateral_vault.to_account_info(),
-                    to: self.user_token_account.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::transfer_from_vault(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.collateral_vault.to_account_info(),
+            self.user_token_account.to_account_info(),
             amount,
         )
     }

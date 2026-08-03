@@ -12,7 +12,7 @@ use anchor_lang::AccountDeserialize;
 use bytemuck::Pod;
 use feed_state::Feed;
 use irm_state::IrmState;
-use math::{Clock, Core};
+use math::Core;
 use state::{Pool, UserPosition};
 use wasm_bindgen::prelude::*;
 
@@ -204,17 +204,21 @@ impl PoolAccount {
             .min(10_000) as u16
     }
 
-    /// Available liquidity in raw token units (lend deposited minus effective borrowed).
+    /// Raw lend-token units a borrower could actually draw right now — the same
+    /// ceiling `Core::borrow` enforces on-chain.
+    ///
+    /// Delegates to `math::borrowable_liquidity_from_market`, which is the
+    /// vault-balance gate restated in terms this side can see. The hand-rolled
+    /// version here subtracted `assets_in_queue` from
+    /// `total_supply_assets − total_borrow_assets`, which counts the queue twice:
+    /// queued assets have already left `total_supply_assets`. It understated the
+    /// borrowable amount by the whole queue, so the borrow form quoted a ceiling
+    /// below what the chain would have allowed.
     pub fn available_liquidity(&self) -> u64 {
-        let effective_borrowed = self
-            .0
-            .market
-            .total_borrow_assets
-            .saturating_add(self.pending_withdrawals());
-        self.0
-            .market
-            .total_supply_assets
-            .saturating_sub(effective_borrowed)
+        math::borrowable_liquidity_from_market(
+            self.0.market.total_supply_assets,
+            self.0.market.total_borrow_assets,
+        )
     }
 }
 
@@ -549,8 +553,9 @@ impl FeedAccount {
 // `hooks::irm::IrmState`. They expose the *real* on-chain inputs — the price
 // read straight from the feed account, and the borrow rate evaluated from the
 // IRM model at the pool's current utilization — so replaying a `Core` operation
-// reproduces the on-chain result exactly. `current_ts` is sourced from
-// `BrowserClock`, mirroring `Clock::get()` on-chain.
+// reproduces the on-chain result exactly. `current_ts` is the cluster clock the
+// caller passes to `PoolWithIrm::from_bytes` — the same value `Clock::get()`
+// returns on-chain, rather than the browser's own notion of the time.
 
 /// Delegates to the `interface::PriceFeedHeader` impl, which is the same code
 /// the program runs — the ratio formula used to be transcribed here, which is
@@ -587,6 +592,9 @@ pub struct PoolWithIrm {
     pool: PoolAccount,
     irm: IrmConfigAccount,
     feed: FeedAccount,
+    /// Cluster `Clock::unix_timestamp`, supplied by the caller. See
+    /// [`Self::from_bytes`] for why this is not read from the browser.
+    clock_ts: i64,
 }
 
 impl PoolWithIrm {
@@ -616,15 +624,34 @@ impl PoolWithIrm {
 impl PoolWithIrm {
     /// Parse all three accounts from raw Anchor wire bytes (8-byte discriminator
     /// included in each slice). Returns `None` if any slice fails to parse.
+    /// `clock_ts` is the cluster's `Clock::unix_timestamp`, read from the Clock
+    /// sysvar account — see [`crate::clock_unix_timestamp`]. It is required
+    /// rather than defaulted because every interest figure below depends on it,
+    /// and the only defensible default was wrong.
+    ///
+    /// This used to come from `js_sys::Date::now()`. Two separate problems with
+    /// that: the user's machine clock can be arbitrarily skewed, and — even when
+    /// perfectly set — Solana's `unix_timestamp` is not wall time. It is derived
+    /// from validator vote timestamps and has historically run behind. Every
+    /// replay here exists to predict what the program will compute, and the
+    /// program reads the cluster clock, so that is the value it has to be given.
     pub fn from_bytes(
         pool_bytes: &[u8],
         irm_bytes: &[u8],
         feed_bytes: &[u8],
+        clock_ts: i64,
     ) -> Option<PoolWithIrm> {
         let pool = PoolAccount::from_bytes(pool_bytes)?;
         let irm = IrmConfigAccount::from_bytes(irm_bytes)?;
         let feed = FeedAccount::from_bytes(feed_bytes)?;
-        Some(PoolWithIrm { pool, irm, feed })
+        Some(PoolWithIrm { pool, irm, feed, clock_ts })
+    }
+
+    /// The cluster timestamp every accrual replay on this instance is stamped
+    /// with, as supplied at construction.
+    #[wasm_bindgen(getter)]
+    pub fn clock_ts(&self) -> i64 {
+        self.clock_ts
     }
 
     /// Returns the underlying `Feed` account wrapper.
@@ -653,7 +680,7 @@ impl PoolWithIrm {
         let market = self.pool.0.market;
         let before = market.total_borrow_assets;
         let core = Core::new(market)
-            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .with_irm(self.irm_rate(self.clock_ts))
             .accrue_interest()?;
         core.market.total_borrow_assets.checked_sub(before)
     }
@@ -667,7 +694,7 @@ impl PoolWithIrm {
     /// share price.
     pub fn lend_for_shares(&self, shares: u64) -> Option<u64> {
         Core::new(self.pool.0.market)
-            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .with_irm(self.irm_rate(self.clock_ts))
             .accrue_interest()?
             .calc_lend_for_shares(shares)
     }
@@ -735,7 +762,7 @@ impl PoolWithIrm {
         let mut core = Core::new(self.pool.0.market)
             .with_position(position.0)
             .with_oracle(self.feed)
-            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .with_irm(self.irm_rate(self.clock_ts))
             .accrue_interest()?;
         core.borrow(amount, vault_balance, |_| Ok::<(), ()>(())).ok()
     }
@@ -749,7 +776,7 @@ impl PoolWithIrm {
     ) -> Option<u64> {
         let mut core = Core::new(self.pool.0.market)
             .with_position(position.0)
-            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .with_irm(self.irm_rate(self.clock_ts))
             .accrue_interest()?;
         core.repay(amount, |_| Ok::<(), ()>(()))
             .ok()
@@ -761,7 +788,7 @@ impl PoolWithIrm {
     pub fn debt_amount(&self, position: &UserPositionAccount) -> Option<u64> {
         let mut core = Core::new(self.pool.0.market)
             .with_position(position.0)
-            .with_irm(self.irm_rate(crate::BrowserClock.current_ts()))
+            .with_irm(self.irm_rate(self.clock_ts))
             .accrue_interest()?;
         core.repay(u64::MAX, |_| Ok::<(), ()>(()))
             .ok()
@@ -826,9 +853,18 @@ impl PoolWithIrm {
     /// pool's current utilization.
     ///
     /// Returns 0 when `total_supply_assets` is 0 (no deposits → no rate).
+    /// Evaluated at `self.utilization()` — the **uncapped** figure, matching
+    /// `Pool::calculate_utilization` and therefore the value the chain passes to
+    /// `borrow_rate`.
+    ///
+    /// Not `PoolAccount::utilization_bps()`, which clamps to 10_000 for display.
+    /// Utilization above 100% is reachable: `withdraw_lent_queued` moves assets
+    /// out of `total_supply_assets` into `assets_in_queue` without touching
+    /// `total_borrow_assets`. Feeding the clamped value to the curve — which
+    /// extrapolates past its last point — understated the borrow rate in exactly
+    /// the stressed, queue-heavy pools where the number matters most.
     pub fn borrow_apy_bps(&self) -> u32 {
-        let util = self.pool.utilization_bps() as u64;
-        self.irm.0.model.get_fee_bps(util)
+        self.irm.0.model.get_fee_bps(self.utilization())
     }
 
     /// Supply APY in basis points.
@@ -836,11 +872,20 @@ impl PoolWithIrm {
     /// Lenders earn the borrow rate weighted by utilization:
     ///   `supply_apy_bps = borrow_apy_bps × utilization_bps / 10_000`
     ///
+    /// The **rate** is taken at the chain's uncapped utilization (see
+    /// [`Self::borrow_apy_bps`]); the **weighting** is clamped to 10_000. The
+    /// two uses are not the same thing and were previously both clamped. A
+    /// weighting above 1.0 would report lenders earning more than borrowers pay,
+    /// which is never true: interest credited to `total_supply_assets` is exactly
+    /// the interest charged on `total_borrow_assets`. Utilization only exceeds
+    /// 100% because queued assets have left the supply side, and those lenders
+    /// have a fixed claim that no longer earns.
+    ///
     /// Returns 0 when `total_supply_assets` is 0.
     pub fn supply_apy_bps(&self) -> u32 {
-        let util = self.pool.utilization_bps() as u64;
-        let borrow_bps = self.irm.0.model.get_fee_bps(util) as u64;
-        (borrow_bps.saturating_mul(util) / 10_000) as u32
+        let borrow_bps = self.borrow_apy_bps() as u64;
+        let weight = self.utilization().min(10_000);
+        (borrow_bps.saturating_mul(weight) / 10_000) as u32
     }
 
     /// Projected borrow APY in basis points after borrowing `additional_raw`
@@ -1387,7 +1432,7 @@ mod tests {
         let pool_bytes = pool_wire(0, 0);
         let irm_bytes = irm_wire_flat(500); // base rate 500 bps at any utilization
         let pwi =
-            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire(), 0).expect("should parse");
         // Borrow rate at util=0 is the curve base rate (b=500).
         assert_eq!(pwi.borrow_apy_bps(), 500);
         // Supply APY is zero because utilization is zero (no deployed capital).
@@ -1403,7 +1448,7 @@ mod tests {
         let pool_bytes = pool_wire(10_000, 5_000);
         let irm_bytes = irm_wire_flat(800);
         let pwi =
-            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire(), 0).expect("should parse");
         assert_eq!(pwi.borrow_apy_bps(), 800);
         assert_eq!(pwi.supply_apy_bps(), 400);
     }
@@ -1416,7 +1461,7 @@ mod tests {
         let pool_bytes = pool_wire(5_000, 5_000);
         let irm_bytes = irm_wire_flat(1_200);
         let pwi =
-            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire(), 0).expect("should parse");
         assert_eq!(pwi.borrow_apy_bps(), 1_200);
         assert_eq!(pwi.supply_apy_bps(), 1_200);
     }
@@ -1429,7 +1474,7 @@ mod tests {
             let borrow = supply * util_pct / 100;
             let pool_bytes = pool_wire(supply, borrow);
             let irm_bytes = irm_wire_flat(1_000);
-            let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire())
+            let pwi = PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire(), 0)
                 .expect("should parse");
             assert!(
                 pwi.supply_apy_bps() <= pwi.borrow_apy_bps(),
@@ -1446,7 +1491,7 @@ mod tests {
     fn pool_with_irm_rejects_bad_pool_bytes() {
         let short_pool = vec![0u8; 4]; // way too short
         let irm_bytes = irm_wire_flat(500);
-        assert!(PoolWithIrm::from_bytes(&short_pool, &irm_bytes, &feed_wire()).is_none());
+        assert!(PoolWithIrm::from_bytes(&short_pool, &irm_bytes, &feed_wire(), 0).is_none());
     }
 
     /// `from_bytes` must return `None` when IRM bytes are truncated.
@@ -1454,7 +1499,7 @@ mod tests {
     fn pool_with_irm_rejects_bad_irm_bytes() {
         let pool_bytes = pool_wire(10_000, 5_000);
         let short_irm = vec![0u8; 4];
-        assert!(PoolWithIrm::from_bytes(&pool_bytes, &short_irm, &feed_wire()).is_none());
+        assert!(PoolWithIrm::from_bytes(&pool_bytes, &short_irm, &feed_wire(), 0).is_none());
     }
 
     /// `pool()` returns a `PoolAccount` with the same underlying data.
@@ -1463,7 +1508,7 @@ mod tests {
         let pool_bytes = pool_wire(12_345, 6_789);
         let irm_bytes = irm_wire_flat(300);
         let pwi =
-            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire()).expect("should parse");
+            PoolWithIrm::from_bytes(&pool_bytes, &irm_bytes, &feed_wire(), 0).expect("should parse");
         let returned_pool = pwi.pool();
         assert_eq!(returned_pool.total_supply_assets(), 12_345);
         assert_eq!(returned_pool.total_borrow_assets(), 6_789);

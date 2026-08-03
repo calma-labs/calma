@@ -2,6 +2,7 @@ import { PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
 import { PoolAccount, PoolWithIrm } from '@calma/wasm-lib'
 import { connection, program } from '../../lib/program'
+import { fetchClusterClockTs } from '../../lib/clusterClock'
 import { queryKeys } from '../../lib/queryKeys'
 import { _poolDiscriminatorFilter } from './useLendingAccount'
 
@@ -27,21 +28,19 @@ async function fetchAllPools(): Promise<PoolAccountWithKey[]> {
 
     if (parsed.length === 0) return []
 
-    const irmInfos = await connection.getMultipleAccountsInfo(
-        parsed.map((p) => p.rateStatePubkey),
-    )
-    // TODO: Fetch concurrently
-    const feedInfos = await connection.getMultipleAccountsInfo(
-        parsed.map((p) => p.feedStatePubkey),
-    )
-
+    const [irmInfos, feedInfos, clockTs] = await Promise.all([
+        connection.getMultipleAccountsInfo(parsed.map((p) => p.rateStatePubkey)),
+        connection.getMultipleAccountsInfo(parsed.map((p) => p.feedStatePubkey)),
+        // Accrual replays are stamped with the cluster clock, not the browser's.
+        fetchClusterClockTs(),
+    ])
 
     return parsed.flatMap(({ pubkey, raw }, i) => {
         const irmInfo = irmInfos[i]
         const feedInfo = feedInfos[i]
         if (!irmInfo || !feedInfo) return []
 
-        const poolWithIrm = PoolWithIrm.from_bytes(raw, irmInfo.data, feedInfo.data)
+        const poolWithIrm = PoolWithIrm.from_bytes(raw, irmInfo.data, feedInfo.data, clockTs)
         return poolWithIrm ? [{ publicKey: pubkey, account: poolWithIrm }] : []
     })
 }

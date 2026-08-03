@@ -138,9 +138,36 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
 
     /// Close the in-flight flash loan with a repayment of `amount`.
     ///
-    /// Returns `(principal, fee)`. Everything above the principal is credited to
-    /// the supply side as lender yield; the lock is released only once the
-    /// repayment has actually been made.
+    /// Returns `(principal, fee)`. `amount` must be *exactly* principal plus
+    /// fee — the figure [`crate::flash_min_repay`] returns for the borrow — and
+    /// only the fee is credited to the supply side as lender yield. The lock is
+    /// released only once the repayment has actually been made.
+    ///
+    /// # Why over-repayment is refused rather than kept
+    ///
+    /// This used to accept any `amount >= min_repay` and credit everything above
+    /// the principal to `total_supply_assets`, treating the excess as a
+    /// donation. That was an unbounded write into the supply side by a
+    /// caller-chosen number, and it defeated the share-inflation guarantee
+    /// stated on [`Self::deposit_lent`] — which rests on `total_supply_assets`
+    /// only ever moving through this crate's own accounting, never through
+    /// tokens someone decided to hand over.
+    ///
+    /// Concretely: seed a fresh pool with one base unit to hold the only share,
+    /// flash-borrow that unit and repay it with a large surplus, and the share
+    /// price becomes the surplus. The next depositor's
+    /// `amount × shares / assets` then floors to a single share however much
+    /// they deposited, and the seeder redeems a cut of it. The `lp == 0` guard
+    /// bounded that theft at just under half the victim's deposit; it did not
+    /// prevent it.
+    ///
+    /// Refusing the surplus outright is preferred over silently capping the
+    /// credit at the fee. Capping would leave the excess tokens sitting in the
+    /// vault outside the accounting — permanently unclaimable by anyone, and a
+    /// standing drift between the vault balance and the books. `min_repay` is a
+    /// pure function of the borrowed amount, exported as
+    /// [`crate::flash_min_repay`] and fixed at the moment the borrow is built,
+    /// so there is no race that would make hitting it exactly unreliable.
     pub fn flash_repay<E, F>(&mut self, amount: u64, transfer: F) -> Result<(u64, u64), MathError<E>>
     where
         F: FnOnce(u64) -> Result<(), E>,
@@ -154,12 +181,17 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
         if amount < min_repay {
             return Err(MathError::FlashLoanUnderRepaid);
         }
+        if amount > min_repay {
+            return Err(MathError::FlashLoanOverRepaid);
+        }
         transfer(amount).map_err(MathError::Transfer)?;
-        let surplus = amount.saturating_sub(principal);
+        // Exactly the fee, by construction: `amount == principal + fee`. The
+        // principal itself is not credited — it never left the supply side, as
+        // `flash_borrow` deliberately does not debit it.
         *self.market.total_supply_assets_mut() = self
             .market
             .total_supply_assets()
-            .checked_add(surplus)
+            .checked_add(fee)
             .ok_or(MathError::Arithmetic)?;
         *self.market.flash_loan_outstanding_mut() = 0;
         Ok((principal, fee))
@@ -209,14 +241,26 @@ impl<M: Market, I, P, O, S> Core<M, I, P, O, S> {
 // just-in-time depositor mint shares at the stale (low) price, poke accrual, and
 // redeem a cut of interest that accrued before they arrived.
 impl<M: Market, I, P, O> Core<M, I, P, O, Accrued> {
-    /// Share-inflation posture: the classic ERC-4626 donation/inflation attack
-    /// is closed here because `total_supply_assets` is **internally accounted**
-    /// (updated only by this crate), not read from the vault's token balance — a
-    /// direct token transfer into the vault cannot move the share price. The
-    /// `lp == 0` guard below (and the `new_shares == 0` guard in `borrow`) reject
-    /// zero-share griefing. No virtual-shares offset is applied; deposits round
-    /// down and the first depositor seeds 1:1. If the vault balance ever becomes
-    /// the source of truth for `total_supply_assets`, add a virtual offset first.
+    /// Share-inflation posture — two independent guards, both load-bearing.
+    ///
+    /// 1. **No donation channel.** `total_supply_assets` is internally accounted
+    ///    (updated only by this crate), never read from the vault's token
+    ///    balance, so a direct transfer into the vault cannot move the share
+    ///    price. That alone was once considered sufficient and was not:
+    ///    [`Self::flash_repay`] credited a caller-chosen surplus straight into
+    ///    the same field, which is a donation channel by another name. It now
+    ///    credits exactly the fee. Any future write to `total_supply_assets`
+    ///    must be bounded by protocol arithmetic, not by a caller's argument.
+    ///
+    /// 2. **No one-share pool.** Seeding is refused below
+    ///    [`crate::MIN_SEED_LIQUIDITY`], so the share price can never be
+    ///    anchored to a single unit. This is what keeps guard 1 from being the
+    ///    only thing standing between a fresh pool and a rounding attack.
+    ///
+    /// The `lp == 0` guard below (and the `new_shares == 0` guard in `borrow`)
+    /// reject zero-share griefing, and bound — but do not prevent — the loss if
+    /// a share price is manipulated anyway. No virtual-shares offset is applied;
+    /// deposits round down and the first depositor seeds 1:1 above the floor.
     pub fn deposit_lent<E, F1, F2>(
         &mut self,
         amount: u64,
@@ -232,6 +276,13 @@ impl<M: Market, I, P, O> Core<M, I, P, O, Accrued> {
         }
         let lp = if self.market.total_supply_shares() == 0 || self.market.total_supply_assets() == 0
         {
+            // Seeding the supply side: shares are minted 1:1, so this deposit
+            // alone sets the share price every later depositor is quoted
+            // against. A floor here is what stops that price being anchored to a
+            // handful of units — see `MIN_SEED_LIQUIDITY`.
+            if amount < crate::MIN_SEED_LIQUIDITY {
+                return Err(MathError::AmountTooSmall);
+            }
             amount
         } else {
             u64::try_from(

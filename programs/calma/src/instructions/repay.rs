@@ -29,7 +29,7 @@ pub struct Repay<'info> {
     /// The pool's lend vault (destination of repayment)
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
     )]
     pub lend_vault: Account<'info, TokenAccount>,
@@ -37,7 +37,7 @@ pub struct Repay<'info> {
     /// The user's position — borrow fields are reset on successful repay
     #[account(
         mut,
-        seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
+        seeds = [::state::seeds::USER_POSITION, pool.key().as_ref(), authority.key().as_ref()],
         bump = user_position.load()?.bump,
         constraint = user_position.load()?.authority == authority.key(),
         constraint = user_position.load()?.pool == pool.key()

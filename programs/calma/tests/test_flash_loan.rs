@@ -324,6 +324,7 @@ fn flash_borrow_ix(s: &Setup, amount: u64) -> Instruction {
             state: s.state_pda,
             lend_mint: s.lend_mint,
             lend_vault: s.lend_vault_pda,
+            authority: s.payer.pubkey(),
             user_destination: s.user_lend_account,
             sysvar_instructions: solana_sdk_ids::sysvar::instructions::ID,
             token_program: spl_token::id(),

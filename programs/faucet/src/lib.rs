@@ -14,11 +14,13 @@
 //! was handed authority over, and no private key has to be shipped to clients
 //! for them to mint or swap.
 
+pub mod constants;
 pub mod error;
 pub mod instructions;
 
 use anchor_lang::prelude::*;
 
+pub use constants::*;
 pub use error::ErrorCode;
 pub use instructions::*;
 

@@ -1,4 +1,7 @@
-pub mod constants;
+// This program declares no constants of its own. Protocol limits
+// (`MAX_LTV_PERCENT`), the interest-accrual period (`SECONDS_PER_YEAR`) and the
+// predicates over them live in `crates/math`, alongside the rules that depend on
+// them, so the program and the client bindings validate against one definition.
 pub mod error;
 pub mod hooks;
 pub mod instructions;
@@ -7,7 +10,6 @@ pub mod withdrawal_queue;
 
 use anchor_lang::prelude::*;
 
-pub use constants::*;
 pub use error::ErrorCode;
 pub use instructions::*;
 pub use state::*;

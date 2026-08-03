@@ -1,3 +1,12 @@
+## Known issues
+`docs/known-issues.md` records accepted risks and unresolved defects in the
+on-chain programs. Read it before changing anything in `programs/` or
+`crates/`, and before reasoning about what the protocol guarantees — several
+entries are cases where a code comment states an invariant that no longer
+holds. Entries marked **OPEN** are unfixed defects, not accepted trade-offs.
+When a change fixes or creates one, update that file in the same commit;
+entries are numbered and never renumbered.
+
 ## Scoped rules
 Path-scoped rules live in `.claude/rules/`. They load automatically when you read matching files — but when CREATING new files in these areas, read the relevant rule first:
 - `.claude/rules/frontend-styling.md` — Tailwind CSS v4 / design-token policy (`app/**/*.{tsx,ts,css}`)

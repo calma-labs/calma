@@ -14,6 +14,23 @@
 
 use anchor_lang::prelude::*;
 
+/// PDA seed prefix for a market's rate-curve account: `["irm_config", pool]`.
+///
+/// Part of the rate-provider contract in the same way [`PriceFeedHeader`] is
+/// part of the oracle contract: `calma::create` re-derives this address under
+/// whichever program a market names as its rate program and refuses anything
+/// else, so a provider that seeded its account differently could never serve a
+/// market. `programs/irm` and `programs/quote` both sit at it.
+///
+/// It lives here, and not in the reference implementation's `irm-state`, for the
+/// reason stated at the top of this module: a crate with no program ID is the
+/// only honest home for something every provider has to agree on. `calma` cannot
+/// reach `irm-state` anyway — that crate carries the reference IRM's
+/// `declare_id!`, and the lending program links no provider. Before this moved,
+/// `calma` re-typed the literal at the one site where the derivation is
+/// security-critical, which is the drift the constant exists to prevent.
+pub const IRM_CONFIG_SEED: &[u8] = b"irm_config";
+
 /// Fixed-point scale for prices: a [`PriceFeedHeader::price_ratio`] of
 /// `1_000_000` means one unit of collateral is worth one unit of the lend
 /// token. Matches `math::PRICE_SCALE`, which the borrow math divides by.

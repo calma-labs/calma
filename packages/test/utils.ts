@@ -14,10 +14,39 @@ import { Feed } from "../../target/types/feed";
 import { Guard } from "../../target/types/guard";
 import { Faucet } from "../../target/types/faucet";
 
+import {
+  collateral_vault_seed,
+  feed_seed,
+  irm_config_seed,
+  lend_vault_seed,
+  lp_mint_seed,
+  state_seed,
+  user_position_seed,
+} from "@calma/wasm-lib";
+
 import CalmaIdl from "../../target/idl/calma.json";
+import GuardIdl from "../../target/idl/guard.json";
+import FaucetIdl from "../../target/idl/faucet.json";
+
 export const POOL_SPACE: number = Number(
   CalmaIdl.constants.find((c: { name: string }) => c.name === "POOL_SPACE")!.value
 );
+
+/** Read a `#[constant]` string out of a generated IDL.
+ *
+ * `guard` and `faucet` have no `*-state` crate for the wasm bindings to export
+ * from, so their seeds travel through the IDL instead. Values are quoted there. */
+export function idlStringConstant(
+  idl: { constants: { name: string; value: string }[] },
+  name: string,
+): string {
+  const raw = idl.constants.find((c) => c.name === name)?.value;
+  if (raw === undefined) throw new Error(`${name} missing from IDL — run \`anchor build\``);
+  return JSON.parse(raw) as string;
+}
+
+export const GUARD_SEED = idlStringConstant(GuardIdl, "GUARD_SEED");
+export const MINT_AUTHORITY_SEED = idlStringConstant(FaucetIdl, "MINT_AUTHORITY_SEED");
 
 export interface TestSetup {
   provider: AnchorProvider;
@@ -70,7 +99,7 @@ let sharedGuard: { pda: PublicKey; authority: Keypair } | null = null;
 
 export function findGuardPda(guardProgramId: PublicKey, authority: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("guard"), authority.toBuffer()],
+    [Buffer.from(GUARD_SEED), authority.toBuffer()],
     guardProgramId
   )[0];
 }
@@ -177,42 +206,42 @@ export async function setupTest(
   const guardProgram = anchor.workspace.Guard as Program<Guard>;
   const feedAuthority = provider.wallet.publicKey;
   const [feedPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("feed"), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
+    [Buffer.from(feed_seed()), collateralMint.toBuffer(), lendMint.toBuffer(), Buffer.from([0])],
     feedProgram.programId
   );
 
   const irmProgram = anchor.workspace.Irm as Program<Irm>;
   const [irmConfigPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("irm_config"), pool.toBuffer()],
+    [Buffer.from(irm_config_seed()), pool.toBuffer()],
     irmProgram.programId
   );
   const irmProgramId = opts.rateProgram ?? irmProgram.programId;
   const irmConfig = opts.rateState ?? irmConfigPda;
 
   const [faucetMintAuthorityPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("mint_authority")],
+    [Buffer.from(MINT_AUTHORITY_SEED)],
     faucetProgram.programId
   );
 
-  const [statePda] = PublicKey.findProgramAddressSync([Buffer.from("state")], program.programId);
+  const [statePda] = PublicKey.findProgramAddressSync([Buffer.from(state_seed())], program.programId);
 
   const [collateralVaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("collateral_vault"), pool.toBuffer()],
+    [Buffer.from(collateral_vault_seed()), pool.toBuffer()],
     program.programId
   );
 
   const [lendVaultPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("lend_vault"), pool.toBuffer()],
+    [Buffer.from(lend_vault_seed()), pool.toBuffer()],
     program.programId
   );
 
   const [lpMintPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("lp_mint"), pool.toBuffer()],
+    [Buffer.from(lp_mint_seed()), pool.toBuffer()],
     program.programId
   );
 
   const [userPositionPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("user_position"), pool.toBuffer(), authority.publicKey.toBuffer()],
+    [Buffer.from(user_position_seed()), pool.toBuffer(), authority.publicKey.toBuffer()],
     program.programId
   );
 
@@ -414,7 +443,7 @@ export async function createLender(setup: TestSetup): Promise<Lender> {
   await mintTo(connection, payer, lendMint, userLendTokenAccount, mintAuthority, 1_000_000_000);
 
   const [userPositionPda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("user_position"), pool.toBuffer(), authority.publicKey.toBuffer()],
+    [Buffer.from(user_position_seed()), pool.toBuffer(), authority.publicKey.toBuffer()],
     program.programId
   );
 

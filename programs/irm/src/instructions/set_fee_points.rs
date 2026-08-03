@@ -34,7 +34,7 @@ pub struct SetFeePoints<'info> {
     /// then treats *both* as auto-derived and rejects either being passed.
     #[account(
         mut,
-        seeds = [b"irm_config", pool.key().as_ref()],
+        seeds = [::irm_state::IRM_CONFIG_SEED, pool.key().as_ref()],
         bump = irm_state.load()?.bump,
         constraint = irm_state.load()?.authority == authority.key() @ ErrorCode::Unauthorized,
     )]

@@ -9,10 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - uses: matzayonc/setup-anchor-from-anchor-lang@main
         with:
           anchor-version: '1.0.2'
@@ -38,15 +34,27 @@ jobs:
         if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
+      # Anchor resolves every program declared in Anchor.toml before it builds.
+      # Keep this list in sync with [programs.localnet] there — a missing entry
+      # fails the build, and an entry for a program that does not exist (there
+      # was a `jbl` here once) silently produces a stray artifact.
       - name: Prepare deploy directory with placeholder .so files
         run: |
           mkdir -p target/deploy
-          for prog in feed guard irm calma jbl; do
+          for prog in calma faucet feed guard irm quote; do
             touch target/deploy/${prog}.so
           done
 
       - name: Anchor build
         run: anchor build --ignore-keys
+
+      # Must run after `anchor build`: the LiteSVM integration tests under
+      # programs/*/tests `include_bytes!` the real target/deploy/*.so, so they
+      # would compile against the empty placeholders above if run any earlier.
+      # This covers the crate unit tests and the LiteSVM tests in one pass;
+      # `deploy-vercel` needs this job, so a red test blocks the deploy.
+      - name: Run Rust tests
+        run: cargo test --workspace
 
       - name: Build wasm package
         run: npm run wasm
@@ -63,7 +71,7 @@ jobs:
 
       - name: Build for Vercel (base /app/)
         working-directory: app
-        run: bun run build --base=/app/
+        run: npm run build -- --base=/app/
 
       - name: Assemble Vercel output
         run: |

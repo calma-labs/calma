@@ -27,9 +27,23 @@ drive it identically. The reference is the program's instruction handlers in
    (`interface::PriceFeedHeader`, via `impl math::Oracle for FeedAccount`);
    borrow rate ←
    `irm_state.model.get_fee_bps(utilization)` at the pool's real utilization
-   (`IrmRateView` wrapping the real `irm_state::IrmState`); `current_ts` ← caller
-   wall clock (mirrors `Clock::get()`). No zero rates, identity oracles, or
+   (`IrmRateView` wrapping the real `irm_state::IrmState`); `current_ts` ← the
+   **cluster** clock, passed to `PoolWithIrm::from_bytes` and read from the Clock
+   sysvar via `clock_unix_timestamp`. No zero rates, identity oracles, or
    synthetic positions.
+
+   `current_ts` used to come from `js_sys::Date::now()`. That is wrong twice
+   over: the user's machine clock can be skewed, and Solana's `unix_timestamp` is
+   not wall time at all — it is derived from validator vote timestamps and has
+   historically run behind. A replay predicts what the program computes, and the
+   program reads the cluster clock, so it has to be given that value.
+
+   Utilization has the same shape of trap. Use the **uncapped**
+   `math::utilization_bps`, which is what `Pool::calculate_utilization` feeds the
+   rate curve. `PoolAccount::utilization_bps()` clamps to 10_000 for display, and
+   utilization above 100% is reachable — `withdraw_lent_queued` moves assets out
+   of `total_supply_assets` without touching `total_borrow_assets`. Feeding the
+   clamped value to a curve that extrapolates understates the rate.
 4. **Adapters attach to the real types**, matching the program's
    `hooks::irm::IrmState` / `hooks::oracle::read_feed`. The price ratio itself is
    **not** implemented here at all — `impl math::Oracle for FeedAccount`

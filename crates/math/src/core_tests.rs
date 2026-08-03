@@ -542,6 +542,147 @@ fn flash_repay_without_a_loan_is_rejected() {
     ));
 }
 
+/// The accounting identity `borrowable_liquidity_from_market` rests on:
+/// `vault = supply + queue - borrow`, so `vault - queue == supply - borrow`.
+///
+/// Asserted against a live `Core` through every operation that touches the
+/// vault, because the client bindings compute borrowable liquidity from market
+/// fields while the on-chain gate computes it from the vault balance. If these
+/// ever diverge, the UI quotes a borrow ceiling the chain does not honour.
+#[test]
+fn liquidity_identity_holds_through_a_full_cycle() {
+    // Tracked by hand: what an SPL vault would actually hold.
+    let mut vault: u64 = 0;
+    let market = TestMarket { ltv: 75, ..Default::default() };
+    let mut core = accrued(market);
+
+    let check = |m: &TestMarket, vault: u64, step: &str| {
+        assert_eq!(
+            crate::borrowable_liquidity(vault, m.assets_in_queue()),
+            crate::borrowable_liquidity_from_market(
+                m.total_supply_assets(),
+                m.total_borrow_assets()
+            ),
+            "identity broken after {step}"
+        );
+    };
+
+    // deposit
+    core.deposit_lent(1_000_000, |a| { vault += a; Ok::<(), ()>(()) }, |_| Ok(()))
+        .unwrap_or_else(|_| panic!("deposit"));
+    check(&core.market, vault, "deposit_lent");
+
+    // borrow against collateral
+    let mut core = Core::new(core.market)
+        .with_position(TestPosition { collateral: 2_000_000, debt_shares: 0 })
+        .with_oracle(TestOracle { price: PRICE_SCALE as u64 })
+        .with_irm(TestIrm { rate_bps: 500, current_ts: 0 })
+        .accrue_interest()
+        .expect("accrue");
+    core.borrow(600_000, vault, |a| { vault -= a; Ok::<(), ()>(()) })
+        .unwrap_or_else(|_| panic!("borrow"));
+    check(&core.market, vault, "borrow");
+
+    // accrue a year of interest — moves supply and borrow together
+    let market = core.market;
+    let core = Core::new(market)
+        .with_irm(TestIrm { rate_bps: 500, current_ts: crate::SECONDS_PER_YEAR as i64 })
+        .accrue_interest()
+        .expect("accrue");
+    assert!(core.market.total_borrow_assets() > 600_000, "interest must accrue");
+    check(&core.market, vault, "accrue_interest");
+
+    // queue an exit the vault cannot cover — supply moves into the queue only
+    let mut core = core;
+    core.withdraw_lent_queued(500_000).expect("queue");
+    check(&core.market, vault, "withdraw_lent_queued");
+
+    // repay, then settle the queued claim
+    let mut core = Core::new(core.market)
+        .with_position(TestPosition { collateral: 2_000_000, debt_shares: 600_000 })
+        .with_irm(TestIrm { rate_bps: 500, current_ts: crate::SECONDS_PER_YEAR as i64 })
+        .accrue_interest()
+        .expect("accrue");
+    core.repay(400_000, |a| { vault += a; Ok::<(), ()>(()) })
+        .unwrap_or_else(|_| panic!("repay"));
+    check(&core.market, vault, "repay");
+
+    let queued = core.market.assets_in_queue();
+    let mut core = Core::new(core.market);
+    core.process_queued_withdrawal(queued, |a| { vault -= a; Ok::<(), ()>(()) })
+        .unwrap_or_else(|_| panic!("process"));
+    check(&core.market, vault, "process_queued_withdrawal");
+}
+
+/// K-2 regression. An over-repayment used to land in `total_supply_assets`
+/// verbatim, which let a caller set the share price to any number they were
+/// willing to fund. It is refused outright now.
+#[test]
+fn flash_repay_refuses_a_surplus_above_principal_plus_fee() {
+    let mut core = Core::new(flash_market());
+    let min_repay = core
+        .flash_borrow(400_000, 1_000_000, |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("borrow must succeed"));
+    let supply_before = core.market.total_supply_assets();
+
+    assert!(matches!(
+        core.flash_repay(min_repay + 1, |_| Ok::<(), ()>(())),
+        Err(MathError::FlashLoanOverRepaid)
+    ));
+    // Nothing moved and the lock survives, so the transaction can only end by
+    // repaying exactly or reverting.
+    assert_eq!(core.market.total_supply_assets(), supply_before);
+    assert!(core.flash_loan_in_progress());
+
+    // The exact figure still settles, crediting precisely the fee.
+    let (_, fee) = core
+        .flash_repay(min_repay, |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("exact repay must succeed"));
+    assert_eq!(core.market.total_supply_assets(), supply_before + fee);
+}
+
+/// K-2 regression, end to end: the full sequence that used to hand a seeder
+/// half of the next depositor's money now cannot get past its first step.
+#[test]
+fn a_seeder_cannot_inflate_the_share_price_against_a_later_depositor() {
+    // The one-unit seed is refused outright — there is no one-share pool to
+    // build the attack on.
+    let mut core = accrued(TestMarket::default());
+    assert!(matches!(
+        core.deposit_lent(1, |_| Ok::<(), ()>(()), |_| Ok::<(), ()>(())),
+        Err(MathError::AmountTooSmall)
+    ));
+
+    // Seeded legitimately, the flash-loan leg cannot move the price either.
+    let mut core = accrued(TestMarket::default());
+    core.deposit_lent(crate::MIN_SEED_LIQUIDITY, |_| Ok::<(), ()>(()), |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("seed must succeed"));
+    let market = core.market;
+    assert_eq!(market.total_supply_shares(), crate::MIN_SEED_LIQUIDITY);
+
+    let mut core = Core::new(market);
+    let min_repay = core
+        .flash_borrow(500, market.total_supply_assets(), |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("borrow must succeed"));
+    assert!(matches!(
+        core.flash_repay(min_repay + 1_000_000, |_| Ok::<(), ()>(())),
+        Err(MathError::FlashLoanOverRepaid)
+    ));
+    core.flash_repay(min_repay, |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("exact repay must succeed"));
+
+    // A later depositor is quoted a share price still within a hair of 1:1, so
+    // the floor division cannot round their stake down to a single share.
+    let mut core = accrued(core.market);
+    let lp = core
+        .deposit_lent(3_000_000, |_| Ok::<(), ()>(()), |_| Ok::<(), ()>(()))
+        .unwrap_or_else(|_| panic!("victim deposit must succeed"));
+    assert!(
+        lp > 2_990_000,
+        "depositor should receive ~1 share per unit, got {lp}"
+    );
+}
+
 #[test]
 fn flash_repay_must_cover_principal_plus_fee() {
     let mut core = Core::new(flash_market());

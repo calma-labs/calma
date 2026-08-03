@@ -32,4 +32,8 @@ pub enum ErrorCode {
     InvalidPriceTtl,
     #[msg("Signer is not this feed's authority")]
     Unauthorized,
+    #[msg("Pyth update is older than the price already written to this feed")]
+    NonMonotonicPrice,
+    #[msg("Pyth update is not fully verified; a full guardian quorum is required")]
+    InsufficientVerification,
 }

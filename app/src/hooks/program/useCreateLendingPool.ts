@@ -1,8 +1,8 @@
-import { pool_space } from '@calma/wasm-lib'
+import { default_rate_point_rates, default_rate_point_utils, pool_space } from '@calma/wasm-lib'
 import { useWalletConnection } from '@solana/react-hooks'
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { connection, feedPda, IRM_PROGRAM_ID, irmProgram, program as readonlyProgram } from '../../lib/program'
+import { connection, feedPda, IRM_PROGRAM_ID, irmProgram, irmStatePda, program as readonlyProgram } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 import { signAndSendV1 } from '../../lib/transactions'
 import { handleTransaction } from '../../lib/txHandler'
@@ -24,15 +24,18 @@ export interface CreatePoolParams {
     collateralMint: PublicKey
     lendMint: PublicKey
     ltvPercent?: number
-    /** 2..=4 rate curve points. Defaults to the on-chain `DEFAULT_POINTS` if omitted. */
+    /** 2..=4 rate curve points. Defaults to {@link DEFAULT_RATE_POINTS} if omitted. */
     ratePoints?: IrmRatePointInput[]
 }
 
-const DEFAULT_RATE_POINTS: IrmRatePointInput[] = [
-    { utilBps: 0, rateBps: 50 },
-    { utilBps: 9500, rateBps: 450 },
-    { utilBps: 10000, rateBps: 1000 },
-]
+/** The suggested curve, read from `irm_state::DEFAULT_RATE_POINTS` rather than
+ * transcribed. `irm::initialize` has no default of its own — this is the
+ * client's proposal, and every client must make the same one. */
+export const DEFAULT_RATE_POINTS: IrmRatePointInput[] = (() => {
+    const utils = default_rate_point_utils()
+    const rates = default_rate_point_rates()
+    return Array.from(utils, (utilBps, i) => ({ utilBps, rateBps: rates[i] }))
+})()
 
 export interface CreatePoolResult {
     poolAddress: PublicKey
@@ -49,10 +52,7 @@ async function createPool(
     const poolLamports = await connection.getMinimumBalanceForRentExemption(POOL_SPACE)
     const ltvPercent = params.ltvPercent ?? 75
 
-    const [irmState] = PublicKey.findProgramAddressSync(
-        [Buffer.from('irm_config'), poolKeypair.publicKey.toBuffer()],
-        IRM_PROGRAM_ID,
-    )
+    const irmState = irmStatePda(poolKeypair.publicKey)
 
     const feedState = feedPda(params.collateralMint, params.lendMint)
 

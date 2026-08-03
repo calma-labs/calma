@@ -54,9 +54,11 @@ async function openMultiply(
         .accounts({
           pool,
           lendMint,
+          authority: authority.publicKey,
           userDestination: userLendAta,
           sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
+        .signers([authority])
         .instruction(),
       setup.faucetProgram.methods
         .mockSwap(extraRaw)

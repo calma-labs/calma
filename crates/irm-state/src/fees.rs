@@ -12,6 +12,18 @@ pub const MIN_POINTS: usize = 2;
 /// configured points well inside that ceiling.
 pub const MAX_RATE_BPS: u32 = 5_000;
 
+/// The curve a client proposes when whoever is creating the market expresses no
+/// preference: 50 bps at zero utilization, 450 bps at 95%, then steeply to
+/// 1000 bps at full utilization.
+///
+/// `irm::initialize` takes its points explicitly and has **no** default of its
+/// own — this is the *client's* suggestion, not an on-chain fallback. It lives
+/// here, rather than in whichever client happens to create markets, so every one
+/// of them proposes the same curve and a change reaches all of them at once.
+/// Exposed to the browser through `bindings::default_rate_point_utils` /
+/// `default_rate_point_rates`.
+pub const DEFAULT_RATE_POINTS: [(u16, u32); 3] = [(0, 50), (9_500, 450), (10_000, 1_000)];
+
 /// Why a proposed rate curve was rejected.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RatePointError {
@@ -273,6 +285,14 @@ mod validation_tests {
             Err(RatePointError::RateTooHigh)
         );
         assert_eq!(validate_rate_points(&[(0, 0), (10_000, MAX_RATE_BPS)]), Ok(()));
+    }
+
+    /// The suggested curve is what every client proposes by default, so a market
+    /// creator who changes nothing must still get a curve the `irm` program will
+    /// accept. Nothing else checks this — the constant is only ever read.
+    #[test]
+    fn the_suggested_default_curve_is_valid() {
+        assert_eq!(validate_rate_points(&DEFAULT_RATE_POINTS), Ok(()));
     }
 }
 

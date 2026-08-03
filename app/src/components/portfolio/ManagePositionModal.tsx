@@ -1,15 +1,6 @@
 import { cn } from "@/lib/utils";
-import {
-  CandlestickSeries,
-  ColorType,
-  LineStyle,
-  createChart,
-  type CandlestickData,
-  type IChartApi,
-  type Time,
-} from "lightweight-charts";
 import { AlertTriangle, Info, X, Zap } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,11 +11,13 @@ export interface ManageMultiplyPosition {
   multiplier: number;
   netAPY: number;
   positionSize: number;
-  entryPrice: number;
-  currentPrice: number;
+  /** `null` when unknown — see the note on `MultiplyPosition.pnl`. No entry
+   * price is recorded on-chain and there is no price index behind this modal. */
+  entryPrice: number | null;
+  currentPrice: number | null;
   liqPrice: number;
-  pnl: number;
-  pnlPct: number;
+  pnl: number | null;
+  pnlPct: number | null;
 }
 
 interface ManagePositionModalProps {
@@ -34,55 +27,6 @@ interface ManagePositionModalProps {
   onUpdate?: (multiplier: number) => Promise<void>;
 }
 
-// ─── OHLC generation ─────────────────────────────────────────────────────────
-
-type PriceRange = 30 | 90 | 180;
-
-function generatePositionOHLC(
-  entryPrice: number,
-  currentPrice: number,
-  days: number,
-): CandlestickData<Time>[] {
-  const data: CandlestickData<Time>[] = [];
-  const now = new Date();
-  let price = entryPrice;
-
-  for (let i = days; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const time = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-      2,
-      "0",
-    )}-${String(d.getDate()).padStart(2, "0")}` as Time;
-
-    const progress = (days - i) / days;
-    // Smooth trend from entryPrice → currentPrice with noise
-    const target =
-      entryPrice + (currentPrice - entryPrice) * Math.pow(progress, 1.3);
-    const noiseAmp = entryPrice * 0.01;
-    const noise =
-      Math.sin(i * 0.37 + entryPrice * 0.01) * noiseAmp +
-      Math.sin(i * 0.11 + currentPrice * 0.007) * noiseAmp * 0.5;
-
-    const open = price;
-    const closePrice = Math.max(target + noise, 0.01);
-    const rangePct =
-      0.007 + Math.abs(Math.sin(i * 0.53 + entryPrice * 0.03)) * 0.018;
-    const high = Math.max(open, closePrice) * (1 + rangePct);
-    const low = Math.min(open, closePrice) * (1 - rangePct);
-
-    data.push({ time, open, high, low, close: closePrice });
-    price = closePrice;
-  }
-
-  return data;
-}
-
-const RANGE_LABELS: Record<PriceRange, string> = {
-  30: "1M",
-  90: "3M",
-  180: "6M",
-};
 const MAX_MULTIPLIER = 5;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -92,13 +36,8 @@ export function ManagePositionModal({
   onClose,
   onUpdate,
 }: ManagePositionModalProps) {
-  const [priceRange, setPriceRange] = useState<PriceRange>(90);
   const [multiplier, setMultiplier] = useState(position.multiplier);
 
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartApi = useRef<IChartApi | null>(null);
-
-  const isPnlPositive = position.pnl >= 0;
   const sliderPct = ((multiplier - 1) / (MAX_MULTIPLIER - 1)) * 100;
 
   // Net APY approximation (scales with multiplier)
@@ -113,100 +52,6 @@ export function ManagePositionModal({
       : liquidationRisk === "Moderate"
       ? "text-warning"
       : "text-destructive";
-
-  // Build chart
-  useEffect(() => {
-    const el = chartRef.current;
-    if (!el) return;
-
-    // style-exception: lightweight-charts requires raw color strings in its config API
-    const chart = createChart(el, {
-      layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(239,224,247,0.35)",
-        fontFamily: "inherit",
-        fontSize: 10,
-      },
-      grid: {
-        vertLines: { color: "rgba(198,152,229,0.06)" },
-        horzLines: { color: "rgba(198,152,229,0.06)" },
-      },
-      crosshair: {
-        vertLine: {
-          color: "rgba(198,152,229,0.3)",
-          labelBackgroundColor: "#2d1040",
-        },
-        horzLine: {
-          color: "rgba(198,152,229,0.3)",
-          labelBackgroundColor: "#2d1040",
-        },
-      },
-      rightPriceScale: {
-        borderColor: "rgba(198,152,229,0.12)",
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-      },
-      timeScale: {
-        borderColor: "rgba(198,152,229,0.12)",
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      handleScroll: true,
-      handleScale: true,
-    });
-
-    chartApi.current = chart;
-
-    // style-exception: lightweight-charts CandlestickSeries requires hex colors
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#34d399",
-      downColor: "#d45677",
-      borderUpColor: "#34d399",
-      borderDownColor: "#d45677",
-      wickUpColor: "rgba(52,211,153,0.5)",
-      wickDownColor: "rgba(212,86,119,0.5)",
-    });
-
-    const ohlcData = generatePositionOHLC(
-      position.entryPrice,
-      position.currentPrice,
-      priceRange,
-    );
-    candleSeries.setData(ohlcData);
-
-    // style-exception: lightweight-charts createPriceLine requires raw color strings
-    // Mark entry price with a dashed purple line
-    candleSeries.createPriceLine({
-      price: position.entryPrice,
-      color: "rgba(198,152,229,0.75)",
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: "Entry",
-    });
-
-    // Mark liquidation price with a dashed red line
-    candleSeries.createPriceLine({
-      price: position.liqPrice,
-      color: "rgba(212,86,119,0.75)",
-      lineWidth: 1,
-      lineStyle: LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: "Liq.",
-    });
-
-    chart.timeScale().fitContent();
-
-    const handleResize = () => {
-      if (el) chart.applyOptions({ width: el.clientWidth });
-    };
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      chart.remove();
-      chartApi.current = null;
-    };
-  }, [priceRange, position.entryPrice, position.currentPrice]);
 
   function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();
@@ -256,52 +101,36 @@ export function ManagePositionModal({
 
         {/* Body — two columns */}
         <div className="flex flex-col md:flex-row min-h-0">
-          {/* ── Left: Chart ─────────────────────────────────────────────────── */}
+          {/* ── Left: what is actually known about the position ──────────────
+              There used to be a candlestick chart here, drawn by interpolating
+              between `entryPrice` and `currentPrice` with sine noise. Both were
+              hardcoded to 1 by the only caller, so the "price history" was a
+              flat synthetic line presented as market data. No entry price is
+              recorded on-chain and there is no price index behind this modal, so
+              the chart could not be made real — only honest. */}
           <div className="flex-1 min-w-0 flex flex-col border-b md:border-b-0 md:border-r border-surface-accent/10">
-            {/* Chart toolbar */}
-            <div className="flex items-center justify-between px-4 pt-3 pb-2 flex-shrink-0">
-              <div className="flex items-center gap-4">
-                <span className="text-xs uppercase tracking-wider font-semibold text-surface-foreground/30">
-                  Price
-                </span>
-                {/* Entry price legend */}
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 border-t border-dashed border-surface-accent/70" />
-                  <span className="text-xs text-surface-accent/70">
-                    Entry ${position.entryPrice.toFixed(2)}
-                  </span>
-                </div>
-                {/* Liq price legend */}
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 border-t border-dashed border-destructive/70" />
-                  <span className="text-xs text-destructive/70">
-                    Liq. ${position.liqPrice.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                {([30, 90, 180] as PriceRange[]).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setPriceRange(r)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
-                      priceRange === r
-                        ? "bg-surface-accent/18 text-surface-accent"
-                        : "text-surface-foreground/30 hover:text-surface-foreground/70",
-                    )}
-                  >
-                    {RANGE_LABELS[r]}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center px-4 pt-3 pb-2 flex-shrink-0">
+              <span className="text-xs uppercase tracking-wider font-semibold text-surface-foreground/30">
+                Price
+              </span>
             </div>
 
-            {/* Chart */}
-            <div
-              ref={chartRef}
-              className="flex-1 min-h-[300px] md:min-h-[420px]"
-            />
+            <div className="flex-1 min-h-[300px] md:min-h-[420px] flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <Info className="h-5 w-5 text-surface-foreground/25" />
+              <p className="text-sm text-surface-foreground/50">
+                No price history available
+              </p>
+              <p className="text-xs text-surface-foreground/30 max-w-xs">
+                Positions do not record an entry price on-chain, and this build
+                has no price index to reconstruct one from.
+              </p>
+              <div className="mt-2 flex items-center gap-1.5">
+                <div className="w-5 border-t border-dashed border-destructive/70" />
+                <span className="text-xs text-destructive/70">
+                  Liquidation ${position.liqPrice.toFixed(2)}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* ── Right: Controls ──────────────────────────────────────────────── */}
@@ -331,10 +160,16 @@ export function ManagePositionModal({
                 <p
                   className={cn(
                     "text-sm font-bold tabular-nums",
-                    isPnlPositive ? "text-success" : "text-destructive",
+                    position.pnl === null
+                      ? "text-surface-foreground/40"
+                      : position.pnl >= 0
+                      ? "text-success"
+                      : "text-destructive",
                   )}
                 >
-                  {isPnlPositive ? "+" : ""}${position.pnl.toFixed(0)}
+                  {position.pnl === null
+                    ? "—"
+                    : `${position.pnl >= 0 ? "+" : ""}$${position.pnl.toFixed(0)}`}
                 </p>
               </div>
               <div className="rounded-xl border border-surface-accent/10 bg-surface-accent/[0.025] px-3 py-2.5">
@@ -342,7 +177,9 @@ export function ManagePositionModal({
                   Current
                 </p>
                 <p className="text-sm font-bold tabular-nums text-surface-foreground">
-                  ${position.currentPrice.toFixed(2)}
+                  {position.currentPrice === null
+                    ? "—"
+                    : `$${position.currentPrice.toFixed(2)}`}
                 </p>
               </div>
             </div>

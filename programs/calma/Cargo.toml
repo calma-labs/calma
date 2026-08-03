@@ -50,6 +50,9 @@ solana-sdk-ids = "3.1.0"
 
 [dev-dependencies]
 bytemuck = "1"
+# A library crate, not a program — the test fixture derives feed PDAs from the
+# same seed constant the feed program uses, rather than re-typing it.
+feed-state = { path = "../../crates/feed-state" }
 litesvm = "0.10.0"
 solana-account = "3.2.0"
 solana-clock = "3"

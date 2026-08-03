@@ -27,7 +27,7 @@ pub struct Create<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; used as authority for vault token accounts and LP mint.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -38,7 +38,7 @@ pub struct Create<'info> {
         payer = payer,
         token::mint = collateral_mint,
         token::authority = state,
-        seeds = [b"collateral_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::COLLATERAL_VAULT, pool.key().as_ref()],
         bump
     )]
     pub collateral_vault: Account<'info, TokenAccount>,
@@ -49,7 +49,7 @@ pub struct Create<'info> {
         payer = payer,
         token::mint = lend_mint,
         token::authority = state,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump
     )]
     pub lend_vault: Account<'info, TokenAccount>,
@@ -60,7 +60,7 @@ pub struct Create<'info> {
         payer = payer,
         mint::decimals = lend_mint.decimals,
         mint::authority = state,
-        seeds = [b"lp_mint", pool.key().as_ref()],
+        seeds = [::state::seeds::LP_MINT, pool.key().as_ref()],
         bump
     )]
     pub lp_mint: Account<'info, Mint>,
@@ -155,7 +155,10 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     // attacker's) rate curve. The seed convention is part of the IRM ABI — the
     // reference implementation enforces the same derivation on its own side.
     let (expected_irm_state, _) = Pubkey::find_program_address(
-        &[b"irm_config", ctx.accounts.pool.key().as_ref()],
+        &[
+            ::interface::IRM_CONFIG_SEED,
+            ctx.accounts.pool.key().as_ref(),
+        ],
         &ctx.accounts.rate_program.key(),
     );
     require!(

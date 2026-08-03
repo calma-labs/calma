@@ -718,8 +718,8 @@ dependencies = [
  "feed-state",
  "interface",
  "irm-state",
- "js-sys",
  "math",
+ "solana-sdk-ids 3.1.0",
  "state",
  "wasm-bindgen",
  "wasmtime",
@@ -956,6 +956,7 @@ dependencies = [
  "bytemuck",
  "faucet",
  "feed",
+ "feed-state",
  "guard",
  "interface",
  "irm",
@@ -1931,6 +1932,11 @@ name = "guard"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "litesvm",
+ "solana-keypair",
+ "solana-message 3.1.0",
+ "solana-signer",
+ "solana-transaction",
 ]
 
 [[package]]
@@ -2082,6 +2088,11 @@ dependencies = [
  "anchor-lang",
  "bytemuck",
  "irm-state",
+ "litesvm",
+ "solana-keypair",
+ "solana-message 3.1.0",
+ "solana-signer",
+ "solana-transaction",
 ]
 
 [[package]]
@@ -2090,6 +2101,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
+ "interface",
  "math",
 ]
 
@@ -2852,6 +2864,12 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "interface",
+ "litesvm",
+ "solana-clock 3.0.1",
+ "solana-keypair",
+ "solana-message 3.1.0",
+ "solana-signer",
+ "solana-transaction",
 ]
 
 [[package]]
@@ -5767,7 +5785,6 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "bytemuck",
- "irm-state",
  "math",
  "sha2 0.10.9",
 ]

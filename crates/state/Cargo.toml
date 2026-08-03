@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 math = { path = "../math" }
-irm-state = { path = "../irm-state" }
 anchor-lang = { version = "1.0.2", default-features = false }
 bytemuck = "1"
 

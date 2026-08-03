@@ -25,6 +25,7 @@ async function buildFlashBorrowIx(
         .accounts({
             pool: setup.pool,
             lendMint: setup.lendMint,
+            authority: setup.authority.publicKey,
             userDestination,
             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
         })
@@ -240,9 +241,11 @@ describe("flash-loan", () => {
                     .accounts({
                         pool: setup.pool,
                         lendMint: setup.lendMint,
+                        authority: setup.authority.publicKey,
                         userDestination: userLendTokenAccount,
                         sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                     })
+                    .signers([setup.authority])
                     .rpc();
                 expect.fail("should have thrown");
             } catch (e: any) {

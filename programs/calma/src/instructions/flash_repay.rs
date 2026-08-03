@@ -20,7 +20,7 @@ pub struct FlashRepay<'info> {
     /// The pool's lend vault — receives the repayment.
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
         constraint = lend_vault.mint == lend_mint.key() @ ErrorCode::InvalidMint,
     )]

@@ -1,7 +1,7 @@
 use crate::state::Pool;
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::{Mint, MintTo, Token, TokenAccount};
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct ClaimFees<'info> {
@@ -9,13 +9,13 @@ pub struct ClaimFees<'info> {
     pub pool: AccountLoader<'info, Pool>,
 
     /// CHECK: Signer-only PDA — no data stored; signs the LP-mint CPI.
-    #[account(seeds = [b"state"], bump)]
+    #[account(seeds = [::state::seeds::STATE], bump)]
     pub state: UncheckedAccount<'info>,
 
     /// The LP token mint for this lending pool.
     #[account(
         mut,
-        seeds = [b"lp_mint", pool.key().as_ref()],
+        seeds = [::state::seeds::LP_MINT, pool.key().as_ref()],
         bump,
     )]
     pub lp_mint: Account<'info, Mint>,
@@ -40,18 +40,12 @@ pub struct ClaimFees<'info> {
 
 impl<'info> ClaimFees<'info> {
     fn mint_lp_to_authority(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-        anchor_spl::token::mint_to(
-            CpiContext::new_with_signer(
-                *self.token_program.to_account_info().key,
-                MintTo {
-                    mint: self.lp_mint.to_account_info(),
-                    to: self.authority_lp_token_account.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::mint_with_state_authority(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.lp_mint.to_account_info(),
+            self.authority_lp_token_account.to_account_info(),
             amount,
         )
     }

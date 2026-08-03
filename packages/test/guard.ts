@@ -12,7 +12,7 @@ import { Guard } from "../../target/types/guard";
 import { Calma } from "../../target/types/calma";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
-import { POOL_SPACE, createGuard, ensureGuard, whitelistAuthority } from "./utils";
+import { GUARD_SEED, POOL_SPACE, createGuard, ensureGuard, whitelistAuthority } from "./utils";
 
 function localFindGuardPda(programId: PublicKey, authority: PublicKey): PublicKey {
   const [pda] = PublicKey.findProgramAddressSync(
@@ -20,7 +20,7 @@ function localFindGuardPda(programId: PublicKey, authority: PublicKey): PublicKe
     // because consumers pin the *state* account, not just the program: `calma`
     // records it in `Pool.guard_state` at market creation and rejects anything
     // else. See guard::instructions::initialize.
-    [Buffer.from("guard"), authority.toBuffer()],
+    [Buffer.from(GUARD_SEED), authority.toBuffer()],
     programId
   );
   return pda;

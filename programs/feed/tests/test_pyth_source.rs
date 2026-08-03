@@ -572,10 +572,12 @@ fn pyth_ema_divergence_over_budget_rejects() {
 
 #[test]
 fn pyth_first_update_skips_deviation_check() {
-    // Aggressive deviation rule; without the first-update skip a "large" first
-    // price would be rejected. Because last_updated_ts is 0, the check is a no-op.
+    // The tightest budget `validate_rules` will accept. Without the
+    // first-update skip, seeding any price at all against a stored 0 is an
+    // unbounded relative move and would be rejected; because last_updated_ts is
+    // 0 the check is a no-op.
     let rules = FeedRules {
-        max_deviation_bps_per_hour: 1, // 0.01% per hour — extremely tight
+        max_deviation_bps_per_hour: feed::state::MIN_DEVIATION_BPS_PER_HOUR,
         ..Default::default()
     };
     let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
@@ -596,10 +598,10 @@ fn pyth_first_update_skips_deviation_check() {
 
 #[test]
 fn pyth_deviation_budget_scales_with_elapsed_time() {
-    // 100 bps/hour means a 200 bps jump is rejected after 1 hour but accepted
-    // after 2 hours.
+    // 1000 bps/hour (the floor `validate_rules` enforces) means a 2000 bps
+    // jump is rejected after 1 hour but accepted after 2.
     let rules = FeedRules {
-        max_deviation_bps_per_hour: 100,
+        max_deviation_bps_per_hour: feed::state::MIN_DEVIATION_BPS_PER_HOUR,
         ..Default::default()
     };
     let (mut ctx, now) = setup_pyth_feed_with_rules(rules);
@@ -619,7 +621,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
         &ctx.payer,
     ));
 
-    // 1 hour later: try a +200 bps move on the collateral leg → over budget.
+    // 1 hour later: try a +2000 bps move on the collateral leg → over budget.
     let one_hour_later = now + 3_600;
     ctx.svm.set_sysvar::<Clock>(&Clock {
         unix_timestamp: one_hour_later,
@@ -630,8 +632,8 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
         &mut ctx.svm,
         coll_pk,
         COLL_FEED_ID,
-        1_020_000, // +200 bps vs 1_000_000
-        1_020_000,
+        1_200_000, // +2000 bps vs 1_000_000
+        1_200_000,
         0,
         -6,
         one_hour_later,
@@ -645,7 +647,7 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
         &ctx.payer,
     ));
 
-    // Push the clock to 2 hours after the seed update → 200 bps now fits.
+    // Push the clock to 2 hours after the seed update → 2000 bps now fits.
     let two_hours_later = now + 7_200;
     ctx.svm.set_sysvar::<Clock>(&Clock {
         unix_timestamp: two_hours_later,
@@ -656,8 +658,8 @@ fn pyth_deviation_budget_scales_with_elapsed_time() {
         &mut ctx.svm,
         coll_pk,
         COLL_FEED_ID,
-        1_020_000,
-        1_020_000,
+        1_200_000,
+        1_200_000,
         0,
         -6,
         two_hours_later,

@@ -6,34 +6,55 @@ A Solana lending protocol with an Anchor program and a React/Vite frontend.
 
 ```mermaid
 flowchart LR
-    I("bun install") -->
-    A("bun run setup\n─────────────\nanchor build\n+ bun run wasm")
+    I("npm install") -->
+    A("npm run setup\n─────────────\nanchor build\n+ npm run wasm")
 
-    A --> B("bun run dev\n─────────────\nstart Vite\ndev server")
+    A --> B("npm run dev\n─────────────\nstart Vite\ndev server")
 
-    A --> C("bun run test\n─────────────\nrun Anchor\nintegration tests")
+    A --> C("anchor test\n─────────────\nrun Anchor\nintegration tests")
 
-    A --> D("bun run build\n─────────────\nwasm → app/dist\nproduction bundle")
+    A --> D("npm run build\n─────────────\nwasm → app/dist\nproduction bundle")
 
-    D --> E("bun run preview\n─────────────\npreview production\nbuild locally")
+    D --> E("npm run preview\n─────────────\npreview production\nbuild locally")
 ```
 
-> **Prerequisites:** [Rust](https://rustup.rs), [Anchor CLI](https://www.anchor-lang.com/docs/installation), [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), [Bun](https://bun.sh)
+> **Prerequisites:** [Rust](https://rustup.rs), [Anchor CLI](https://www.anchor-lang.com/docs/installation), [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/), [Node.js](https://nodejs.org) (npm)
 
 ## Repository layout
 
 ```
-programs/calma/     Anchor smart contract (main lending program)
-programs/feed/      Price feed program
-programs/guard/     Authorization gate
-programs/irm/       Interest rate model
-crates/math/        Pure-Rust math library (no external dependencies)
-crates/state/       Shared account layouts
-crates/bindings/    Wasm entrypoint — re-exports math + state via wasm-bindgen
-packages/wasm-lib/  Generated @calma/wasm-lib npm package (output of `bun run wasm`)
-packages/test/      Anchor integration tests (TypeScript / LiteSVM)
+programs/calma/     The lending program. Links no other program (see below).
+programs/feed/      Reference oracle — Pyth pull, Pyth push, or manual prices
+programs/irm/       Reference interest-rate model — piecewise-linear curve
+programs/guard/     Reference whitelist gate
+programs/quote/     Alternative provider: oracle + rate model in one program,
+                    used to prove a market can run on code calma never linked
+programs/faucet/    Test-only mint / mock swap. Never deploy beside a real pool.
+
+crates/math/        Pure-Rust protocol arithmetic. Zero dependencies — not even
+                    anchor-lang — so the same code runs on-chain and in wasm.
+crates/state/       calma's own account layouts (Pool, UserPosition, queue)
+crates/interface/   The oracle ABI: PriceFeedHeader + read_price_feed.
+                    Declares no program id, on purpose.
+crates/irm-state/   programs/irm's account layouts + curve validation
+crates/feed-state/  programs/feed's account layouts + ingestion rules
+crates/bindings/    Wasm entrypoint — replays math::Core ops for the browser
+
+packages/wasm-lib/  Generated @calma/wasm-lib npm package (output of `npm run wasm`)
+packages/test/      End-to-end tests (TypeScript, against a validator)
 app/                React + TypeScript + Vite frontend
+landing/            Marketing site
 ```
+
+A market reaches its oracle, rate model and whitelist through pubkeys pinned on
+its own `Pool` account, never through a Cargo dependency — so `programs/calma`
+depends on no other program, and any program matching the contract can serve a
+market. See [ARCHITECTURE.md](ARCHITECTURE.md#pluggable-providers) and
+`.claude/rules/program-dependencies.md`.
+
+> **Before relying on any of this**, read [docs/known-issues.md](docs/known-issues.md).
+> It records the protocol's accepted risks and open defects — most importantly,
+> that there is no liquidation path.
 
 ---
 
@@ -71,7 +92,7 @@ cargo install wasm-pack
 From the repo root:
 
 ```sh
-bun run wasm
+npm run wasm
 ```
 
 This is equivalent to:
@@ -103,9 +124,9 @@ const interest = computeInterest(1_000_000n, 500, 31_557_600n)
 ## Frontend (app/)
 
 ```sh
-bun install
-bun run wasm   # compile crates/bindings → packages/wasm-lib (required before dev/build)
-bun run dev
+npm install
+npm run wasm   # compile crates/bindings → packages/wasm-lib (required before dev/build)
+npm run dev
 ```
 
 ---

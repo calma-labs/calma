@@ -17,7 +17,7 @@ pub struct ProcessQueueEntry<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs vault-transfer CPIs.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -39,7 +39,7 @@ pub struct ProcessQueueEntry<'info> {
     /// The pool's lend vault — source of funds.
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
         constraint = lend_vault.mint == lend_mint.key()
             @ crate::error::ErrorCode::InvalidMint,
@@ -52,18 +52,12 @@ pub struct ProcessQueueEntry<'info> {
 
 impl<'info> ProcessQueueEntry<'info> {
     fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *self.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: self.lend_vault.to_account_info(),
-                    to: self.user_token_account.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::transfer_from_vault(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.lend_vault.to_account_info(),
+            self.user_token_account.to_account_info(),
             amount,
         )
     }

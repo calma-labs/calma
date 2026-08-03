@@ -28,12 +28,24 @@ Verify with `cargo tree`, not by reading the manifest:
 cargo tree -p calma --edges normal --depth 1 | tail -n +2 | grep programs/
 
 # A provider should have no dependents at all: the output is just its own line.
-cargo tree -i -p <provider> --edges normal,dev
+# Use the *package* name, which is not always the directory or the lib name.
+cargo tree -i -p feed --edges normal,dev
+cargo tree -i -p irm --edges normal,dev
+cargo tree -i -p guard --edges normal,dev
+cargo tree -i -p faucet --edges normal,dev
+cargo tree -i -p quote-provider --edges normal,dev   # NOT `-p quote`
 ```
 
 Both are expected to come back empty (the second, bar the provider itself). Note
 `cargo tree -i` needs `--edges normal,dev` to catch a dev-dependency edge, which
 is exactly the kind that gets added "just for a test" and then stays.
+
+**`quote` is the trap.** `programs/quote/` declares `name = "quote-provider"`
+with `[lib] name = "quote"`. `cargo tree -i -p quote` therefore resolves to the
+*crates.io `quote` proc-macro crate*, which anchor pulls in — so it prints a
+large, healthy-looking tree that has nothing to do with this repo and reports
+clean no matter what depends on the provider. Check the package list with
+`cargo metadata --no-deps` if a name is ever in doubt.
 
 ## Talking to another program without linking it
 

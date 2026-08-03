@@ -16,7 +16,7 @@ pub struct MintTokens<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs the mint_to CPI.
     #[account(
-        seeds = [b"mint_authority"],
+        seeds = [crate::MINT_AUTHORITY_SEED.as_bytes()],
         bump,
     )]
     pub mint_authority: UncheckedAccount<'info>,
@@ -45,7 +45,7 @@ pub struct MintTokens<'info> {
 
 impl<'info> MintTokens<'info> {
     pub fn mint_to_recipient(&self, amount: u64, authority_bump: u8) -> Result<()> {
-        let seeds = &[b"mint_authority" as &[u8], &[authority_bump]];
+        let seeds = &[crate::MINT_AUTHORITY_SEED.as_bytes(), &[authority_bump]];
         let signer = &[&seeds[..]];
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(

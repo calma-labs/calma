@@ -1,6 +1,6 @@
 import { type GetProgramAccountsFilter, PublicKey } from '@solana/web3.js'
 import { useQuery } from '@tanstack/react-query'
-import { UserPositionAccount } from '@calma/wasm-lib'
+import { UserPositionAccount, user_position_seed } from '@calma/wasm-lib'
 import { connection, program } from '../../lib/program'
 import { queryKeys } from '../../lib/queryKeys'
 
@@ -31,7 +31,7 @@ async function fetchAllUserPositions(extraFilters: GetProgramAccountsFilter[] = 
 export function getUserPositionAddress(pool: PublicKey, authority: PublicKey): PublicKey {
     const [pda] = PublicKey.findProgramAddressSync(
         [
-            Buffer.from('user_position'),
+            Buffer.from(user_position_seed()),
             pool.toBytes(),
             authority.toBytes(),
         ],

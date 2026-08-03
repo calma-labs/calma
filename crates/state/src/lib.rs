@@ -5,6 +5,7 @@ use anchor_lang::prelude::*;
 declare_id!("c1md3yLhwBxREDRc2HcX4ivTigoyJ3No3DehkzjaPT8");
 
 pub mod error;
+pub mod seeds;
 pub mod state;
 pub mod withdrawal_queue;
 

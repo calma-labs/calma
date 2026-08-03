@@ -103,7 +103,8 @@ export function MultiplyPositionPanel({
   }
   if (!position) return null;
 
-  // Build ManageMultiplyPosition from real data (price = 1 assumed)
+  // Built from real chain data. Price and PnL are `null` rather than invented:
+  // no entry price is recorded on-chain (see `MultiplyPosition.pnl`).
   const managePos: ManageMultiplyPosition = {
     asset: pool.lendSymbol,
     icon: pool.lendIcon,
@@ -111,11 +112,11 @@ export function MultiplyPositionPanel({
     multiplier: position.leverage,
     netAPY: position.netAPY,
     positionSize: position.collateralUi,
-    entryPrice: 1,
-    currentPrice: 1,
+    entryPrice: null,
+    currentPrice: null,
     liqPrice: 1 / position.leverage,
-    pnl: 0,
-    pnlPct: 0,
+    pnl: null,
+    pnlPct: null,
   };
 
   return (
@@ -190,10 +191,11 @@ export function MultiplyPositionPanel({
             </span>
           </div>
 
-          {/* P&L — not computable without price history; shown as placeholder */}
+          {/* P&L — not computable without an on-chain entry price, so `null`
+              rather than 0; PnlCell renders an em dash. */}
           <div className="flex flex-col min-w-[90px]">
             <span className="text-xs text-surface-foreground/35 mb-0.5">P&L</span>
-            <PnlCell pnl={0} pct={0} />
+            <PnlCell pnl={null} pct={null} />
           </div>
 
           {/* Actions */}

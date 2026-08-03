@@ -1,4 +1,5 @@
 import { AnchorProvider, Program } from "@anchor-lang/core";
+import { feed_seed, irm_config_seed } from "@calma/wasm-lib";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { Buffer } from "buffer";
 import IDL from "../../../target/idl/calma.json";
@@ -41,6 +42,26 @@ export const guardProgram = new Program<Guard>(GUARD_IDL as unknown as Guard, re
 /** Test-only faucet, split out of the calma program so production never ships it. */
 export const faucetProgram = new Program<Faucet>(FAUCET_IDL as unknown as Faucet, readOnlyProvider);
 
+
+/** Read a `#[constant]` string out of a generated Anchor IDL.
+ *
+ * `guard` and `faucet` have no `*-state` library crate for the wasm bindings to
+ * export from, so their PDA seeds travel through the IDL instead — the same
+ * mechanism `packages/test` already uses for `POOL_SPACE`. The IDL quotes string
+ * constants, so the surrounding quotes come off here. */
+function idlStringConstant(
+  idl: { constants?: { name: string; value: string }[] },
+  name: string,
+): string {
+  const raw = idl.constants?.find((c) => c.name === name)?.value;
+  if (raw === undefined) {
+    throw new Error(`${name} missing from IDL — rebuild with \`anchor build\``);
+  }
+  return JSON.parse(raw) as string;
+}
+
+const GUARD_SEED = idlStringConstant(GUARD_IDL, "GUARD_SEED");
+
 export const IRM_PROGRAM_ID = new PublicKey(
   "irmdacogiedKeCEBh72FJx4aoixyaByqGikTkxGifUk"
 );
@@ -68,7 +89,7 @@ export function feedPda(
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
     [
-      Buffer.from("feed"),
+      Buffer.from(feed_seed()),
       collateralMint.toBuffer(),
       lendMint.toBuffer(),
       Buffer.from([id]),
@@ -80,26 +101,23 @@ export function feedPda(
 /** PDA of the `irm_config` account for a given pool (seeds: ["irm_config", pool]). */
 export function irmStatePda(pool: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("irm_config"), pool.toBuffer()],
+    [Buffer.from(irm_config_seed()), pool.toBuffer()],
     IRM_PROGRAM_ID,
   )[0];
 }
 
 /**
- * PDA of the protocol's single `guard_state` whitelist (seeds: ["guard"]).
+ * Whitelist owned by `authority` (seeds: ["guard", authority]).
  *
- * Formerly seeded per-authority, which made whitelists permissionless and
- * per-caller — anyone could create one naming themselves and present it to a
- * consumer that only verified the guard *program*. There is now exactly one.
- */
-/**
- * Whitelist owned by `authority`. Guards are per-authority, so several coexist
- * over different subsets — a market's own list is `Pool.guardState`, not
- * whatever this derives for the connected wallet.
+ * Guards are per-authority and permissionless to create, so several coexist over
+ * different subsets and "owned by the guard program" proves nothing on its own —
+ * anyone can stand up a list naming themselves. A market's own list is the exact
+ * address recorded in `Pool.guardState` at creation, **not** whatever this
+ * derives for the connected wallet.
  */
 export function guardPda(authority: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("guard"), authority.toBuffer()],
+    [Buffer.from(GUARD_SEED), authority.toBuffer()],
     GUARD_PROGRAM_ID
   )[0];
 }

@@ -437,7 +437,7 @@ fn push_ema_divergence_over_budget_rejects() {
 #[test]
 fn push_deviation_budget_enforced_after_first_update() {
     let rules = FeedRules {
-        max_deviation_bps_per_hour: 100,
+        max_deviation_bps_per_hour: feed::state::MIN_DEVIATION_BPS_PER_HOUR,
         ..Default::default()
     };
     let (mut ctx, coll_pk, lend_pk, now) = setup_push_feed(rules);
@@ -450,14 +450,14 @@ fn push_deviation_budget_enforced_after_first_update() {
         &ctx.payer,
     ));
 
-    // 1 hour later: 200 bps jump on collateral exceeds the 100 bps/hour budget.
+    // 1 hour later: 2000 bps jump on collateral exceeds the 1000 bps/hour budget.
     let one_hour_later = now + 3_600;
     ctx.svm.set_sysvar::<Clock>(&Clock {
         unix_timestamp: one_hour_later,
         ..Default::default()
     });
     ctx.svm.expire_blockhash();
-    write_push_update(&mut ctx.svm, coll_pk, 1_020_000, 1_020_000, 0, -6, one_hour_later);
+    write_push_update(&mut ctx.svm, coll_pk, 1_200_000, 1_200_000, 0, -6, one_hour_later);
     write_push_update(&mut ctx.svm, lend_pk, 1_000_000, 1_000_000, 0, -6, one_hour_later);
     assert!(!send_ixs(
         &mut ctx.svm,

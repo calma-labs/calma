@@ -12,7 +12,8 @@ pub struct UserPosition {
     /// Raw amount of collateral tokens deposited (no shares — tracked 1:1).
     pub collateral_deposited: u64,
     /// Debt shares held by this user (0 if no active borrow).
-    /// Current debt = debt_shares * pool.total_borrowed / pool.total_debt_shares
+    /// Current debt = debt_shares * pool.market.total_borrow_assets
+    ///                            / pool.market.total_borrow_shares
     pub debt_shares: u64,
     pub bump: u8,
     _pad: [u8; 7],

@@ -22,7 +22,7 @@ pub struct CheckAuthority<'info> {
     /// `["irm_config", pool]` PDA and not some other account carrying a forged
     /// `authority` field.
     #[account(
-        seeds = [b"irm_config", pool.key().as_ref()],
+        seeds = [::irm_state::IRM_CONFIG_SEED, pool.key().as_ref()],
         bump = irm_state.load()?.bump,
         has_one = pool,
     )]

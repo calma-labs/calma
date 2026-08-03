@@ -2,7 +2,7 @@ import { useWalletConnection } from "@solana/react-hooks";
 import { useEffect, useRef } from "react";
 import { useWalletBalancesStore } from "../store/wallet.store";
 
-const REFRESH_INTERVAL_MS = 100_000_000_000;
+const REFRESH_INTERVAL_MS = 15_000;
 
 /**
  * Headless component that keeps the wallet-balance Zustand store in sync.

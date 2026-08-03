@@ -6,3 +6,17 @@ node_modules
 test-ledger
 .yarn
 .surfpool
+
+# Local environment files — these carry RPC provider keys. `app/.env` was
+# committed once with a live Helius key; rotate rather than assuming the history
+# is clean. (`docs/known-issues.md` covers on-chain program risks only, and
+# numbers its entries K-1..K-n — there is no entry for this.)
+.env
+.env.*
+!.env.example
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# npm is the package manager for this repo (Anchor.toml toolchain.package_manager)
+bun.lock

@@ -1,0 +1,58 @@
+name: E2E tests
+
+# The Rust tests (crate unit tests + LiteSVM integration) run inside
+# `_build.yml`, so they already gate every deploy. This workflow covers the
+# third layer described in `.claude/rules/testing.md`: the TypeScript suite in
+# packages/test, which needs a real validator and so cannot share that job.
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - master
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  anchor-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: matzayonc/setup-anchor-from-anchor-lang@main
+        with:
+          anchor-version: '1.0.2'
+          solana-cli-version: '3.1.14'
+          node-version: '25.8.1'
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: true
+
+      # Same reason as in _build.yml — Anchor resolves every program declared in
+      # Anchor.toml before building. Keep in sync with [programs.localnet].
+      - name: Prepare deploy directory with placeholder .so files
+        run: |
+          mkdir -p target/deploy
+          for prog in calma faucet feed guard irm quote; do
+            touch target/deploy/${prog}.so
+          done
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `anchor test` builds the programs, starts a local validator, deploys,
+      # and runs `npm run test` (the [scripts] entry in Anchor.toml). Never
+      # invoke ts-mocha directly — the suite needs Anchor's validator context.
+      - name: Anchor test
+        run: anchor test
+
+      # packages/test/surfpool.ts needs a live mainnet Pyth feed, so it is
+      # excluded from `npm run test` and run only here, where a failure is
+      # reported but does not fail the workflow.
+      - name: Surfpool (mainnet Pyth, non-blocking)
+        continue-on-error: true
+        run: npm run test:surfpool

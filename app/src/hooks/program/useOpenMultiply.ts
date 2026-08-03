@@ -89,6 +89,7 @@ export function useOpenMultiply() {
                         .accounts({
                             pool,
                             lendMint,
+                            authority,
                             userDestination: userLendAta,
                             sysvarInstructions: SYSVAR_INSTRUCTIONS_PUBKEY,
                         })

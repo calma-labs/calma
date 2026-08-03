@@ -12,7 +12,7 @@ pub struct Create<'info> {
         payer = payer,
         space = 8 + std::mem::size_of::<Feed>(),
         seeds = [
-            b"feed",
+            ::feed_state::FEED_SEED,
             collateral_mint.key().as_ref(),
             lend_mint.key().as_ref(),
             &[id],

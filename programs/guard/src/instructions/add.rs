@@ -5,7 +5,7 @@ use anchor_lang::prelude::*;
 pub struct Add<'info> {
     #[account(
         mut,
-        seeds = [b"guard", authority.key().as_ref()],
+        seeds = [crate::GUARD_SEED.as_bytes(), authority.key().as_ref()],
         bump = guard_state.bump,
         has_one = authority,
     )]

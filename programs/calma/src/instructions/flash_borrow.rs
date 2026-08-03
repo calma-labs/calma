@@ -18,7 +18,7 @@ pub struct FlashBorrow<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs lend-vault-transfer CPIs.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -32,16 +32,26 @@ pub struct FlashBorrow<'info> {
     /// The pool's lend vault — source of flash-loaned tokens.
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
         constraint = lend_vault.mint == lend_mint.key() @ ErrorCode::InvalidMint,
     )]
     pub lend_vault: Account<'info, TokenAccount>,
 
+    /// The borrower. Not load-bearing for solvency — the pairing lock in
+    /// `Core::flash_borrow` and the sysvar scan below are what guarantee
+    /// repayment — but without it this instruction had no signer at all, so
+    /// anyone could open a loan against any pool and route the proceeds to any
+    /// token account of the right mint. Naming the caller keeps a flash loan
+    /// something a party takes out rather than something that can be done *to*
+    /// an account, and gives `user_destination` an owner to check against.
+    pub authority: Signer<'info>,
+
     /// The receiver's lend-token account — destination of the flash loan.
     #[account(
         mut,
         constraint = user_destination.mint == lend_mint.key() @ ErrorCode::InvalidMint,
+        constraint = user_destination.owner == authority.key() @ ErrorCode::Unauthorized,
     )]
     pub user_destination: Account<'info, TokenAccount>,
 
@@ -54,18 +64,12 @@ pub struct FlashBorrow<'info> {
 
 impl<'info> FlashBorrow<'info> {
     pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let state_seeds: &[&[u8]] = &[b"state", &[state_bump]];
-        let signer = &[state_seeds];
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *self.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: self.lend_vault.to_account_info(),
-                    to: self.user_destination.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::transfer_from_vault(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.lend_vault.to_account_info(),
+            self.user_destination.to_account_info(),
             amount,
         )
     }

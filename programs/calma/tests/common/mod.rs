@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod fixture;
+
 use anchor_lang::prelude::Pubkey;
 use anchor_lang::solana_program::program_pack::Pack;
 use {

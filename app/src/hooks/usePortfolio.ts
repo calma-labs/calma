@@ -169,11 +169,13 @@ export function useMultiplyPositions(enabled = true) {
                 netAPY: +netAPY.toFixed(2),
                 // positionSize = full collateral value (not derived via LTV round-trip)
                 positionSize: +pos.collateralAmount.toFixed(2),
-                entryPrice: 0,
-                currentPrice: 0,
+                // Not zero — unknown. No entry price exists on-chain to compare
+                // against; see the note on `MultiplyPosition.pnl`.
+                entryPrice: null,
+                currentPrice: null,
                 liqPrice: pos.liqPrice,
-                pnl: 0,
-                pnlPct: 0,
+                pnl: null,
+                pnlPct: null,
             } satisfies MultiplyPosition
         })
     }, [borrowPositions, pools])

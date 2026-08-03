@@ -16,7 +16,7 @@ pub struct Create<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; holds mint authority over every faucet mint.
     #[account(
-        seeds = [b"mint_authority"],
+        seeds = [crate::MINT_AUTHORITY_SEED.as_bytes()],
         bump,
     )]
     pub mint_authority: UncheckedAccount<'info>,
@@ -26,7 +26,7 @@ pub struct Create<'info> {
     #[account(
         init,
         payer = payer,
-        seeds = [b"mint", symbol.as_bytes()],
+        seeds = [crate::MINT_SEED.as_bytes(), symbol.as_bytes()],
         bump,
         mint::decimals = decimals,
         mint::authority = mint_authority,

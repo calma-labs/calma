@@ -12,6 +12,7 @@ impl From<math::MathError<Error>> for ErrorCode {
             math::MathError::FlashLoanOutstanding => ErrorCode::FlashLoanAlreadyOutstanding,
             math::MathError::NoFlashLoan => ErrorCode::FlashBorrowMissing,
             math::MathError::FlashLoanUnderRepaid => ErrorCode::FlashLoanFeeNotCovered,
+            math::MathError::FlashLoanOverRepaid => ErrorCode::FlashLoanOverRepaid,
             math::MathError::Transfer(_) => ErrorCode::MathOverflow,
         }
     }
@@ -109,4 +110,10 @@ pub enum ErrorCode {
     /// Appended, not inserted — variants are numbered by declaration order.
     #[msg("Price account is not the one this pool was created against")]
     InvalidFeedState,
+    #[msg("Withdrawal is worth zero lend tokens; nothing to queue")]
+    ZeroValueWithdrawal,
+    #[msg("Flash loan: repay exactly the principal plus fee — a surplus is not accepted")]
+    FlashLoanOverRepaid,
+    #[msg("Too many pending withdrawals for this authority; process one before queueing another")]
+    TooManyQueuedWithdrawals,
 }

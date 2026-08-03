@@ -141,10 +141,50 @@ pub fn check_max_age(publish_time: i64, clock_ts: i64, max_age_ms: u32) -> Resul
     Ok(())
 }
 
+/// Reject an update whose price is older than the one already written.
+///
+/// `set_from_pyth` / `set_from_pyth_push` are permissionless by design — anyone
+/// may relay a signed Pyth update, which is what keeps the feed live. But
+/// nothing about a signature says *when* it was chosen: Wormhole VAAs stay
+/// verifiable forever, so a caller can post whichever update inside the
+/// `max_age_ms` ingestion window suits them rather than the most recent one.
+/// Without this gate the written timestamp could also move *backwards*, which
+/// both re-opens an already-superseded price and widens the deviation budget
+/// (`check_deviation` scales it by `now − last_ts`).
+///
+/// The comparison is `>=`, not `>`. The feed stamps `last_updated_ts` from the
+/// **min** of the two legs' publish times, so a strict `>` would refuse an
+/// update in which one leg advanced and the other had not yet republished —
+/// turning a routine cadence mismatch into a stuck feed. Allowing equality
+/// costs nothing: a re-post at the same publish time carries the same price for
+/// the same feed id.
+///
+/// This bounds *selection*, not staleness — `check_max_age` still caps how old
+/// an accepted update may be, and consumers still apply `price_ttl_ms`.
+pub fn check_monotonic(new_ts: i64, last_ts: i64) -> Result<()> {
+    require!(new_ts >= last_ts, ErrorCode::NonMonotonicPrice);
+    Ok(())
+}
+
 /// Cross-field validation applied at `create` time (Pyth source only).
+///
+/// `create` is the only write site for `FeedRules` — there is no setter — so
+/// whatever passes here is what the feed lives with.
 pub fn validate_rules(rules: &FeedRules) -> Result<()> {
     if rules.min_price > 0 && rules.max_price > 0 {
         require!(rules.min_price <= rules.max_price, ErrorCode::InvalidRules);
+    }
+    // A deviation budget tight enough to reject ordinary volatility does not
+    // protect the market, it freezes it: the update is refused, the price goes
+    // stale, and every borrow and collateral withdrawal fails until enough time
+    // accrues. Disabling the guard (`0`) is a legitimate choice; setting it to
+    // something a real price move cannot clear is not one anybody makes on
+    // purpose. See `MIN_DEVIATION_BPS_PER_HOUR`.
+    if rules.max_deviation_bps_per_hour > 0 {
+        require!(
+            rules.max_deviation_bps_per_hour >= crate::state::MIN_DEVIATION_BPS_PER_HOUR,
+            ErrorCode::InvalidRules
+        );
     }
     Ok(())
 }
@@ -255,6 +295,45 @@ mod tests {
     #[test]
     fn max_age_accepts_a_price_published_ahead_of_the_clock() {
         assert!(check_max_age(1_700_000_005, 1_700_000_000, 1_000).is_ok());
+    }
+
+    #[test]
+    fn rules_reject_a_deviation_budget_too_tight_to_track_a_real_move() {
+        let tight = FeedRules {
+            max_deviation_bps_per_hour: crate::state::MIN_DEVIATION_BPS_PER_HOUR - 1,
+            ..Default::default()
+        };
+        assert!(validate_rules(&tight).is_err());
+
+        let at_floor = FeedRules {
+            max_deviation_bps_per_hour: crate::state::MIN_DEVIATION_BPS_PER_HOUR,
+            ..Default::default()
+        };
+        assert!(validate_rules(&at_floor).is_ok());
+
+        // `0` still means "disabled" — an explicit opt-out, not a tight budget.
+        let disabled = FeedRules {
+            max_deviation_bps_per_hour: 0,
+            ..Default::default()
+        };
+        assert!(validate_rules(&disabled).is_ok());
+    }
+
+    #[test]
+    fn monotonic_rejects_only_backwards_updates() {
+        // Forward and equal are both fine; equal is what keeps a feed whose two
+        // legs republish at different cadences from getting stuck.
+        assert!(check_monotonic(1_700_000_100, 1_700_000_000).is_ok());
+        assert!(check_monotonic(1_700_000_000, 1_700_000_000).is_ok());
+        // A replayed older VAA — the case the gate exists for.
+        assert!(check_monotonic(1_699_999_999, 1_700_000_000).is_err());
+    }
+
+    #[test]
+    fn monotonic_accepts_the_first_ever_update() {
+        // A fresh feed carries last_updated_ts == 0, so nothing is rejected
+        // before the first price lands.
+        assert!(check_monotonic(1_700_000_000, 0).is_ok());
     }
 
     #[test]

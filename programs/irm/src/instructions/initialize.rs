@@ -9,7 +9,7 @@ pub struct Initialize<'info> {
         init,
         payer = payer,
         space = 8 + std::mem::size_of::<IrmState>(),
-        seeds = [b"irm_config", pool.key().as_ref()],
+        seeds = [::irm_state::IRM_CONFIG_SEED, pool.key().as_ref()],
         bump,
     )]
     pub irm_config: AccountLoader<'info, IrmState>,

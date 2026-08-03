@@ -17,7 +17,7 @@ import { Faucet } from "../../target/types/faucet";
 import { Feed } from "../../target/types/feed";
 import { Irm } from "../../target/types/irm";
 import { Guard } from "../../target/types/guard";
-import { POOL_SPACE } from "./utils";
+import { MINT_AUTHORITY_SEED, POOL_SPACE } from "./utils";
 import { expect } from "chai";
 
 // Hardcoded minter keypair for proof-of-concept faucet
@@ -410,7 +410,7 @@ describe("faucet program create/mint", () => {
     await connection.confirmTransaction(airdrop);
 
     [mintAuthorityPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("mint_authority")],
+      [Buffer.from(MINT_AUTHORITY_SEED)],
       faucetProgram.programId
     );
 

@@ -11,7 +11,7 @@ pub struct Borrow<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs lend-vault-transfer CPIs.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -35,7 +35,7 @@ pub struct Borrow<'info> {
     /// The pool's lend vault (source of borrowed tokens)
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
         constraint = lend_vault.mint == lend_mint.key(),
     )]
@@ -44,7 +44,7 @@ pub struct Borrow<'info> {
     /// The user's position — collateral balance and active borrow fields.
     #[account(
         mut,
-        seeds = [b"user_position", pool.key().as_ref(), authority.key().as_ref()],
+        seeds = [::state::seeds::USER_POSITION, pool.key().as_ref(), authority.key().as_ref()],
         bump = user_position.load()?.bump,
         constraint = user_position.load()?.authority == authority.key(),
         constraint = user_position.load()?.pool == pool.key()
@@ -81,18 +81,12 @@ pub struct Borrow<'info> {
 
 impl<'info> Borrow<'info> {
     pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *self.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: self.lend_vault.to_account_info(),
-                    to: self.user_token_account.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::transfer_from_vault(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.lend_vault.to_account_info(),
+            self.user_token_account.to_account_info(),
             amount,
         )
     }

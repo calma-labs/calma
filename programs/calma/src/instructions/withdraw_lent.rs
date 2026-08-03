@@ -12,7 +12,7 @@ pub struct WithdrawLent<'info> {
 
     /// CHECK: Signer-only PDA — no data stored; signs lend-vault-transfer CPIs.
     #[account(
-        seeds = [b"state"],
+        seeds = [::state::seeds::STATE],
         bump,
     )]
     pub state: UncheckedAccount<'info>,
@@ -23,7 +23,7 @@ pub struct WithdrawLent<'info> {
     /// The pool's LP token mint.
     #[account(
         mut,
-        seeds = [b"lp_mint", pool.key().as_ref()],
+        seeds = [::state::seeds::LP_MINT, pool.key().as_ref()],
         bump,
     )]
     pub lp_mint: Account<'info, Mint>,
@@ -52,7 +52,7 @@ pub struct WithdrawLent<'info> {
     /// The pool's lend vault — holds lend tokens; source for withdrawal.
     #[account(
         mut,
-        seeds = [b"lend_vault", pool.key().as_ref()],
+        seeds = [::state::seeds::LEND_VAULT, pool.key().as_ref()],
         bump,
         constraint = lend_vault.mint == lend_mint.key()
             @ crate::error::ErrorCode::InvalidAmount,
@@ -88,18 +88,12 @@ impl<'info> WithdrawLent<'info> {
     }
 
     pub fn transfer_lend_to_user(&self, amount: u64, state_bump: u8) -> Result<()> {
-        let seeds = &[b"state" as &[u8], &[state_bump]];
-        let signer = &[&seeds[..]];
-        anchor_spl::token::transfer(
-            CpiContext::new_with_signer(
-                *self.token_program.to_account_info().key,
-                anchor_spl::token::Transfer {
-                    from: self.lend_vault.to_account_info(),
-                    to: self.user_lend_token_account.to_account_info(),
-                    authority: self.state.to_account_info(),
-                },
-                signer,
-            ),
+        crate::instructions::transfer_from_vault(
+            *self.token_program.to_account_info().key,
+            &self.state.to_account_info(),
+            state_bump,
+            self.lend_vault.to_account_info(),
+            self.user_lend_token_account.to_account_info(),
             amount,
         )
     }
@@ -146,7 +140,6 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     let state_bump = ctx.bumps.state;
     let (immediate, lend_for_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let queue_is_empty = pool.withdrawal_queue.head == pool.withdrawal_queue.tail;
         let mut core = math::Core::new(pool.market)
             .with_irm(irm)
             .accrue_interest()
@@ -154,19 +147,53 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
         let lend_for_shares = core
             .calc_lend_for_shares(shares)
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        let immediate = queue_is_empty && vault_balance >= lend_for_shares && lend_for_shares > 0;
+        // Shares worth nothing must not proceed down either path. The immediate
+        // branch already excluded them, which left them falling through to the
+        // queue — where a zero-amount entry costs the caller nothing, occupies
+        // one of 1023 slots, and keeps the queue non-empty, which by itself
+        // forces every subsequent withdrawal off the immediate path. Rejecting
+        // here means the only way to take a slot is to have real value to claim.
+        require!(
+            lend_for_shares > 0,
+            crate::error::ErrorCode::ZeroValueWithdrawal
+        );
+        // Pay out now whenever the vault can cover this exit *on top of* every
+        // claim already queued — `borrowable_liquidity` is exactly that figure,
+        // vault minus `assets_in_queue`, and it is the same reservation
+        // `borrow` respects.
+        //
+        // The test used to be "is the queue empty", which made queue occupancy
+        // rather than liquidity decide. One pending entry then forced every
+        // later lender onto the queued path however liquid the pool was, so a
+        // head that could not be paid held up exits that were fully funded, and
+        // filling the 1023 slots stalled the lend side outright. Reserving the
+        // queued assets gives queued lenders exactly what they are owed —
+        // nothing behind them can spend it — while letting genuine surplus be
+        // paid immediately. When the queue is empty `assets_in_queue` is 0 and
+        // this reduces to the previous condition.
+        let immediate =
+            math::borrowable_liquidity(vault_balance, core.market.assets_in_queue)
+                >= lend_for_shares;
         if immediate {
             core.withdraw_lent_immediate(shares, |amt| {
                 ctx.accounts.transfer_lend_to_user(amt, state_bump)
             })
             .map_err(crate::error::ErrorCode::from)?;
         } else {
+            // One authority must not be able to hold every slot — a full queue
+            // blocks queueing for everyone, so slots are a shared resource even
+            // though occupying one is nearly free.
+            let requester = ctx.accounts.authority.key();
+            require!(
+                pool.withdrawal_queue
+                    .count_for_capped(&requester, crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY)
+                    < crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY,
+                crate::error::ErrorCode::TooManyQueuedWithdrawals
+            );
             core.withdraw_lent_queued(shares)
                 .ok_or(crate::error::ErrorCode::MathOverflow)?;
-            pool.withdrawal_queue.push(WithdrawalQueueEntry::new(
-                ctx.accounts.authority.key(),
-                lend_for_shares,
-            ))?;
+            pool.withdrawal_queue
+                .push(WithdrawalQueueEntry::new(requester, lend_for_shares))?;
         }
         pool.market = core.market;
         (immediate, lend_for_shares)

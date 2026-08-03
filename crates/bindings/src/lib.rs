@@ -3,12 +3,49 @@ pub mod state;
 
 use wasm_bindgen::prelude::*;
 
-pub(crate) struct BrowserClock;
+/// Byte offset of `unix_timestamp` within the Clock sysvar account.
+///
+/// The sysvar is bincode-encoded — not an Anchor account, so there is no 8-byte
+/// discriminator to skip — and its five fields are all 8 bytes, little-endian,
+/// in declaration order:
+///
+/// ```text
+///  0  slot: u64
+///  8  epoch_start_timestamp: i64
+/// 16  epoch: u64
+/// 24  leader_schedule_epoch: u64
+/// 32  unix_timestamp: i64
+/// ```
+const CLOCK_UNIX_TIMESTAMP_OFFSET: usize = 32;
 
-impl math::Clock for BrowserClock {
-    fn current_ts(&self) -> i64 {
-        (js_sys::Date::now() / 1000.0) as i64
+/// Total encoded size of the Clock sysvar.
+const CLOCK_LEN: usize = 40;
+
+/// Read `Clock::unix_timestamp` out of raw Clock sysvar account data.
+///
+/// This is the timestamp the on-chain program sees from `Clock::get()`, and the
+/// value [`state::PoolWithIrm::from_bytes`] must be given so its accrual
+/// replays predict what the program will compute.
+///
+/// Lives here rather than in TypeScript so the offset is never transcribed —
+/// the same reason `POOL_SPACE` and the feed memcmp offsets do. Returns `None`
+/// rather than panicking if the slice is not a Clock account.
+#[wasm_bindgen]
+pub fn clock_unix_timestamp(sysvar_data: &[u8]) -> Option<i64> {
+    if sysvar_data.len() < CLOCK_LEN {
+        return None;
     }
+    let bytes: [u8; 8] = sysvar_data
+        [CLOCK_UNIX_TIMESTAMP_OFFSET..CLOCK_UNIX_TIMESTAMP_OFFSET + 8]
+        .try_into()
+        .ok()?;
+    Some(i64::from_le_bytes(bytes))
+}
+
+/// Address of the Clock sysvar, so the app does not hardcode the base-58 string.
+#[wasm_bindgen]
+pub fn clock_sysvar_address() -> String {
+    solana_sdk_ids::sysvar::clock::ID.to_string()
 }
 
 /// Flash-loan fee owed on `amount` at the protocol flash-fee rate.
@@ -70,6 +107,77 @@ pub fn feed_lend_mint_offset() -> u32 {
     feed_state::FEED_LEND_MINT_OFFSET
 }
 
+/// Utilizations (bps) of the rate curve a client should propose by default.
+///
+/// Split into two parallel arrays because wasm-bindgen cannot return a slice of
+/// tuples — the same shape `RatePointsAccount::from_arrays` already takes, so the
+/// two compose directly. See `irm_state::DEFAULT_RATE_POINTS`.
+#[wasm_bindgen]
+pub fn default_rate_point_utils() -> Vec<u16> {
+    irm_state::DEFAULT_RATE_POINTS.iter().map(|p| p.0).collect()
+}
+
+/// Rates (bps) of the rate curve a client should propose by default, index-aligned
+/// with [`default_rate_point_utils`].
+#[wasm_bindgen]
+pub fn default_rate_point_rates() -> Vec<u32> {
+    irm_state::DEFAULT_RATE_POINTS.iter().map(|p| p.1).collect()
+}
+
+// ── PDA seed prefixes ────────────────────────────────────────────────────────
+//
+// A client that derives a program address has to agree with the program on these
+// bytes exactly. They were previously written out as string literals at every
+// `findProgramAddressSync` call — three places in `app/` and again in
+// `packages/test/` — where a rename on-chain produced an address that does not
+// exist, and nothing failed until a transaction was actually sent.
+//
+// Returned as `String` because every seed here is valid UTF-8 and the JS side
+// wants `Buffer.from(seed)`; the Rust constants are the `&[u8]` the programs use.
+
+/// Seed prefix of the protocol's signing authority PDA. See `state::seeds::STATE`.
+#[wasm_bindgen]
+pub fn state_seed() -> String {
+    String::from_utf8_lossy(::state::seeds::STATE).into_owned()
+}
+
+/// Seed prefix of a market's collateral vault.
+#[wasm_bindgen]
+pub fn collateral_vault_seed() -> String {
+    String::from_utf8_lossy(::state::seeds::COLLATERAL_VAULT).into_owned()
+}
+
+/// Seed prefix of a market's lend vault.
+#[wasm_bindgen]
+pub fn lend_vault_seed() -> String {
+    String::from_utf8_lossy(::state::seeds::LEND_VAULT).into_owned()
+}
+
+/// Seed prefix of a market's LP mint.
+#[wasm_bindgen]
+pub fn lp_mint_seed() -> String {
+    String::from_utf8_lossy(::state::seeds::LP_MINT).into_owned()
+}
+
+/// Seed prefix of a borrower's position account.
+#[wasm_bindgen]
+pub fn user_position_seed() -> String {
+    String::from_utf8_lossy(::state::seeds::USER_POSITION).into_owned()
+}
+
+/// Seed prefix of a market's rate-curve account. Part of the rate-provider
+/// contract — see `irm_state::IRM_CONFIG_SEED`.
+#[wasm_bindgen]
+pub fn irm_config_seed() -> String {
+    String::from_utf8_lossy(irm_state::IRM_CONFIG_SEED).into_owned()
+}
+
+/// Seed prefix of a feed account. See `feed_state::FEED_SEED`.
+#[wasm_bindgen]
+pub fn feed_seed() -> String {
+    String::from_utf8_lossy(feed_state::FEED_SEED).into_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +219,56 @@ mod tests {
         let at = |off: u32| &bytes[off as usize..off as usize + 32];
         assert_eq!(at(feed_collateral_mint_offset()), collateral.as_ref());
         assert_eq!(at(feed_lend_mint_offset()), lend.as_ref());
+    }
+
+    /// The default curve crosses to the browser as two parallel arrays, which is
+    /// a shape that can lose an element without failing to compile. Rebuild the
+    /// curve from what is actually exported and check the chain would take it.
+    #[test]
+    fn the_exported_default_curve_survives_the_split_into_arrays() {
+        let utils = default_rate_point_utils();
+        let rates = default_rate_point_rates();
+        assert_eq!(utils.len(), rates.len());
+        assert!(crate::state::RatePointsAccount::from_arrays(utils.clone(), rates.clone()).is_some());
+
+        let pairs: Vec<(u16, u32)> = utils.into_iter().zip(rates).collect();
+        assert_eq!(pairs.as_slice(), irm_state::DEFAULT_RATE_POINTS.as_slice());
+        assert_eq!(irm_state::validate_rate_points(&pairs), Ok(()));
+    }
+
+    /// The Clock offset describes a layout, so it gets a test that exercises the
+    /// layout rather than restating the number. Every field is 8 bytes, which is
+    /// exactly the shape where reading the wrong one still parses cleanly and
+    /// silently returns a plausible timestamp.
+    #[test]
+    fn clock_decoder_picks_unix_timestamp_and_not_a_neighbouring_field() {
+        let slot: u64 = 111;
+        let epoch_start: i64 = 222;
+        let epoch: u64 = 333;
+        let leader_schedule_epoch: u64 = 444;
+        let unix_timestamp: i64 = 1_700_000_000;
+
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&slot.to_le_bytes());
+        buf.extend_from_slice(&epoch_start.to_le_bytes());
+        buf.extend_from_slice(&epoch.to_le_bytes());
+        buf.extend_from_slice(&leader_schedule_epoch.to_le_bytes());
+        buf.extend_from_slice(&unix_timestamp.to_le_bytes());
+        assert_eq!(buf.len(), super::CLOCK_LEN);
+
+        assert_eq!(clock_unix_timestamp(&buf), Some(unix_timestamp));
+        // A short or empty account is not a Clock — refuse rather than guess.
+        assert_eq!(clock_unix_timestamp(&buf[..super::CLOCK_LEN - 1]), None);
+        assert_eq!(clock_unix_timestamp(&[]), None);
+    }
+
+    /// The sysvar address is exported so the app never hardcodes it.
+    #[test]
+    fn clock_sysvar_address_is_the_canonical_one() {
+        assert_eq!(
+            clock_sysvar_address(),
+            "SysvarC1ock11111111111111111111111111111111"
+        );
     }
 }
 

@@ -12,7 +12,7 @@ pub struct Check<'info> {
     /// exact address it expects. `calma` compares against `Pool::guard_state`,
     /// fixed at market creation.
     #[account(
-        seeds = [b"guard", guard_state.authority.as_ref()],
+        seeds = [crate::GUARD_SEED.as_bytes(), guard_state.authority.as_ref()],
         bump = guard_state.bump,
     )]
     pub guard_state: Account<'info, GuardState>,

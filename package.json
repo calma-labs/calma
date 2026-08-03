@@ -11,9 +11,9 @@
     "dev": "cd app && vite",
     "setup": "npm i && anchor run link-keys && anchor build && npm run wasm",
     "wasm": "cargo build --target wasm32-unknown-unknown && wasm-pack build crates/bindings --target bundler --out-dir $PWD/packages/wasm-lib && npm pkg set name='@calma/wasm-lib' --prefix packages/wasm-lib",
-    "build": "bun run wasm && bun run --filter @calma/app build",
-    "preview": "bun run --filter @calma/app preview",
-    "test": "npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 './packages/test/*.ts'",
+    "build": "npm run wasm && npm run --workspace @calma/app build",
+    "preview": "npm run --workspace @calma/app preview",
+    "test": "npx ts-mocha -p ./packages/test/tsconfig.json -t 1000000 --ignore './packages/test/surfpool.ts' './packages/test/*.ts'",
     "test:surfpool": "npx ts-mocha -p ./packages/test/tsconfig.json -t 600000 './packages/test/surfpool.ts'",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"

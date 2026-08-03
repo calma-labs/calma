@@ -4,7 +4,7 @@ use irm_state::IrmState;
 #[derive(Accounts)]
 pub struct BorrowRate<'info> {
     #[account(
-        seeds = [b"irm_config", pool.key().as_ref()],
+        seeds = [::irm_state::IRM_CONFIG_SEED, pool.key().as_ref()],
         bump = irm_state.load()?.bump,
         has_one = pool,
     )]
