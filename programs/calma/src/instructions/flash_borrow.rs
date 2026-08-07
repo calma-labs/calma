@@ -121,7 +121,7 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
     let state_bump = ctx.bumps.state;
     let min_repay = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market);
+        let mut core = math::Core::new(&mut pool.market);
         let min_repay = core
             .flash_borrow(amount, vault_balance, |amt| {
                 ctx.accounts.transfer_lend_to_user(amt, state_bump)
@@ -130,7 +130,6 @@ pub fn flash_borrow_handler(ctx: Context<FlashBorrow>, amount: u64) -> Result<()
                 math::MathError::Transfer(e) => e,
                 e => ErrorCode::from(e).into(),
             })?;
-        pool.market = core.market;
         min_repay
     };
 

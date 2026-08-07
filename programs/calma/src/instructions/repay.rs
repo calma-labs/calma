@@ -78,16 +78,14 @@ impl<'info> Repay<'info> {
 
 pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()> {
     // ── 1. Accrue interest on the pool via IRM CPI ────────────────────────────
-    let utilization = ctx.accounts.pool.load()?.calculate_utilization();
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
-        utilization,
-        ctx.accounts.pool.to_account_info(),
+        &ctx.accounts.pool,
         ctx.accounts.irm_state.to_account_info(),
     )?;
     let (repay_amount, shares_to_burn) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market)
+        let mut core = math::Core::new(&mut pool.market)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
             .accrue_interest()
@@ -111,7 +109,6 @@ pub fn repay_handler<'a>(ctx: Context<'a, Repay<'a>>, amount: u64) -> Result<()>
                 }
                 other => crate::error::ErrorCode::from(other).into(),
             })?;
-        pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         result
     };

@@ -3,6 +3,7 @@ use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::invoke,
 };
+use state::Pool;
 
 use crate::error::ErrorCode;
 
@@ -63,12 +64,13 @@ pub fn check_whitelist<'info>(
 /// answers to is its creator's choice, recorded once and inspectable by anyone
 /// deciding whether to enter.
 pub fn enforce_pool_guard<'info>(
-    pool_guard_state: Pubkey,
-    pool_guard_program: Pubkey,
+    pool: &AccountLoader<'info, Pool>,
     guard_program: &Option<UncheckedAccount<'info>>,
     guard_state: &Option<UncheckedAccount<'info>>,
     authority: Pubkey,
 ) -> Result<()> {
+    let (pool_guard_state, pool_guard_program) = pool.load()?.guard_config();
+
     if pool_guard_state == Pubkey::default() {
         return Ok(());
     }

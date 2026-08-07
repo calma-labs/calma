@@ -3,6 +3,7 @@ use anchor_lang::solana_program::{
     instruction::{AccountMeta, Instruction},
     program::{get_return_data, invoke},
 };
+use state::Pool;
 
 /// Anchor instruction discriminators for the rate-provider ABI.
 ///
@@ -32,7 +33,31 @@ pub struct IrmState {
 }
 
 impl IrmState {
+    /// Fetch the current rate for an already-initialised pool.
+    ///
+    /// Reads utilization off `pool_account` itself, so every caller with a
+    /// live pool gets it from the one place it's computed rather than
+    /// re-deriving `pool.calculate_utilization()` at each call site.
     pub fn new<'a>(
+        rate_program: AccountInfo<'a>,
+        pool_account: &AccountLoader<'a, Pool>,
+        irm_state: AccountInfo<'a>,
+    ) -> Result<Self> {
+        let utilization = pool_account.load()?.calculate_utilization();
+        Self::new_with_utilization(
+            rate_program,
+            utilization,
+            pool_account.to_account_info(),
+            irm_state,
+        )
+    }
+
+    /// Fetch the current rate with an explicit utilization.
+    ///
+    /// For `create`, where the pool is mid-`load_init` and has no
+    /// discriminator yet — loading it here would fail with error 3002.
+    /// The pool is brand-new with no borrows, so utilization is always 0.
+    pub fn new_with_utilization<'a>(
         rate_program: AccountInfo<'a>,
         utilization: u64,
         pool_account: AccountInfo<'a>,

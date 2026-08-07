@@ -24,6 +24,68 @@ pub trait Market {
     fn flash_loan_outstanding_mut(&mut self) -> &mut u64;
 }
 
+/// Lets `Core::new(&mut some_market)` write straight into the caller's copy
+/// instead of an owned one that must be copied back afterward — every method
+/// forwards to `T`'s own impl. On-chain callers hold `&mut state::Market`
+/// borrowed directly out of a zero-copy account, so mutating through `Core`
+/// mutates the account in place; nothing else about `Core` changes.
+impl<T: Market> Market for &mut T {
+    fn total_supply_assets(&self) -> u64 {
+        T::total_supply_assets(self)
+    }
+    fn total_supply_shares(&self) -> u64 {
+        T::total_supply_shares(self)
+    }
+    fn total_borrow_assets(&self) -> u64 {
+        T::total_borrow_assets(self)
+    }
+    fn total_borrow_shares(&self) -> u64 {
+        T::total_borrow_shares(self)
+    }
+    fn last_update(&self) -> i64 {
+        T::last_update(self)
+    }
+    fn fee(&self) -> u64 {
+        T::fee(self)
+    }
+    fn accrued_fee_shares(&self) -> u64 {
+        T::accrued_fee_shares(self)
+    }
+    fn assets_in_queue(&self) -> u64 {
+        T::assets_in_queue(self)
+    }
+    fn ltv_percent(&self) -> u8 {
+        T::ltv_percent(self)
+    }
+    fn flash_loan_outstanding(&self) -> u64 {
+        T::flash_loan_outstanding(self)
+    }
+    fn total_supply_assets_mut(&mut self) -> &mut u64 {
+        T::total_supply_assets_mut(self)
+    }
+    fn total_supply_shares_mut(&mut self) -> &mut u64 {
+        T::total_supply_shares_mut(self)
+    }
+    fn accrued_fee_shares_mut(&mut self) -> &mut u64 {
+        T::accrued_fee_shares_mut(self)
+    }
+    fn assets_in_queue_mut(&mut self) -> &mut u64 {
+        T::assets_in_queue_mut(self)
+    }
+    fn total_borrow_assets_mut(&mut self) -> &mut u64 {
+        T::total_borrow_assets_mut(self)
+    }
+    fn total_borrow_shares_mut(&mut self) -> &mut u64 {
+        T::total_borrow_shares_mut(self)
+    }
+    fn last_update_mut(&mut self) -> &mut i64 {
+        T::last_update_mut(self)
+    }
+    fn flash_loan_outstanding_mut(&mut self) -> &mut u64 {
+        T::flash_loan_outstanding_mut(self)
+    }
+}
+
 pub trait Position {
     fn collateral_deposited(&self) -> u64;
     fn debt_shares(&self) -> u64;

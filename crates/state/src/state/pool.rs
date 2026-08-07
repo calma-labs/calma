@@ -191,4 +191,17 @@ impl Pool {
             self.market.assets_in_queue,
         )
     }
+
+    /// The whitelist this market is gated on, or a pair of `Pubkey::default()`
+    /// for an open market. See `guard_state`/`guard_program` for the trust
+    /// model.
+    pub fn guard_config(&self) -> (Pubkey, Pubkey) {
+        (self.guard_state, self.guard_program)
+    }
+
+    /// The oracle this market prices against. See `feed_state`/`feed_program`
+    /// for the trust model.
+    pub fn feed_config(&self) -> (Pubkey, Pubkey) {
+        (self.feed_state, self.feed_program)
+    }
 }

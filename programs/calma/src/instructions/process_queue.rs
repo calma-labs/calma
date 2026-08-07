@@ -101,7 +101,7 @@ pub fn process_queue_entry_handler(ctx: Context<ProcessQueueEntry>) -> Result<()
     let state_bump = ctx.bumps.state;
     {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market);
+        let mut core = math::Core::new(&mut pool.market);
         core.process_queued_withdrawal(entry.amount, |amt| {
             ctx.accounts.transfer_lend_to_user(amt, state_bump)
         })
@@ -109,7 +109,6 @@ pub fn process_queue_entry_handler(ctx: Context<ProcessQueueEntry>) -> Result<()
             math::MathError::Transfer(e) => e,
             e => crate::error::ErrorCode::from(e).into(),
         })?;
-        pool.market = core.market;
         // Dequeue only after the transfer succeeded.
         pool.withdrawal_queue.pop()?;
     }

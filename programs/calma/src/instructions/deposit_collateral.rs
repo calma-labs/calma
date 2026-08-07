@@ -71,21 +71,19 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
     require!(amount > 0, crate::error::ErrorCode::InvalidAmount);
 
     // Validate the mint matches the pool's collateral_mint.
-    let (pool_guard_state, pool_guard_program) = {
+    {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.collateral_mint.key() == pool.collateral_mint,
             crate::error::ErrorCode::InvalidAmount
         );
-        (pool.guard_state, pool.guard_program)
     };
 
     // Whitelist gate — entry only. `withdraw_collateral` is deliberately never
     // gated: a depositor removed from the list afterwards must still be able to
     // get their collateral out.
     crate::hooks::guard::enforce_pool_guard(
-        pool_guard_state,
-        pool_guard_program,
+        &ctx.accounts.pool,
         &ctx.accounts.guard_program,
         &ctx.accounts.guard_state,
         ctx.accounts.authority.key(),
@@ -108,10 +106,9 @@ pub fn deposit_collateral_handler(ctx: Context<DepositCollateral>, amount: u64) 
         } else {
             *ctx.accounts.user_position.load()?
         };
-        let mut core = math::Core::new(pool.market).with_position(starting_position);
+        let mut core = math::Core::new(&mut pool.market).with_position(starting_position);
         core.deposit_collateral(amount, |amt| ctx.accounts.transfer_collateral_to_vault(amt))
             .map_err(crate::error::ErrorCode::from)?;
-        pool.market = core.market;
         if needs_init {
             let mut position = ctx.accounts.user_position.load_init()?;
             position.authority = ctx.accounts.authority.key();

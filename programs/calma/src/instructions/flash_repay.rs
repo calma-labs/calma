@@ -96,7 +96,7 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
     let user_balance = ctx.accounts.user_source.amount;
     let (principal, fee) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market);
+        let mut core = math::Core::new(&mut pool.market);
         let result = core
             .flash_repay(amount, |amt| {
                 require!(user_balance >= amt, ErrorCode::InsufficientFunds);
@@ -106,7 +106,6 @@ pub fn flash_repay_handler(ctx: Context<FlashRepay>, amount: u64) -> Result<()> 
                 math::MathError::Transfer(e) => e,
                 e => ErrorCode::from(e).into(),
             })?;
-        pool.market = core.market;
         result
     };
 

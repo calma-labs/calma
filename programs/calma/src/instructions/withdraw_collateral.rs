@@ -94,19 +94,14 @@ pub fn withdraw_collateral_handler<'a>(
     }
 
     // ── 1. Accrue interest on the pool ────────────────────────────────────────
-    let (utilization, feed_state_key, feed_program_key) = {
+    let (feed_state_key, feed_program_key) = {
         let pool = ctx.accounts.pool.load()?;
-        (
-            pool.calculate_utilization(),
-            pool.feed_state,
-            pool.feed_program,
-        )
+        pool.feed_config()
     };
     let oracle = read_feed(&ctx.accounts.feed_state, feed_state_key, feed_program_key)?;
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
-        utilization,
-        ctx.accounts.pool.to_account_info(),
+        &ctx.accounts.pool,
         ctx.accounts.irm_state.to_account_info(),
     )?;
     require!(
@@ -117,7 +112,7 @@ pub fn withdraw_collateral_handler<'a>(
     let state_bump = ctx.bumps.state;
     let remaining = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market)
+        let mut core = math::Core::new(&mut pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
@@ -131,7 +126,6 @@ pub fn withdraw_collateral_handler<'a>(
                 math::MathError::Transfer(e) => e,
                 e => crate::error::ErrorCode::from(e).into(),
             })?;
-        pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.collateral_deposited =
             core.position.collateral_deposited;
         remaining

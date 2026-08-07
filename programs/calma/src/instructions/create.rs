@@ -228,7 +228,7 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     // in AccountsExit::exit() after the handler returns. Calling load() after
     // load_init() in the same instruction sees zeros and returns error 3002.
     // Utilization is 0 because the pool is brand-new with no borrows.
-    let irm = crate::hooks::irm::IrmState::new(
+    let irm = crate::hooks::irm::IrmState::new_with_utilization(
         ctx.accounts.rate_program.to_account_info(),
         0,
         ctx.accounts.pool.to_account_info(),
@@ -267,11 +267,10 @@ pub fn create_handler(ctx: Context<Create>, ltv_percent: u8) -> Result<()> {
     // withdrawal_queue is zero-initialised by load_init (head=0, tail=0)
 
     {
-        let core = math::Core::new(pool.market)
+        math::Core::new(&mut pool.market)
             .with_irm(irm)
             .accrue_interest()
             .ok_or(crate::error::ErrorCode::MathOverflow)?;
-        pool.market = core.market;
     }
 
     msg!(

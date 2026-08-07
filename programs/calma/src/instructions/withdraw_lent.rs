@@ -107,7 +107,7 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     );
 
     // Validate lend_mint matches what is stored in the pool.
-    let utilization = {
+    {
         let pool = ctx.accounts.pool.load()?;
         require!(
             ctx.accounts.lend_mint.key() == pool.lend_mint,
@@ -121,14 +121,12 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             pool.market.flash_loan_outstanding == 0,
             crate::error::ErrorCode::FlashLoanInProgress
         );
-        pool.calculate_utilization()
     };
 
     // ── 1. Accrue interest so the exit is priced at the current share price ───
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
-        utilization,
-        ctx.accounts.pool.to_account_info(),
+        &ctx.accounts.pool,
         ctx.accounts.irm_state.to_account_info(),
     )?;
 
@@ -138,9 +136,17 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
     // ── 3. Compute token amount and update market ─────────────────────────────
     let vault_balance = ctx.accounts.lend_vault.amount;
     let state_bump = ctx.bumps.state;
+    let requester = ctx.accounts.authority.key();
     let (immediate, lend_for_shares) = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market)
+        // Read before `core` takes `pool.market` mutably below — `core` holds
+        // that borrow through a `RefMut` deref, which the borrow checker can't
+        // split from `pool`'s other fields the way a bare struct's would be.
+        let queue_capped = pool
+            .withdrawal_queue
+            .count_for_capped(&requester, crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY)
+            >= crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY;
+        let mut core = math::Core::new(&mut pool.market)
             .with_irm(irm)
             .accrue_interest()
             .ok_or(crate::error::ErrorCode::InterestAccrualOverflow)?;
@@ -183,11 +189,8 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             // One authority must not be able to hold every slot — a full queue
             // blocks queueing for everyone, so slots are a shared resource even
             // though occupying one is nearly free.
-            let requester = ctx.accounts.authority.key();
             require!(
-                pool.withdrawal_queue
-                    .count_for_capped(&requester, crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY)
-                    < crate::withdrawal_queue::MAX_ENTRIES_PER_AUTHORITY,
+                !queue_capped,
                 crate::error::ErrorCode::TooManyQueuedWithdrawals
             );
             core.withdraw_lent_queued(shares)
@@ -195,7 +198,6 @@ pub fn withdraw_lent_handler(ctx: Context<WithdrawLent>, shares: u64) -> Result<
             pool.withdrawal_queue
                 .push(WithdrawalQueueEntry::new(requester, lend_for_shares))?;
         }
-        pool.market = core.market;
         (immediate, lend_for_shares)
     };
 

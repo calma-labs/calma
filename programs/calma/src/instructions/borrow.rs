@@ -97,23 +97,16 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     //
     // Amount and liquidity rules (including excluding assets reserved for the
     // withdrawal queue) are enforced inside `Core::borrow`.
-    let (utilization, feed_state_key, feed_program_key, pool_guard_state, pool_guard_program) = {
+    let (feed_state_key, feed_program_key) = {
         let pool = ctx.accounts.pool.load()?;
-        (
-            pool.calculate_utilization(),
-            pool.feed_state,
-            pool.feed_program,
-            pool.guard_state,
-            pool.guard_program,
-        )
+        pool.feed_config()
     };
 
     // Whitelist gate — entry only. `repay` is deliberately never gated: a
     // borrower removed from the list must always be able to clear their debt.
     // Checked before the oracle/IRM CPIs so a rejected caller costs the minimum.
     crate::hooks::guard::enforce_pool_guard(
-        pool_guard_state,
-        pool_guard_program,
+        &ctx.accounts.pool,
         &ctx.accounts.guard_program,
         &ctx.accounts.guard_state,
         ctx.accounts.authority.key(),
@@ -123,14 +116,13 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
     let oracle = read_feed(&ctx.accounts.feed_state, feed_state_key, feed_program_key)?;
     let irm = crate::hooks::irm::IrmState::new(
         ctx.accounts.rate_program.to_account_info(),
-        utilization,
-        ctx.accounts.pool.to_account_info(),
+        &ctx.accounts.pool,
         ctx.accounts.irm_state.to_account_info(),
     )?;
     let state_bump = ctx.bumps.state;
     let new_shares = {
         let mut pool = ctx.accounts.pool.load_mut()?;
-        let mut core = math::Core::new(pool.market)
+        let mut core = math::Core::new(&mut pool.market)
             .with_oracle(oracle)
             .with_irm(irm)
             .with_position(*ctx.accounts.user_position.load()?)
@@ -144,7 +136,6 @@ pub fn borrow_handler<'a>(ctx: Context<'a, Borrow<'a>>, amount: u64) -> Result<(
                 math::MathError::Transfer(e) => e,
                 e => crate::error::ErrorCode::from(e).into(),
             })?;
-        pool.market = core.market;
         ctx.accounts.user_position.load_mut()?.debt_shares = core.position.debt_shares;
         new_shares
     };
